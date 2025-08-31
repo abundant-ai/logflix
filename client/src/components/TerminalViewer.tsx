@@ -105,14 +105,10 @@ export default function TerminalViewer({ castContent }: TerminalViewerProps) {
     return relevantThoughts[relevantThoughts.length - 1];
   }, [agentThoughts, currentTime]);
 
-  // Terminal content with proper input/output rendering
-  const terminalElements = useMemo(() => {
-    const ioEvents = visibleEvents.filter(event => event.type === 'i' || event.type === 'o');
-    return ioEvents.map((event, index) => ({
-      key: `${event.timestamp}-${index}`,
-      type: event.type,
-      content: event.content
-    }));
+  // Terminal content - only show output since input is usually echoed
+  const terminalContent = useMemo(() => {
+    const outputEvents = visibleEvents.filter(event => event.type === 'o');
+    return outputEvents.map(event => event.content).join('');
   }, [visibleEvents]);
 
   const maxTime = Math.max(...events.map(e => e.timestamp), 0);
@@ -203,17 +199,10 @@ export default function TerminalViewer({ castContent }: TerminalViewerProps) {
           <CardContent className="p-0">
             <ScrollArea className="h-80">
               <div className="bg-black text-green-400 font-mono text-sm p-4 min-h-80">
-                {terminalElements.length > 0 ? (
-                  <div className="whitespace-pre-wrap overflow-hidden">
-                    {terminalElements.map((element) => (
-                      <span 
-                        key={element.key}
-                        className={element.type === 'i' ? 'text-cyan-400' : 'text-green-400'}
-                      >
-                        {element.content}
-                      </span>
-                    ))}
-                  </div>
+                {terminalContent ? (
+                  <pre className="whitespace-pre-wrap overflow-hidden">
+                    {terminalContent}
+                  </pre>
                 ) : (
                   <div className="text-gray-500">No terminal session yet... Press play to start</div>
                 )}
@@ -237,10 +226,6 @@ export default function TerminalViewer({ castContent }: TerminalViewerProps) {
             <ScrollArea className="h-80">
               {currentThinking ? (
                 <div className="space-y-4">
-                  {/* Debug: Show all available data */}
-                  <div className="text-xs text-muted-foreground mb-2">
-                    Available data: {Object.keys(currentThinking).filter(k => k !== 'timestamp').join(', ')}
-                  </div>
 
                   {/* Task Completion Status */}
                   {currentThinking.is_task_complete !== undefined && (
