@@ -23,7 +23,7 @@ export default function TaskPage() {
 
   if (!date || !taskId) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-background">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <Terminal className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
           <h2 className="text-lg font-semibold text-foreground mb-2">Invalid Parameters</h2>
@@ -35,7 +35,7 @@ export default function TaskPage() {
 
   if (isLoading) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-background">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent mx-auto mb-4"></div>
           <p className="text-muted-foreground">Loading task data...</p>
@@ -46,7 +46,7 @@ export default function TaskPage() {
 
   if (error || !hierarchy) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-background">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <div className="text-destructive mb-4">
             <Terminal className="h-12 w-12 mx-auto mb-2" />
@@ -64,7 +64,7 @@ export default function TaskPage() {
 
   if (!taskEntry) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-background">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <Terminal className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
           <h2 className="text-lg font-semibold text-foreground mb-2">Task Not Found</h2>
