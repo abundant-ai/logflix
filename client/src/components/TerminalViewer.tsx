@@ -29,6 +29,7 @@ export default function TerminalViewer({ castContent }: TerminalViewerProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const [isScrubbing, setIsScrubbing] = useState(false);
 
   // Parse cast data
   const { events, agentThoughts, startTime } = useMemo(() => {
@@ -152,7 +153,7 @@ export default function TerminalViewer({ castContent }: TerminalViewerProps) {
 
   // Playback control with real timestamps
   useEffect(() => {
-    if (!isPlaying || events.length === 0) return;
+    if (!isPlaying || events.length === 0 || isScrubbing) return;
 
     // Find the next event that should be displayed
     const nextEvent = events.find(event => event.timestamp > currentTime);
@@ -173,7 +174,7 @@ export default function TerminalViewer({ castContent }: TerminalViewerProps) {
     }, delayMs);
 
     return () => clearTimeout(timeout);
-  }, [isPlaying, currentTime, events, playbackSpeed, maxTime]);
+  }, [isPlaying, currentTime, events, playbackSpeed, maxTime, isScrubbing]);
 
   const formatTime = (seconds: number) => {
     const totalSeconds = Math.floor(seconds);
@@ -255,9 +256,16 @@ export default function TerminalViewer({ castContent }: TerminalViewerProps) {
                   type="range"
                   min="0"
                   max={maxTime}
+                  step="0.1"
                   value={currentTime}
                   onChange={(e) => setCurrentTime(parseFloat(e.target.value))}
+                  onMouseDown={() => setIsScrubbing(true)}
+                  onMouseUp={() => setIsScrubbing(false)}
+                  onTouchStart={() => setIsScrubbing(true)}
+                  onTouchEnd={() => setIsScrubbing(false)}
                   className="absolute inset-0 w-full h-2 opacity-0 cursor-pointer"
+                  style={{ zIndex: 20 }}
+                  data-testid="playback-scrubber"
                 />
               </div>
               
