@@ -1,17 +1,15 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link, useLocation } from "wouter";
 import { Search, Filter, Calendar, Terminal, Bot, ChevronDown, ChevronRight } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { S3Hierarchy } from "@shared/schema";
 
-interface NavigationSidebarProps {
-  onSelectTaskRun: (taskRun: { date: string; taskId: string; modelName: string }) => void;
-  selectedTaskRun: { date: string; taskId: string; modelName: string } | null;
-}
+interface NavigationSidebarProps {}
 
-export default function NavigationSidebar({ onSelectTaskRun, selectedTaskRun }: NavigationSidebarProps) {
+export default function NavigationSidebar({}: NavigationSidebarProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [difficultyFilter, setDifficultyFilter] = useState("all");
   const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
@@ -56,10 +54,14 @@ export default function NavigationSidebar({ onSelectTaskRun, selectedTaskRun }: 
     return 'text-destructive bg-destructive/20';
   };
 
-  const isSelected = (date: string, taskId: string, modelName: string) => {
-    return selectedTaskRun?.date === date && 
-           selectedTaskRun?.taskId === taskId && 
-           selectedTaskRun?.modelName === modelName;
+  const [location] = useLocation();
+  
+  const isCurrentTaskRun = (date: string, taskId: string, modelName: string) => {
+    const urlParams = new URLSearchParams(location.split('?')[1] || '');
+    return location.startsWith('/task-run') &&
+           urlParams.get('date') === date && 
+           urlParams.get('taskId') === taskId && 
+           urlParams.get('model') === modelName;
   };
 
   if (isLoading) {
@@ -147,35 +149,39 @@ export default function NavigationSidebar({ onSelectTaskRun, selectedTaskRun }: 
                   const taskKey = `${date.date}-${task.taskId}`;
                   return (
                     <div key={taskKey} className="mb-1">
-                      <div 
-                        className="flex items-center px-2 py-1 hover:bg-muted rounded cursor-pointer"
-                        onClick={() => toggleTaskExpanded(taskKey)}
-                        data-testid={`task-${task.taskId}`}
-                      >
-                        {expandedTasks.has(taskKey) ? (
-                          <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                        ) : (
-                          <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                        )}
-                        <Terminal className="ml-1 mr-2 text-accent h-4 w-4" />
-                        <span className="text-sm">{task.taskId}</span>
+                      <div className="flex">
+                        <div 
+                          className="flex items-center px-2 py-1 hover:bg-muted rounded cursor-pointer flex-1"
+                          onClick={() => toggleTaskExpanded(taskKey)}
+                        >
+                          {expandedTasks.has(taskKey) ? (
+                            <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                          )}
+                          <Terminal className="ml-1 mr-2 text-accent h-4 w-4" />
+                          <span className="text-sm">{task.taskId}</span>
+                        </div>
+                        <Link
+                          href={`/task?date=${encodeURIComponent(date.date)}&taskId=${encodeURIComponent(task.taskId)}`}
+                          className="px-2 py-1 hover:bg-primary/20 rounded text-xs text-muted-foreground hover:text-foreground transition-colors"
+                          data-testid={`task-link-${task.taskId}`}
+                        >
+                          View
+                        </Link>
                       </div>
 
                       {expandedTasks.has(taskKey) && (
                         <div className="ml-6 mt-1 space-y-0.5">
                           {task.models.map((model) => (
-                            <div
+                            <Link
                               key={model.modelName}
-                              className={`flex items-center px-2 py-1 hover:bg-muted rounded cursor-pointer transition-colors ${
-                                isSelected(date.date, task.taskId, model.modelName) 
+                              href={`/task-run?date=${encodeURIComponent(date.date)}&taskId=${encodeURIComponent(task.taskId)}&model=${encodeURIComponent(model.modelName)}`}
+                              className={`flex items-center px-2 py-1 hover:bg-muted rounded cursor-pointer transition-colors block ${
+                                isCurrentTaskRun(date.date, task.taskId, model.modelName) 
                                   ? 'bg-primary/20 border border-primary/30' 
                                   : ''
                               }`}
-                              onClick={() => onSelectTaskRun({
-                                date: date.date,
-                                taskId: task.taskId,
-                                modelName: model.modelName
-                              })}
                               data-testid={`model-${model.modelName}`}
                             >
                               <Bot className="mr-2 text-primary h-4 w-4" />
@@ -191,7 +197,7 @@ export default function NavigationSidebar({ onSelectTaskRun, selectedTaskRun }: 
                                   </span>
                                 )}
                               </div>
-                            </div>
+                            </Link>
                           ))}
                         </div>
                       )}
