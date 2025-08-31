@@ -164,12 +164,13 @@ export default function TerminalViewer({ castContent }: TerminalViewerProps) {
       return;
     }
 
-    // Calculate the delay until the next event (adjusted for playback speed)
-    const delay = Math.max(1, (nextEvent.timestamp - currentTime) / playbackSpeed);
+    // Calculate the delay until the next event in milliseconds (adjusted for playback speed)
+    // Note: timestamps are in seconds, so convert to ms and adjust for speed
+    const delayMs = Math.max(10, ((nextEvent.timestamp - currentTime) * 1000) / playbackSpeed);
     
     const timeout = setTimeout(() => {
       setCurrentTime(nextEvent.timestamp);
-    }, delay);
+    }, delayMs);
 
     return () => clearTimeout(timeout);
   }, [isPlaying, currentTime, events, playbackSpeed, maxTime]);
