@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useLocation } from "wouter";
 import { Search, Filter, Calendar, Terminal, Bot, ChevronDown, ChevronRight } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -8,15 +7,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { S3Hierarchy } from "@shared/schema";
 
 interface NavigationSidebarProps {
-  // Remove the old callback-based interface
+  onSelectTaskRun: (taskRun: { date: string; taskId: string; modelName: string }) => void;
+  selectedTaskRun: { date: string; taskId: string; modelName: string } | null;
 }
 
-export default function NavigationSidebar({}: NavigationSidebarProps) {
+export default function NavigationSidebar({ onSelectTaskRun, selectedTaskRun }: NavigationSidebarProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [difficultyFilter, setDifficultyFilter] = useState("all");
   const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
-  const [location] = useLocation();
 
   const { data: hierarchy, isLoading, error } = useQuery<S3Hierarchy>({
     queryKey: ["/api/hierarchy"],
@@ -57,8 +56,10 @@ export default function NavigationSidebar({}: NavigationSidebarProps) {
     return 'text-destructive bg-destructive/20';
   };
 
-  const isTaskSelected = (date: string, taskId: string) => {
-    return location === `/task/${date}/${taskId}`;
+  const isSelected = (date: string, taskId: string, modelName: string) => {
+    return selectedTaskRun?.date === date && 
+           selectedTaskRun?.taskId === taskId && 
+           selectedTaskRun?.modelName === modelName;
   };
 
   if (isLoading) {
@@ -146,30 +147,54 @@ export default function NavigationSidebar({}: NavigationSidebarProps) {
                   const taskKey = `${date.date}-${task.taskId}`;
                   return (
                     <div key={taskKey} className="mb-1">
-                      <Link 
-                        href={`/task/${date.date}/${task.taskId}`}
-                        className={`flex items-center px-2 py-1 hover:bg-muted rounded cursor-pointer transition-colors ${
-                          isTaskSelected(date.date, task.taskId) 
-                            ? 'bg-primary/20 border border-primary/30' 
-                            : ''
-                        }`}
+                      <div 
+                        className="flex items-center px-2 py-1 hover:bg-muted rounded cursor-pointer"
+                        onClick={() => toggleTaskExpanded(taskKey)}
                         data-testid={`task-${task.taskId}`}
                       >
-                        <Terminal className="mr-2 text-accent h-4 w-4" />
-                        <span className="text-sm font-medium">{task.taskId}</span>
-                        <div className="ml-auto flex items-center gap-1">
-                          <span className="text-xs text-muted-foreground">
-                            {task.models.length} models
-                          </span>
-                          {task.models.some(m => m.accuracy !== undefined) && (
-                            <span className={`text-xs px-1.5 py-0.5 rounded ${
-                              getAccuracyColor(Math.max(...task.models.filter(m => m.accuracy !== undefined).map(m => m.accuracy!)))
-                            }`}>
-                              {Math.round(Math.max(...task.models.filter(m => m.accuracy !== undefined).map(m => m.accuracy!)) * 100)}%
-                            </span>
-                          )}
+                        {expandedTasks.has(taskKey) ? (
+                          <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                        ) : (
+                          <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                        )}
+                        <Terminal className="ml-1 mr-2 text-accent h-4 w-4" />
+                        <span className="text-sm">{task.taskId}</span>
+                      </div>
+
+                      {expandedTasks.has(taskKey) && (
+                        <div className="ml-6 mt-1 space-y-0.5">
+                          {task.models.map((model) => (
+                            <div
+                              key={model.modelName}
+                              className={`flex items-center px-2 py-1 hover:bg-muted rounded cursor-pointer transition-colors ${
+                                isSelected(date.date, task.taskId, model.modelName) 
+                                  ? 'bg-primary/20 border border-primary/30' 
+                                  : ''
+                              }`}
+                              onClick={() => onSelectTaskRun({
+                                date: date.date,
+                                taskId: task.taskId,
+                                modelName: model.modelName
+                              })}
+                              data-testid={`model-${model.modelName}`}
+                            >
+                              <Bot className="mr-2 text-primary h-4 w-4" />
+                              <span className="text-sm text-foreground truncate">
+                                {model.modelName}
+                              </span>
+                              <div className="ml-auto flex items-center gap-1">
+                                {model.accuracy !== undefined && (
+                                  <span className={`text-xs px-1.5 py-0.5 rounded ${
+                                    getAccuracyColor(model.accuracy)
+                                  }`}>
+                                    {Math.round(model.accuracy * 100)}%
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                      </Link>
+                      )}
                     </div>
                   );
                 })}
