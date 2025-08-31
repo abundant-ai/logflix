@@ -339,8 +339,9 @@ export default function TerminalViewer({ castContent }: TerminalViewerProps) {
                             commandText = cmd;
                           } else if (typeof cmd === 'object' && cmd !== null) {
                             // Try different possible properties for the command
-                            commandText = cmd.command || cmd.cmd || cmd.text || cmd.action || '';
-                            timeout = cmd.timeout || cmd.timeout_sec || cmd.max_timeout_sec;
+                            const cmdObj = cmd as any;
+                            commandText = cmdObj.command || cmdObj.cmd || cmdObj.text || cmdObj.action || '';
+                            timeout = cmdObj.timeout || cmdObj.timeout_sec || cmdObj.max_timeout_sec;
                             
                             // If no recognizable command property, show the first string value or object keys
                             if (!commandText) {
