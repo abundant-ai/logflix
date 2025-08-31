@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRight, Download, Play, BarChart3, Terminal, FileCode, Search, Bug, AlertTriangle } from "lucide-react";
+import { ChevronRight, Download, Play, BarChart3, Terminal, FileCode, Search, Bug, AlertTriangle, CheckCircle, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -55,6 +55,17 @@ export default function MainContent({ selectedTaskRun }: MainContentProps) {
     const start = new Date(startTime);
     const end = new Date(endTime);
     return Math.floor((end.getTime() - start.getTime()) / 1000);
+  };
+
+  const getTestResults = () => {
+    if (!taskRun?.resultsJson) return null;
+    
+    const resultsData = taskRun.resultsJson as any;
+    const result = resultsData.results?.[0];
+    
+    if (!result?.parser_results) return null;
+    
+    return result.parser_results;
   };
 
   const isTaskIncomplete = () => {
@@ -257,6 +268,43 @@ export default function MainContent({ selectedTaskRun }: MainContentProps) {
               </Card>
 
             </div>
+
+            {/* Test Results */}
+            {getTestResults() && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Test Results</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {Object.entries(getTestResults()).map(([testName, status]) => {
+                      const isPassed = status === 'passed';
+                      return (
+                        <div key={testName} className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                          <div className="flex items-center gap-3">
+                            {isPassed ? (
+                              <CheckCircle className="h-5 w-5 text-success" />
+                            ) : (
+                              <XCircle className="h-5 w-5 text-destructive" />
+                            )}
+                            <span className="font-medium">
+                              {testName.replace(/test_|_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                            </span>
+                          </div>
+                          <div className={`px-2 py-1 rounded text-xs font-medium ${
+                            isPassed 
+                              ? 'bg-success/20 text-success' 
+                              : 'bg-destructive/20 text-destructive'
+                          }`}>
+                            {isPassed ? 'PASSED' : 'FAILED'}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Task Information */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
