@@ -1,0 +1,90 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: hsl(220, 13%, 13%);
+  --foreground: hsl(220, 8%, 95%);
+  --card: hsl(220, 13%, 16%);
+  --card-foreground: hsl(220, 8%, 95%);
+  --popover: hsl(220, 13%, 16%);
+  --popover-foreground: hsl(220, 8%, 95%);
+  --primary: hsl(210, 100%, 45%);
+  --primary-foreground: hsl(0, 0%, 100%);
+  --secondary: hsl(220, 13%, 22%);
+  --secondary-foreground: hsl(220, 8%, 85%);
+  --muted: hsl(220, 13%, 19%);
+  --muted-foreground: hsl(220, 8%, 65%);
+  --accent: hsl(210, 100%, 45%);
+  --accent-foreground: hsl(0, 0%, 100%);
+  --destructive: hsl(0, 75%, 60%);
+  --destructive-foreground: hsl(0, 0%, 100%);
+  --border: hsl(220, 13%, 25%);
+  --input: hsl(220, 13%, 19%);
+  --ring: hsl(210, 100%, 45%);
+  --success: hsl(142, 76%, 36%);
+  --warning: hsl(38, 92%, 50%);
+  --radius: 8px;
+  --font-sans: Inter, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', Monaco, Consolas, monospace;
+}
+
+.dark {
+  --background: hsl(220, 13%, 13%);
+  --foreground: hsl(220, 8%, 95%);
+  --card: hsl(220, 13%, 16%);
+  --card-foreground: hsl(220, 8%, 95%);
+  --popover: hsl(220, 13%, 16%);
+  --popover-foreground: hsl(220, 8%, 95%);
+  --primary: hsl(210, 100%, 45%);
+  --primary-foreground: hsl(0, 0%, 100%);
+  --secondary: hsl(220, 13%, 22%);
+  --secondary-foreground: hsl(220, 8%, 85%);
+  --muted: hsl(220, 13%, 19%);
+  --muted-foreground: hsl(220, 8%, 65%);
+  --accent: hsl(210, 100%, 45%);
+  --accent-foreground: hsl(0, 0%, 100%);
+  --destructive: hsl(0, 75%, 60%);
+  --destructive-foreground: hsl(0, 0%, 100%);
+  --border: hsl(220, 13%, 25%);
+  --input: hsl(220, 13%, 19%);
+  --ring: hsl(210, 100%, 45%);
+  --success: hsl(142, 76%, 36%);
+  --warning: hsl(38, 92%, 50%);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: hsl(220, 13%, 19%);
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: hsl(220, 13%, 35%);
+  border-radius: 3px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: hsl(220, 13%, 45%);
+}
+
+.asciinema-player {
+  width: 100%;
+  height: 400px;
+  background: #000;
+  border-radius: 8px;
+}
