@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRight, Download, Play, BarChart3, Terminal, FileCode, Search, Bug } from "lucide-react";
+import { ChevronRight, Download, Play, BarChart3, Terminal, FileCode, Search, Bug, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,6 +36,21 @@ export default function MainContent({ selectedTaskRun }: MainContentProps) {
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = Math.floor(seconds % 60);
     return `${minutes}m ${remainingSeconds}s`;
+  };
+
+  const isTaskIncomplete = () => {
+    if (!taskRun?.resultsJson) return false;
+    
+    // Check if task_completed is explicitly false
+    if (taskRun.resultsJson.task_completed === false) return true;
+    
+    // Check if accuracy is very low (might indicate incomplete task)
+    if (taskRun.resultsJson.accuracy !== undefined && taskRun.resultsJson.accuracy < 0.1) return true;
+    
+    // Check if there's no end_time (task might have been interrupted)
+    if (!taskRun.resultsJson.end_time) return true;
+    
+    return false;
   };
 
   const downloadFile = async (filename: string) => {
@@ -185,14 +200,22 @@ export default function MainContent({ selectedTaskRun }: MainContentProps) {
               <Card>
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Duration</p>
-                      <p className="text-2xl font-bold text-foreground">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm text-muted-foreground">Duration</p>
+                        {isTaskIncomplete() && (
+                          <div className="flex items-center gap-1 text-warning">
+                            <AlertTriangle className="h-3 w-3" />
+                            <span className="text-xs">Incomplete</span>
+                          </div>
+                        )}
+                      </div>
+                      <p className={`text-2xl font-bold ${isTaskIncomplete() ? 'text-warning' : 'text-foreground'}`}>
                         {formatDuration(taskRun.resultsJson?.duration_seconds)}
                       </p>
                     </div>
-                    <div className="p-2 bg-primary/20 rounded-lg">
-                      <Terminal className="h-5 w-5 text-primary" />
+                    <div className={`p-2 rounded-lg ${isTaskIncomplete() ? 'bg-warning/20' : 'bg-primary/20'}`}>
+                      <Terminal className={`h-5 w-5 ${isTaskIncomplete() ? 'text-warning' : 'text-primary'}`} />
                     </div>
                   </div>
                 </CardContent>
