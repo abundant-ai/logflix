@@ -38,6 +38,25 @@ export default function MainContent({ selectedTaskRun }: MainContentProps) {
     return `${minutes}m ${remainingSeconds}s`;
   };
 
+  const calculateDuration = () => {
+    if (!taskRun?.resultsJson) return undefined;
+    
+    // Access the data flexibly since actual structure differs from schema
+    const resultsData = taskRun.resultsJson as any;
+    const result = resultsData.results?.[0];
+    
+    if (!result) return undefined;
+    
+    const startTime = result.agent_started_at;
+    const endTime = result.agent_ended_at;
+    
+    if (!startTime || !endTime) return undefined;
+    
+    const start = new Date(startTime);
+    const end = new Date(endTime);
+    return Math.floor((end.getTime() - start.getTime()) / 1000);
+  };
+
   const isTaskIncomplete = () => {
     if (!taskRun?.resultsJson) return false;
     
@@ -180,7 +199,7 @@ export default function MainContent({ selectedTaskRun }: MainContentProps) {
 
           <TabsContent value="overview" className="p-6 space-y-6 m-0">
             {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <Card>
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between">
@@ -211,7 +230,7 @@ export default function MainContent({ selectedTaskRun }: MainContentProps) {
                         )}
                       </div>
                       <p className={`text-2xl font-bold ${isTaskIncomplete() ? 'text-warning' : 'text-foreground'}`}>
-                        {formatDuration(taskRun.resultsJson?.duration_seconds)}
+                        {formatDuration(calculateDuration())}
                       </p>
                     </div>
                     <div className={`p-2 rounded-lg ${isTaskIncomplete() ? 'bg-warning/20' : 'bg-primary/20'}`}>
@@ -237,21 +256,6 @@ export default function MainContent({ selectedTaskRun }: MainContentProps) {
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Commands</p>
-                      <p className="text-2xl font-bold text-foreground">
-                        {taskRun.resultsJson?.command_count || 'N/A'}
-                      </p>
-                    </div>
-                    <div className="p-2 bg-warning/20 rounded-lg">
-                      <Terminal className="h-5 w-5 text-warning" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
             </div>
 
             {/* Task Information */}
