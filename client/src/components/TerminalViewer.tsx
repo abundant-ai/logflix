@@ -110,22 +110,26 @@ export default function TerminalViewer({ castContent }: TerminalViewerProps) {
     const outputEvents = visibleEvents.filter(event => event.type === 'o');
     let content = outputEvents.map(event => event.content).join('');
     
-    // Basic cleanup of common ANSI escape sequences for better display
-    // Remove cursor positioning and some control sequences that don't render well
+    // Comprehensive cleanup of ANSI escape sequences for better display
     content = content
-      .replace(/\x1b\[[0-9;]*[HJKGQ]/g, '') // Remove cursor positioning
-      .replace(/\x1b\[2J/g, '') // Remove clear screen
-      .replace(/\x1b\[H/g, '') // Remove cursor home
-      .replace(/\x1b\[0K/g, '') // Remove clear line
-      .replace(/\x1b\[s/g, '') // Remove save cursor
-      .replace(/\x1b\[u/g, '') // Remove restore cursor
-      .replace(/\x1b\[2K/g, '') // Remove clear entire line
-      .replace(/\x1b\[1K/g, '') // Remove clear line to cursor
-      .replace(/\x1b\[\?25[lh]/g, '') // Remove cursor visibility
-      .replace(/\x1b\[\?1049[hl]/g, '') // Remove alternate screen buffer
-      .replace(/\x1b\[>\d*[mh]/g, '') // Remove some mode changes
+      // Remove all CSI (Control Sequence Introducer) sequences
+      .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '') // Most common ANSI sequences
+      .replace(/\x1b\[\?[0-9;]*[a-zA-Z]/g, '') // Mode setting sequences like [?2004l
+      .replace(/\x1b\][0-9;]*.*?\x07/g, '') // OSC sequences (Operating System Command)
+      .replace(/\x1b\][0-9;]*.*?\x1b\\/g, '') // OSC sequences with ST terminator
+      .replace(/\x1b[PX^_][^\x1b]*\x1b\\/g, '') // DCS, SOS, PM, APC sequences
+      .replace(/\x1b[NO]/g, '') // SS2, SS3 sequences
+      .replace(/\x1b[cDE]/g, '') // Various single-character escapes
+      .replace(/\x1b>/g, '') // Reset mode
+      .replace(/\x1b=/g, '') // Application keypad mode
+      .replace(/\x1b\([AB0]/g, '') // Character set selection
+      .replace(/\x1b\)[AB0]/g, '') // Character set selection
+      // Handle control characters
+      .replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, '') // Remove other control chars except \t, \n
       .replace(/\r\n/g, '\n') // Normalize line endings
-      .replace(/\r/g, '\n'); // Convert remaining carriage returns
+      .replace(/\r/g, '\n') // Convert remaining carriage returns
+      // Clean up excessive newlines
+      .replace(/\n{3,}/g, '\n\n'); // Limit consecutive newlines
     
     return content;
   }, [visibleEvents]);
