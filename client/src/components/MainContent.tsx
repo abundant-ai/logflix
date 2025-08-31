@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import AsciinemaPlayer from "@/components/AsciinemaPlayer";
+import TerminalViewer from "@/components/TerminalViewer";
 import { TaskRun } from "@shared/schema";
 
 interface MainContentProps {
@@ -371,7 +371,7 @@ export default function MainContent({ selectedTaskRun }: MainContentProps) {
               </CardHeader>
               <CardContent>
                 {taskRun.agentCast ? (
-                  <AsciinemaPlayer castContent={taskRun.agentCast} />
+                  <TerminalViewer castContent={taskRun.agentCast} />
                 ) : (
                   <div className="bg-black rounded-lg p-4 text-center">
                     <p className="text-gray-400">No terminal session data available</p>
