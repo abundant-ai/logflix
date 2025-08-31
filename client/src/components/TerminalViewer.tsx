@@ -15,7 +15,7 @@ interface AgentThinking {
   timestamp: number;
   state_analysis?: string;
   explanation?: string;
-  commands?: Array<{ command: string; timeout?: number }>;
+  commands?: Array<string | { [key: string]: any }>;
   is_task_complete?: boolean;
   raw_content?: string; // For unparseable content
   [key: string]: any; // Allow any other fields
@@ -110,58 +110,69 @@ export default function TerminalViewer({ castContent }: TerminalViewerProps) {
     return events.filter(event => event.type === 'm');
   }, [events]);
 
-  // Terminal content with ANSI escape sequence handling
+  // Terminal content with progressive display and better ANSI handling
   const terminalContent = useMemo(() => {
     const outputEvents = visibleEvents.filter(event => event.type === 'o');
-    let content = outputEvents.map(event => event.content).join('');
     
-    // Comprehensive cleanup of ANSI escape sequences for better display
+    // Build content progressively, cleaning each event individually
+    let content = '';
+    for (const event of outputEvents) {
+      let eventContent = event.content;
+      
+      // Clean ANSI escape sequences but preserve natural formatting
+      eventContent = eventContent
+        // Remove CSI sequences but keep basic formatting
+        .replace(/\x1b\[[0-9;]*[mGKJ]/g, '') // Color and cursor movement
+        .replace(/\x1b\[\?[0-9;]*[hl]/g, '') // Mode setting
+        .replace(/\x1b\][0-9;]*.*?\x07/g, '') // OSC sequences
+        .replace(/\x1b\][0-9;]*.*?\x1b\\/g, '') // OSC with ST terminator
+        .replace(/\x1b[PX^_][^\x1b]*\x1b\\/g, '') // Other escape sequences
+        .replace(/\x1b[>\=]/g, '') // Application modes
+        .replace(/\x1b\([AB0]/g, '') // Character sets
+        .replace(/\x1b\)[AB0]/g, '') // Character sets
+        // Remove problematic control chars but keep \t and \n
+        .replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, '')
+        // Normalize line endings
+        .replace(/\r\n/g, '\n')
+        .replace(/\r/g, '\n');
+      
+      content += eventContent;
+    }
+    
+    // Final cleanup - be less aggressive with newlines
     content = content
-      // Remove all CSI (Control Sequence Introducer) sequences
-      .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '') // Most common ANSI sequences
-      .replace(/\x1b\[\?[0-9;]*[a-zA-Z]/g, '') // Mode setting sequences like [?2004l
-      .replace(/\x1b\][0-9;]*.*?\x07/g, '') // OSC sequences (Operating System Command)
-      .replace(/\x1b\][0-9;]*.*?\x1b\\/g, '') // OSC sequences with ST terminator
-      .replace(/\x1b[PX^_][^\x1b]*\x1b\\/g, '') // DCS, SOS, PM, APC sequences
-      .replace(/\x1b[NO]/g, '') // SS2, SS3 sequences
-      .replace(/\x1b[cDE]/g, '') // Various single-character escapes
-      .replace(/\x1b>/g, '') // Reset mode
-      .replace(/\x1b=/g, '') // Application keypad mode
-      .replace(/\x1b\([AB0]/g, '') // Character set selection
-      .replace(/\x1b\)[AB0]/g, '') // Character set selection
-      // Handle control characters
-      .replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, '') // Remove other control chars except \t, \n
-      .replace(/\r\n/g, '\n') // Normalize line endings
-      .replace(/\r/g, '\n') // Convert remaining carriage returns
-      // Clean up excessive newlines and whitespace
-      .replace(/\n{3,}/g, '\n\n') // Limit consecutive newlines
-      .replace(/[ \t]+\n/g, '\n') // Remove trailing spaces on lines
-      .replace(/\n[ \t]+/g, '\n') // Remove leading spaces after newlines
-      .replace(/[ \t]{2,}/g, ' ') // Replace multiple spaces with single space
-      .trim(); // Remove leading/trailing whitespace
+      .replace(/\n{4,}/g, '\n\n\n') // Limit to max 3 consecutive newlines
+      .replace(/[ \t]+$/gm, '') // Remove trailing whitespace on lines
+      .trimEnd(); // Remove trailing whitespace at end
     
     return content;
   }, [visibleEvents]);
 
   const maxTime = Math.max(...events.map(e => e.timestamp), 0);
 
-  // Playback control
+  // Playback control with real timestamps
   useEffect(() => {
-    if (!isPlaying) return;
+    if (!isPlaying || events.length === 0) return;
 
-    const interval = setInterval(() => {
-      setCurrentTime(prev => {
-        const next = prev + (100 * playbackSpeed);
-        if (next >= maxTime) {
-          setIsPlaying(false);
-          return maxTime;
-        }
-        return next;
-      });
-    }, 100);
+    // Find the next event that should be displayed
+    const nextEvent = events.find(event => event.timestamp > currentTime);
+    
+    if (!nextEvent) {
+      // We've reached the end
+      setIsPlaying(false);
+      setCurrentTime(maxTime);
+      return;
+    }
 
-    return () => clearInterval(interval);
-  }, [isPlaying, playbackSpeed, maxTime]);
+    // Calculate the delay until the next event (adjusted for playback speed)
+    const delay = Math.max(1, (nextEvent.timestamp - currentTime) / playbackSpeed);
+    
+    const timeout = setTimeout(() => {
+      setCurrentTime(nextEvent.timestamp);
+    }, delay);
+
+    return () => clearTimeout(timeout);
+  }, [isPlaying, currentTime, events, playbackSpeed, maxTime]);
 
   const formatTime = (ms: number) => {
     const seconds = Math.floor(ms / 1000);
