@@ -287,21 +287,45 @@ export default function TerminalViewer({ castContent }: TerminalViewerProps) {
                     <div>
                       <h4 className="font-medium text-sm mb-2 text-warning">Planned Commands</h4>
                       <div className="space-y-2">
-                        {currentThinking.commands.map((cmd, index) => (
-                          <div key={index} className="bg-muted rounded p-2">
-                            <code className="text-xs font-mono text-foreground">
-                              {typeof cmd === 'string' ? cmd : cmd.command || JSON.stringify(cmd)}
-                            </code>
-                            {typeof cmd === 'object' && cmd.timeout && (
-                              <div className="flex items-center gap-1 mt-1">
-                                <Clock className="h-3 w-3 text-muted-foreground" />
-                                <span className="text-xs text-muted-foreground">
-                                  {cmd.timeout}s timeout
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        ))}
+                        {currentThinking.commands.map((cmd, index) => {
+                          // Extract command text from various possible formats
+                          let commandText = '';
+                          let timeout = null;
+                          
+                          if (typeof cmd === 'string') {
+                            commandText = cmd;
+                          } else if (typeof cmd === 'object' && cmd !== null) {
+                            // Try different possible properties for the command
+                            commandText = cmd.command || cmd.cmd || cmd.text || cmd.action || '';
+                            timeout = cmd.timeout || cmd.timeout_sec || cmd.max_timeout_sec;
+                            
+                            // If no recognizable command property, show the first string value or object keys
+                            if (!commandText) {
+                              const stringValues = Object.values(cmd).filter(v => typeof v === 'string');
+                              if (stringValues.length > 0) {
+                                commandText = stringValues[0];
+                              } else {
+                                commandText = `Unknown command format: ${Object.keys(cmd).join(', ')}`;
+                              }
+                            }
+                          }
+                          
+                          return (
+                            <div key={index} className="bg-muted rounded p-2">
+                              <code className="text-xs font-mono text-foreground">
+                                {commandText || 'Empty command'}
+                              </code>
+                              {timeout && (
+                                <div className="flex items-center gap-1 mt-1">
+                                  <Clock className="h-3 w-3 text-muted-foreground" />
+                                  <span className="text-xs text-muted-foreground">
+                                    {timeout}s timeout
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
