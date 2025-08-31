@@ -105,10 +105,29 @@ export default function TerminalViewer({ castContent }: TerminalViewerProps) {
     return relevantThoughts[relevantThoughts.length - 1];
   }, [agentThoughts, currentTime]);
 
-  // Terminal content - only show output since input is usually echoed
+  // Terminal content with ANSI escape sequence handling
   const terminalContent = useMemo(() => {
     const outputEvents = visibleEvents.filter(event => event.type === 'o');
-    return outputEvents.map(event => event.content).join('');
+    let content = outputEvents.map(event => event.content).join('');
+    
+    // Basic cleanup of common ANSI escape sequences for better display
+    // Remove cursor positioning and some control sequences that don't render well
+    content = content
+      .replace(/\x1b\[[0-9;]*[HJKGQ]/g, '') // Remove cursor positioning
+      .replace(/\x1b\[2J/g, '') // Remove clear screen
+      .replace(/\x1b\[H/g, '') // Remove cursor home
+      .replace(/\x1b\[0K/g, '') // Remove clear line
+      .replace(/\x1b\[s/g, '') // Remove save cursor
+      .replace(/\x1b\[u/g, '') // Remove restore cursor
+      .replace(/\x1b\[2K/g, '') // Remove clear entire line
+      .replace(/\x1b\[1K/g, '') // Remove clear line to cursor
+      .replace(/\x1b\[\?25[lh]/g, '') // Remove cursor visibility
+      .replace(/\x1b\[\?1049[hl]/g, '') // Remove alternate screen buffer
+      .replace(/\x1b\[>\d*[mh]/g, '') // Remove some mode changes
+      .replace(/\r\n/g, '\n') // Normalize line endings
+      .replace(/\r/g, '\n'); // Convert remaining carriage returns
+    
+    return content;
   }, [visibleEvents]);
 
   const maxTime = Math.max(...events.map(e => e.timestamp), 0);
@@ -198,9 +217,9 @@ export default function TerminalViewer({ castContent }: TerminalViewerProps) {
           
           <CardContent className="p-0">
             <ScrollArea className="h-80">
-              <div className="bg-black text-green-400 font-mono text-sm p-4 min-h-80">
+              <div className="bg-black text-green-400 font-mono text-sm p-4 min-h-80 overflow-auto">
                 {terminalContent ? (
-                  <pre className="whitespace-pre-wrap overflow-hidden">
+                  <pre className="whitespace-pre-wrap break-words font-mono leading-relaxed">
                     {terminalContent}
                   </pre>
                 ) : (
