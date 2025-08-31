@@ -175,10 +175,11 @@ export default function TerminalViewer({ castContent }: TerminalViewerProps) {
     return () => clearTimeout(timeout);
   }, [isPlaying, currentTime, events, playbackSpeed, maxTime]);
 
-  const formatTime = (ms: number) => {
-    const seconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(seconds / 60);
-    return `${minutes}:${(seconds % 60).toString().padStart(2, '0')}`;
+  const formatTime = (seconds: number) => {
+    const totalSeconds = Math.floor(seconds);
+    const minutes = Math.floor(totalSeconds / 60);
+    const remainingSeconds = totalSeconds % 60;
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
   };
 
   return (
