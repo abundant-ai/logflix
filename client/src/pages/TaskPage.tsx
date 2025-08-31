@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,10 +45,12 @@ export default function TaskPage() {
     ?.tasks?.find(t => t.taskId === taskId)
     ?.models || [];
 
-  // Set default selected model if not set
-  if (!selectedModel && availableModels.length > 0) {
-    setSelectedModel(availableModels[0].modelName);
-  }
+  // Set default selected model when available models change
+  useEffect(() => {
+    if (!selectedModel && availableModels.length > 0) {
+      setSelectedModel(availableModels[0].modelName);
+    }
+  }, [availableModels, selectedModel]);
 
   // Get data for the selected model
   const { data: taskRun, isLoading } = useQuery<TaskRun>({
@@ -126,22 +128,28 @@ export default function TaskPage() {
           <CardTitle>Model Comparisons</CardTitle>
         </CardHeader>
         <CardContent>
-          <Tabs value={selectedModel} onValueChange={setSelectedModel}>
-            <TabsList className="grid w-full grid-cols-1 lg:grid-cols-3 xl:grid-cols-4 gap-2">
-              {availableModels.map((model) => (
-                <TabsTrigger
-                  key={model.modelName}
-                  value={model.modelName}
-                  className="text-xs lg:text-sm"
-                  data-testid={`tab-${model.modelName}`}
-                >
-                  {model.modelName}
-                  {!model.hasData && (
-                    <AlertTriangle className="h-3 w-3 ml-1 text-yellow-500" />
-                  )}
-                </TabsTrigger>
-              ))}
-            </TabsList>
+          {availableModels.length === 0 ? (
+            <div className="text-center text-muted-foreground py-8">
+              <AlertTriangle className="h-8 w-8 mx-auto mb-2" />
+              <p>No models found for this task</p>
+            </div>
+          ) : (
+            <Tabs value={selectedModel} onValueChange={setSelectedModel}>
+              <TabsList className="grid w-full grid-cols-1 lg:grid-cols-3 xl:grid-cols-4 gap-2">
+                {availableModels.map((model) => (
+                  <TabsTrigger
+                    key={model.modelName}
+                    value={model.modelName}
+                    className="text-xs lg:text-sm"
+                    data-testid={`tab-${model.modelName}`}
+                  >
+                    {model.modelName}
+                    {!model.hasData && (
+                      <AlertTriangle className="h-3 w-3 ml-1 text-yellow-500" />
+                    )}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
 
             {availableModels.map((model) => (
               <TabsContent key={model.modelName} value={model.modelName} className="mt-6">
@@ -167,7 +175,8 @@ export default function TaskPage() {
                 )}
               </TabsContent>
             ))}
-          </Tabs>
+            </Tabs>
+          )}
         </CardContent>
       </Card>
 
