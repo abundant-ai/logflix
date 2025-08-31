@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Search, Filter, Calendar, Terminal, Bot, ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
@@ -22,6 +22,15 @@ export default function NavigationSidebar({ onSelectTaskRun, selectedTaskRun }: 
   const { data: hierarchy, isLoading, error } = useQuery<S3Hierarchy>({
     queryKey: ["/api/hierarchy"],
   });
+
+  // Auto-expand when selectedTaskRun changes
+  useEffect(() => {
+    if (selectedTaskRun) {
+      const { date, taskId } = selectedTaskRun;
+      setExpandedDates(prev => new Set([...prev, date]));
+      setExpandedTasks(prev => new Set([...prev, `${date}-${taskId}`]));
+    }
+  }, [selectedTaskRun]);
 
   const toggleDateExpanded = (date: string) => {
     const newExpanded = new Set(expandedDates);
