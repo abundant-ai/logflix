@@ -17,6 +17,8 @@ interface AgentThinking {
   explanation?: string;
   commands?: Array<{ command: string; timeout?: number }>;
   is_task_complete?: boolean;
+  raw_content?: string; // For unparseable content
+  [key: string]: any; // Allow any other fields
 }
 
 interface TerminalViewerProps {
@@ -62,13 +64,25 @@ export default function TerminalViewer({ castContent }: TerminalViewerProps) {
           // Parse agent thinking from 'm' events
           if (type === 'm') {
             try {
-              const thinking = JSON.parse(content);
+              // The content might be escaped JSON, try to parse it
+              let thinking;
+              if (typeof content === 'string') {
+                thinking = JSON.parse(content);
+              } else {
+                thinking = content;
+              }
+              
               agentThoughts.push({
                 timestamp: timestamp - startTime,
                 ...thinking
               });
             } catch (error) {
-              console.log('Could not parse agent thinking:', content);
+              console.log('Could not parse agent thinking:', content, error);
+              // Store raw content if parsing fails
+              agentThoughts.push({
+                timestamp: timestamp - startTime,
+                raw_content: content
+              });
             }
           }
         }
@@ -223,6 +237,11 @@ export default function TerminalViewer({ castContent }: TerminalViewerProps) {
             <ScrollArea className="h-80">
               {currentThinking ? (
                 <div className="space-y-4">
+                  {/* Debug: Show all available data */}
+                  <div className="text-xs text-muted-foreground mb-2">
+                    Available data: {Object.keys(currentThinking).filter(k => k !== 'timestamp').join(', ')}
+                  </div>
+
                   {/* Task Completion Status */}
                   {currentThinking.is_task_complete !== undefined && (
                     <div>
@@ -263,9 +282,9 @@ export default function TerminalViewer({ castContent }: TerminalViewerProps) {
                         {currentThinking.commands.map((cmd, index) => (
                           <div key={index} className="bg-muted rounded p-2">
                             <code className="text-xs font-mono text-foreground">
-                              {cmd.command}
+                              {typeof cmd === 'string' ? cmd : cmd.command || JSON.stringify(cmd)}
                             </code>
-                            {cmd.timeout && (
+                            {typeof cmd === 'object' && cmd.timeout && (
                               <div className="flex items-center gap-1 mt-1">
                                 <Clock className="h-3 w-3 text-muted-foreground" />
                                 <span className="text-xs text-muted-foreground">
@@ -276,6 +295,31 @@ export default function TerminalViewer({ castContent }: TerminalViewerProps) {
                           </div>
                         ))}
                       </div>
+                    </div>
+                  )}
+
+                  {/* Show any other fields */}
+                  {Object.entries(currentThinking).map(([key, value]) => {
+                    if (['timestamp', 'state_analysis', 'explanation', 'commands', 'is_task_complete', 'raw_content'].includes(key)) {
+                      return null;
+                    }
+                    return (
+                      <div key={key}>
+                        <h4 className="font-medium text-sm mb-2 capitalize">{key.replace(/_/g, ' ')}</h4>
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          {typeof value === 'string' ? value : JSON.stringify(value, null, 2)}
+                        </p>
+                      </div>
+                    );
+                  })}
+
+                  {/* Raw content fallback */}
+                  {currentThinking.raw_content && (
+                    <div>
+                      <h4 className="font-medium text-sm mb-2 text-muted-foreground">Raw Marker Data</h4>
+                      <pre className="text-xs bg-muted rounded p-2 overflow-x-auto">
+                        {currentThinking.raw_content}
+                      </pre>
                     </div>
                   )}
 
