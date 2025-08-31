@@ -4,10 +4,16 @@ import MainContent from "@/components/MainContent";
 
 export default function TaskRunPage() {
   const [location] = useLocation();
+  
+  // Debug logging
+  console.log('TaskRunPage location:', location);
+  
   const urlParams = new URLSearchParams(location.split('?')[1] || '');
   const date = urlParams.get('date');
   const taskId = urlParams.get('taskId');
   const model = urlParams.get('model');
+  
+  console.log('TaskRunPage params:', { date, taskId, model });
 
   if (!date || !taskId || !model) {
     return (

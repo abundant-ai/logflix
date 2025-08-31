@@ -7,68 +7,25 @@ import { S3Hierarchy } from "@shared/schema";
 
 export default function TaskPage() {
   const [location] = useLocation();
+  
+  // Debug logging
+  console.log('TaskPage location:', location);
+  
   const urlParams = new URLSearchParams(location.split('?')[1] || '');
   const date = urlParams.get('date');
   const taskId = urlParams.get('taskId');
+  
+  console.log('TaskPage params:', { date, taskId });
 
-  const { data: hierarchy, isLoading, error } = useQuery<S3Hierarchy>({
-    queryKey: ["/api/hierarchy"],
-  });
-
-  const getAccuracyColor = (accuracy: number) => {
-    if (accuracy >= 0.8) return 'text-success bg-success/20';
-    if (accuracy >= 0.5) return 'text-warning bg-warning/20';
-    return 'text-destructive bg-destructive/20';
-  };
-
+  // Simplified test version
   if (!date || !taskId) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
-          <Terminal className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
           <h2 className="text-lg font-semibold text-foreground mb-2">Invalid Parameters</h2>
           <p className="text-muted-foreground">Missing date or taskId parameters</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Loading task data...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error || !hierarchy) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-destructive mb-4">
-            <Terminal className="h-12 w-12 mx-auto mb-2" />
-            <h2 className="text-lg font-semibold">Failed to Load Data</h2>
-          </div>
-          <p className="text-muted-foreground">Could not fetch hierarchy data from S3</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Find the specific task
-  const dateEntry = hierarchy.dates.find(d => d.date === date);
-  const taskEntry = dateEntry?.tasks.find(t => t.taskId === taskId);
-
-  if (!taskEntry) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <Terminal className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-          <h2 className="text-lg font-semibold text-foreground mb-2">Task Not Found</h2>
-          <p className="text-muted-foreground">Task {taskId} not found for date {date}</p>
+          <p>Date: {date || 'null'}</p>
+          <p>TaskId: {taskId || 'null'}</p>
         </div>
       </div>
     );
