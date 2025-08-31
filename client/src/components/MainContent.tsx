@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
 import { ChevronRight, Download, Play, BarChart3, Terminal, FileCode, Search, Bug, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -111,16 +110,9 @@ export default function MainContent({ selectedTaskRun }: MainContentProps) {
       <header className="bg-card border-b border-border px-6 py-4">
         <div className="flex items-center justify-between">
           <nav className="flex items-center space-x-2 text-sm" data-testid="breadcrumbs">
-            <Link href="/" className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
-              {selectedTaskRun.date}
-            </Link>
+            <span className="text-muted-foreground">{selectedTaskRun.date}</span>
             <ChevronRight className="h-4 w-4 text-muted-foreground" />
-            <Link 
-              href={`/task?date=${encodeURIComponent(selectedTaskRun.date)}&taskId=${encodeURIComponent(selectedTaskRun.taskId)}`}
-              className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-            >
-              {selectedTaskRun.taskId}
-            </Link>
+            <span className="text-muted-foreground">{selectedTaskRun.taskId}</span>
             <ChevronRight className="h-4 w-4 text-muted-foreground" />
             <span className="text-foreground font-medium">{selectedTaskRun.modelName}</span>
           </nav>
