@@ -91,10 +91,14 @@ export default function TerminalViewer({ castContent }: TerminalViewerProps) {
     return relevantThoughts[relevantThoughts.length - 1];
   }, [agentThoughts, currentTime]);
 
-  // Terminal output content
-  const terminalContent = useMemo(() => {
-    const outputEvents = visibleEvents.filter(event => event.type === 'o');
-    return outputEvents.map(event => event.content).join('');
+  // Terminal content with proper input/output rendering
+  const terminalElements = useMemo(() => {
+    const ioEvents = visibleEvents.filter(event => event.type === 'i' || event.type === 'o');
+    return ioEvents.map((event, index) => ({
+      key: `${event.timestamp}-${index}`,
+      type: event.type,
+      content: event.content
+    }));
   }, [visibleEvents]);
 
   const maxTime = Math.max(...events.map(e => e.timestamp), 0);
@@ -185,9 +189,20 @@ export default function TerminalViewer({ castContent }: TerminalViewerProps) {
           <CardContent className="p-0">
             <ScrollArea className="h-80">
               <div className="bg-black text-green-400 font-mono text-sm p-4 min-h-80">
-                <pre className="whitespace-pre-wrap overflow-hidden">
-                  {terminalContent || 'No terminal output yet...'}
-                </pre>
+                {terminalElements.length > 0 ? (
+                  <div className="whitespace-pre-wrap overflow-hidden">
+                    {terminalElements.map((element) => (
+                      <span 
+                        key={element.key}
+                        className={element.type === 'i' ? 'text-cyan-400' : 'text-green-400'}
+                      >
+                        {element.content}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-gray-500">No terminal session yet... Press play to start</div>
+                )}
               </div>
             </ScrollArea>
           </CardContent>
