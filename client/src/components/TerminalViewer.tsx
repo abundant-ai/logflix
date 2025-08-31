@@ -105,6 +105,11 @@ export default function TerminalViewer({ castContent }: TerminalViewerProps) {
     return relevantThoughts[relevantThoughts.length - 1];
   }, [agentThoughts, currentTime]);
 
+  // Extract thinking events for timeline markers
+  const thinkingEvents = useMemo(() => {
+    return events.filter(event => event.type === 'm');
+  }, [events]);
+
   // Terminal content with ANSI escape sequence handling
   const terminalContent = useMemo(() => {
     const outputEvents = visibleEvents.filter(event => event.type === 'o');
@@ -128,8 +133,12 @@ export default function TerminalViewer({ castContent }: TerminalViewerProps) {
       .replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, '') // Remove other control chars except \t, \n
       .replace(/\r\n/g, '\n') // Normalize line endings
       .replace(/\r/g, '\n') // Convert remaining carriage returns
-      // Clean up excessive newlines
-      .replace(/\n{3,}/g, '\n\n'); // Limit consecutive newlines
+      // Clean up excessive newlines and whitespace
+      .replace(/\n{3,}/g, '\n\n') // Limit consecutive newlines
+      .replace(/[ \t]+\n/g, '\n') // Remove trailing spaces on lines
+      .replace(/\n[ \t]+/g, '\n') // Remove leading spaces after newlines
+      .replace(/[ \t]{2,}/g, ' ') // Replace multiple spaces with single space
+      .trim(); // Remove leading/trailing whitespace
     
     return content;
   }, [visibleEvents]);
@@ -161,7 +170,7 @@ export default function TerminalViewer({ castContent }: TerminalViewerProps) {
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 h-96">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 h-[600px]">
       {/* Terminal Display */}
       <div className="lg:col-span-2">
         <Card className="h-full">
@@ -204,24 +213,58 @@ export default function TerminalViewer({ castContent }: TerminalViewerProps) {
               </div>
             </div>
             
-            {/* Progress bar */}
+            {/* Progress bar with Action Markers */}
             <div className="space-y-1">
-              <div className="w-full bg-muted rounded-full h-2">
+              <div className="relative w-full bg-muted rounded-full h-2">
                 <div 
                   className="bg-primary h-2 rounded-full transition-all"
                   style={{ width: `${maxTime > 0 ? (currentTime / maxTime) * 100 : 0}%` }}
                 />
+                
+                {/* Action Markers */}
+                {thinkingEvents.map((event, index) => {
+                  const position = maxTime > 0 ? (event.timestamp / maxTime) * 100 : 0;
+                  return (
+                    <button
+                      key={index}
+                      onClick={() => setCurrentTime(event.timestamp)}
+                      className="absolute top-0 w-3 h-3 -mt-0.5 bg-yellow-500 rounded-full border-2 border-background hover:bg-yellow-400 transition-colors shadow-sm z-10"
+                      style={{ left: `${position}%`, transform: 'translateX(-50%)' }}
+                      title={`Jump to action ${index + 1}`}
+                    >
+                      <span className="sr-only">Jump to action {index + 1}</span>
+                    </button>
+                  );
+                })}
+                
+                {/* Clickable overlay for scrubbing */}
+                <input
+                  type="range"
+                  min="0"
+                  max={maxTime}
+                  value={currentTime}
+                  onChange={(e) => setCurrentTime(parseFloat(e.target.value))}
+                  className="absolute inset-0 w-full h-2 opacity-0 cursor-pointer"
+                />
               </div>
+              
               <div className="flex justify-between text-xs text-muted-foreground">
                 <span>{formatTime(currentTime)}</span>
                 <span>{formatTime(maxTime)}</span>
               </div>
+              
+              {/* Action Counter */}
+              {thinkingEvents.length > 0 && (
+                <div className="text-xs text-muted-foreground text-center">
+                  Action {Math.max(1, thinkingEvents.findIndex(e => e.timestamp <= currentTime) + 1)} of {thinkingEvents.length}
+                </div>
+              )}
             </div>
           </CardHeader>
           
           <CardContent className="p-0">
-            <ScrollArea className="h-80">
-              <div className="bg-black text-green-400 font-mono text-sm p-4 min-h-80 overflow-auto">
+            <ScrollArea className="h-[500px]">
+              <div className="bg-black text-green-400 font-mono text-sm p-4 min-h-[500px] overflow-auto">
                 {terminalContent ? (
                   <pre className="whitespace-pre-wrap break-words font-mono leading-relaxed">
                     {terminalContent}
@@ -246,7 +289,7 @@ export default function TerminalViewer({ castContent }: TerminalViewerProps) {
           </CardHeader>
           
           <CardContent className="space-y-4">
-            <ScrollArea className="h-80">
+            <ScrollArea className="h-[500px]">
               {currentThinking ? (
                 <div className="space-y-4">
 
