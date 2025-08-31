@@ -39,6 +39,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get task metadata (task.yaml) for task-level view
+  app.get("/api/task-yaml/:date/:taskId", async (req, res) => {
+    try {
+      const { date, taskId } = req.params;
+      
+      if (!date || !taskId) {
+        return res.status(400).json({ error: "Missing required parameters" });
+      }
+
+      const taskYaml = await s3Service.getTaskYaml(date, taskId);
+      
+      if (!taskYaml) {
+        return res.status(404).json({ error: "Task metadata not found" });
+      }
+
+      res.json(taskYaml);
+    } catch (error) {
+      console.error("Error fetching task metadata:", error);
+      res.status(500).json({ error: "Failed to fetch task metadata" });
+    }
+  });
+
   // Download specific file
   app.get("/api/download", async (req, res) => {
     try {

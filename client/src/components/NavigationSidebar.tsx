@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search, Filter, Calendar, Terminal, Bot, ChevronDown, ChevronRight } from "lucide-react";
+import { useLocation } from "wouter";
+import { Search, Filter, Calendar, Terminal, Bot, ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -12,6 +13,7 @@ interface NavigationSidebarProps {
 }
 
 export default function NavigationSidebar({ onSelectTaskRun, selectedTaskRun }: NavigationSidebarProps) {
+  const [, setLocation] = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
   const [difficultyFilter, setDifficultyFilter] = useState("all");
   const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
@@ -147,18 +149,33 @@ export default function NavigationSidebar({ onSelectTaskRun, selectedTaskRun }: 
                   const taskKey = `${date.date}-${task.taskId}`;
                   return (
                     <div key={taskKey} className="mb-1">
-                      <div 
-                        className="flex items-center px-2 py-1 hover:bg-muted rounded cursor-pointer"
-                        onClick={() => toggleTaskExpanded(taskKey)}
-                        data-testid={`task-${task.taskId}`}
-                      >
-                        {expandedTasks.has(taskKey) ? (
-                          <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                        ) : (
-                          <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                        )}
-                        <Terminal className="ml-1 mr-2 text-accent h-4 w-4" />
-                        <span className="text-sm">{task.taskId}</span>
+                      <div className="flex items-center justify-between">
+                        <div 
+                          className="flex items-center px-2 py-1 hover:bg-muted rounded cursor-pointer flex-1"
+                          onClick={() => toggleTaskExpanded(taskKey)}
+                          data-testid={`task-${task.taskId}`}
+                        >
+                          {expandedTasks.has(taskKey) ? (
+                            <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                          )}
+                          <Terminal className="ml-1 mr-2 text-accent h-4 w-4" />
+                          <span className="text-sm">{task.taskId}</span>
+                        </div>
+                        
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0 mr-2"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setLocation(`/task/${date.date}/${task.taskId}`);
+                          }}
+                          title="View task overview"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                        </Button>
                       </div>
 
                       {expandedTasks.has(taskKey) && (

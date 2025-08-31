@@ -127,7 +127,7 @@ export class S3Service {
       const basePath = `${this.basePath}/${date}/${taskId}/${modelName}`;
       
       const [taskYaml, resultsJson, agentCast, taskCheck, taskDebug, files] = await Promise.allSettled([
-        this.getTaskYaml(date, taskId, modelName),
+        this.getTaskYamlForModel(date, taskId, modelName),
         this.getResultsJson(date, taskId, modelName),
         this.getAgentCast(date, taskId, modelName),
         this.getTaskCheck(date, taskId, modelName),
@@ -163,7 +163,25 @@ export class S3Service {
     return body || "";
   }
 
-  private async getTaskYaml(date: string, taskId: string, modelName: string): Promise<TaskYaml> {
+  async getTaskYaml(date: string, taskId: string, modelName?: string): Promise<TaskYaml | null> {
+    // Use first available model if none specified
+    if (!modelName) {
+      const hierarchy = await this.getHierarchy();
+      const dateEntry = hierarchy.dates.find(d => d.date === date);
+      const taskEntry = dateEntry?.tasks.find(t => t.taskId === taskId);
+      const firstModel = taskEntry?.models.find(m => m.hasData);
+      
+      if (!firstModel) {
+        return null;
+      }
+      
+      modelName = firstModel.modelName;
+    }
+    
+    return this.getTaskYamlForModel(date, taskId, modelName);
+  }
+
+  private async getTaskYamlForModel(date: string, taskId: string, modelName: string): Promise<TaskYaml> {
     const key = `${this.basePath}/${date}/${taskId}/${modelName}/task.yaml`;
     const content = await this.getS3Object(key);
     return yaml.load(content) as TaskYaml;
