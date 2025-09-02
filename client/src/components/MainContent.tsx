@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import TerminalViewer from "@/components/TerminalViewer";
+import JsonTableViewer from "@/components/JsonTableViewer";
 import { TaskRun } from "@shared/schema";
 
 interface MainContentProps {
@@ -536,11 +537,7 @@ export default function MainContent({ selectedTaskRun }: MainContentProps) {
                   <CardTitle>Task Quality Assessment (task.check)</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="bg-muted rounded-lg p-4">
-                    <pre className="text-sm whitespace-pre-wrap text-foreground">
-                      {taskRun.taskCheck}
-                    </pre>
-                  </div>
+                  <JsonTableViewer data={taskRun.taskCheck} />
                 </CardContent>
               </Card>
             )}
@@ -553,11 +550,7 @@ export default function MainContent({ selectedTaskRun }: MainContentProps) {
                   <CardTitle>Debug Analysis (task.debug)</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="bg-muted rounded-lg p-4">
-                    <pre className="text-sm whitespace-pre-wrap text-foreground">
-                      {taskRun.taskDebug}
-                    </pre>
-                  </div>
+                  <JsonTableViewer data={taskRun.taskDebug} />
                 </CardContent>
               </Card>
             )}
