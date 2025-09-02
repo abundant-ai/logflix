@@ -199,12 +199,12 @@ export class S3Service {
   }
 
   private async getTaskCheck(date: string, taskId: string, modelName: string): Promise<string> {
-    const key = `${this.basePath}/${date}/${taskId}/${modelName}/task.check`;
+    const key = `${this.basePath}/${date}/${taskId}/${modelName}/task.check.json`;
     return await this.getS3Object(key);
   }
 
   private async getTaskDebug(date: string, taskId: string, modelName: string): Promise<string> {
-    const key = `${this.basePath}/${date}/${taskId}/${modelName}/task.debug`;
+    const key = `${this.basePath}/${date}/${taskId}/${modelName}/task.debug.json`;
     return await this.getS3Object(key);
   }
 
