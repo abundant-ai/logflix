@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import TerminalViewer from "@/components/TerminalViewer";
 import JsonTableViewer from "@/components/JsonTableViewer";
+import TaskQualityAssessment from "@/components/TaskQualityAssessment";
 import { TaskRun } from "@shared/schema";
 
 interface MainContentProps {
@@ -537,7 +538,7 @@ export default function MainContent({ selectedTaskRun }: MainContentProps) {
                   <CardTitle>Task Quality Assessment (task.check)</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <JsonTableViewer data={taskRun.taskCheck} />
+                  <TaskQualityAssessment data={taskRun.taskCheck} />
                 </CardContent>
               </Card>
             )}
