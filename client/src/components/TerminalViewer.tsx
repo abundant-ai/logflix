@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Play, Pause, RotateCcw, Brain, Terminal, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,6 +30,10 @@ export default function TerminalViewer({ castContent }: TerminalViewerProps) {
   const [currentTime, setCurrentTime] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [isScrubbing, setIsScrubbing] = useState(false);
+  const [wasPlayingBeforeScrub, setWasPlayingBeforeScrub] = useState(false);
+  
+  const terminalRef = useRef<HTMLDivElement>(null);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   // Parse cast data
   const { events, agentThoughts, startTime } = useMemo(() => {
@@ -151,6 +155,14 @@ export default function TerminalViewer({ castContent }: TerminalViewerProps) {
 
   const maxTime = Math.max(...events.map(e => e.timestamp), 0);
 
+  // Auto-scroll terminal during playback
+  useEffect(() => {
+    if (isPlaying && !isScrubbing && terminalRef.current) {
+      // Scroll to bottom when new content appears during playback
+      terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
+    }
+  }, [terminalContent, isPlaying, isScrubbing]);
+
   // Playback control with real timestamps
   useEffect(() => {
     if (!isPlaying || events.length === 0 || isScrubbing) return;
@@ -175,6 +187,20 @@ export default function TerminalViewer({ castContent }: TerminalViewerProps) {
 
     return () => clearTimeout(timeout);
   }, [isPlaying, currentTime, events, playbackSpeed, maxTime, isScrubbing]);
+
+  // Handle scrubbing start/end
+  const handleScrubStart = () => {
+    setWasPlayingBeforeScrub(isPlaying);
+    setIsScrubbing(true);
+    setIsPlaying(false);
+  };
+
+  const handleScrubEnd = () => {
+    setIsScrubbing(false);
+    if (wasPlayingBeforeScrub) {
+      setIsPlaying(true);
+    }
+  };
 
   const formatTime = (seconds: number) => {
     const totalSeconds = Math.floor(seconds);
@@ -259,10 +285,10 @@ export default function TerminalViewer({ castContent }: TerminalViewerProps) {
                   step="0.1"
                   value={currentTime}
                   onChange={(e) => setCurrentTime(parseFloat(e.target.value))}
-                  onMouseDown={() => setIsScrubbing(true)}
-                  onMouseUp={() => setIsScrubbing(false)}
-                  onTouchStart={() => setIsScrubbing(true)}
-                  onTouchEnd={() => setIsScrubbing(false)}
+                  onMouseDown={handleScrubStart}
+                  onMouseUp={handleScrubEnd}
+                  onTouchStart={handleScrubStart}
+                  onTouchEnd={handleScrubEnd}
                   className="absolute inset-0 w-full h-2 opacity-0 cursor-pointer"
                   style={{ zIndex: 20 }}
                   data-testid="playback-scrubber"
@@ -284,8 +310,11 @@ export default function TerminalViewer({ castContent }: TerminalViewerProps) {
           </CardHeader>
           
           <CardContent className="p-0">
-            <ScrollArea className="h-[500px]">
-              <div className="bg-black text-green-400 font-mono text-sm p-4 min-h-[500px] overflow-auto">
+            <div className="h-[500px] bg-black text-green-400 font-mono text-sm overflow-hidden">
+              <div 
+                ref={terminalRef}
+                className="h-full p-4 overflow-y-auto scrollbar-thin scrollbar-track-gray-800 scrollbar-thumb-gray-600"
+              >
                 {terminalContent ? (
                   <pre className="whitespace-pre-wrap break-words font-mono leading-relaxed">
                     {terminalContent}
@@ -294,7 +323,7 @@ export default function TerminalViewer({ castContent }: TerminalViewerProps) {
                   <div className="text-gray-500">No terminal session yet... Press play to start</div>
                 )}
               </div>
-            </ScrollArea>
+            </div>
           </CardContent>
         </Card>
       </div>
