@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { Search, Filter, Calendar, Terminal, Bot, ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
+import { Search, Filter, Calendar, Terminal, Bot, ChevronDown, ChevronRight, ExternalLink, CheckCircle, XCircle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -61,10 +61,8 @@ export default function NavigationSidebar({ onSelectTaskRun, selectedTaskRun }: 
     }
   };
 
-  const getAccuracyColor = (accuracy: number) => {
-    if (accuracy >= 0.8) return 'text-success bg-success/20';
-    if (accuracy >= 0.5) return 'text-warning bg-warning/20';
-    return 'text-destructive bg-destructive/20';
+  const getPassFailStatus = (accuracy: number) => {
+    return accuracy >= 1.0;
   };
 
   const isSelected = (date: string, taskId: string, modelName: string) => {
@@ -210,11 +208,20 @@ export default function NavigationSidebar({ onSelectTaskRun, selectedTaskRun }: 
                               </span>
                               <div className="ml-auto flex items-center gap-1">
                                 {model.accuracy !== undefined && (
-                                  <span className={`text-xs px-1.5 py-0.5 rounded ${
-                                    getAccuracyColor(model.accuracy)
-                                  }`}>
-                                    {Math.round(model.accuracy * 100)}%
-                                  </span>
+                                  <div className="flex items-center gap-1">
+                                    {getPassFailStatus(model.accuracy) ? (
+                                      <CheckCircle className="h-3 w-3 text-success" />
+                                    ) : (
+                                      <XCircle className="h-3 w-3 text-destructive" />
+                                    )}
+                                    <span className={`text-xs px-1.5 py-0.5 rounded ${
+                                      getPassFailStatus(model.accuracy) 
+                                        ? 'text-success bg-success/20' 
+                                        : 'text-destructive bg-destructive/20'
+                                    }`}>
+                                      {getPassFailStatus(model.accuracy) ? 'PASS' : 'FAIL'}
+                                    </span>
+                                  </div>
                                 )}
                               </div>
                             </div>
