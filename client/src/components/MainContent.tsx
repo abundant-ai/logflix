@@ -43,14 +43,16 @@ export default function MainContent({ selectedTaskRun }: MainContentProps) {
   const calculateDuration = () => {
     if (!taskRun?.resultsJson) return undefined;
     
-    // Access the data flexibly since actual structure differs from schema
     const resultsData = taskRun.resultsJson as any;
-    const result = resultsData.results?.[0];
     
-    if (!result) return undefined;
+    // Use duration_seconds if available
+    if (resultsData.duration_seconds) {
+      return resultsData.duration_seconds;
+    }
     
-    const startTime = result.agent_started_at;
-    const endTime = result.agent_ended_at;
+    // Otherwise calculate from start_time and end_time
+    const startTime = resultsData.start_time;
+    const endTime = resultsData.end_time;
     
     if (!startTime || !endTime) return undefined;
     
@@ -63,24 +65,34 @@ export default function MainContent({ selectedTaskRun }: MainContentProps) {
     if (!taskRun?.resultsJson) return null;
     
     const resultsData = taskRun.resultsJson as any;
+    
+    // Check for parser_results directly on the main object
+    if (resultsData.parser_results) {
+      return resultsData.parser_results;
+    }
+    
+    // Also check nested structure in case it exists
     const result = resultsData.results?.[0];
+    if (result?.parser_results) {
+      return result.parser_results;
+    }
     
-    if (!result?.parser_results) return null;
-    
-    return result.parser_results;
+    return null;
   };
 
   const isTaskIncomplete = () => {
     if (!taskRun?.resultsJson) return false;
     
+    const resultsData = taskRun.resultsJson as any;
+    
     // Check if task_completed is explicitly false
-    if (taskRun.resultsJson.task_completed === false) return true;
+    if (resultsData.task_completed === false) return true;
     
     // Check if accuracy is very low (might indicate incomplete task)
-    if (taskRun.resultsJson.accuracy !== undefined && taskRun.resultsJson.accuracy < 0.1) return true;
+    if (resultsData.accuracy !== undefined && resultsData.accuracy < 0.1) return true;
     
     // Check if there's no end_time (task might have been interrupted)
-    if (!taskRun.resultsJson.end_time) return true;
+    if (!resultsData.end_time) return true;
     
     return false;
   };
