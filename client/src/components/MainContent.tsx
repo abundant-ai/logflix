@@ -41,10 +41,12 @@ export default function MainContent({ selectedTaskRun }: MainContentProps) {
   };
 
   const calculateDuration = () => {
-    if (!taskRun?.resultsJson) return undefined;
+    if (!taskRun?.resultsJson || !selectedTaskRun) return undefined;
     
     const resultsData = taskRun.resultsJson as any;
-    const result = resultsData.results?.[0];
+    const results = resultsData.results || [];
+    // Find the result that matches the current task_id
+    const result = results.find((r: any) => r.task_id === selectedTaskRun.taskId);
     
     if (!result) return undefined;
     
@@ -59,10 +61,12 @@ export default function MainContent({ selectedTaskRun }: MainContentProps) {
   };
 
   const getTestResults = () => {
-    if (!taskRun?.resultsJson) return null;
+    if (!taskRun?.resultsJson || !selectedTaskRun) return null;
     
     const resultsData = taskRun.resultsJson as any;
-    const result = resultsData.results?.[0];
+    const results = resultsData.results || [];
+    // Find the result that matches the current task_id
+    const result = results.find((r: any) => r.task_id === selectedTaskRun.taskId);
     
     if (!result?.parser_results) return null;
     
@@ -70,10 +74,12 @@ export default function MainContent({ selectedTaskRun }: MainContentProps) {
   };
 
   const isTaskIncomplete = () => {
-    if (!taskRun?.resultsJson) return false;
+    if (!taskRun?.resultsJson || !selectedTaskRun) return false;
     
     const resultsData = taskRun.resultsJson as any;
-    const result = resultsData.results?.[0];
+    const results = resultsData.results || [];
+    // Find the result that matches the current task_id
+    const result = results.find((r: any) => r.task_id === selectedTaskRun.taskId);
     
     if (!result) return true;
     

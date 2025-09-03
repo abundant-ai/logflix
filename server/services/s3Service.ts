@@ -102,8 +102,9 @@ export class S3Service {
           let accuracy: number | undefined;
           try {
             const resultsJson = await this.getResultsJson(date, taskId, modelName);
-            // Calculate accuracy based on whether the task was resolved
-            const result = (resultsJson as any)?.results?.[0];
+            // Find the result that matches the current task_id
+            const results = (resultsJson as any)?.results || [];
+            const result = results.find((r: any) => r.task_id === taskId);
             if (result) {
               accuracy = result.is_resolved ? 1.0 : 0.0;
             }
