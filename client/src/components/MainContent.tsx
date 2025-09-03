@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRight, Download, Play, BarChart3, Terminal, FileCode, Search, Bug, AlertTriangle, CheckCircle, XCircle } from "lucide-react";
+import { ChevronRight, Download, ExternalLink, BarChart3, Terminal, FileCode, Search, Bug, AlertTriangle, CheckCircle, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -157,13 +157,21 @@ export default function MainContent({ selectedTaskRun }: MainContentProps) {
           </nav>
 
           <div className="flex items-center gap-3">
-            <Button variant="secondary" size="sm" data-testid="button-export">
-              <Download className="h-4 w-4 mr-2" />
-              Export Data
-            </Button>
-            <Button size="sm" data-testid="button-analyze">
-              <Play className="h-4 w-4 mr-2" />
-              Run Analysis
+            <Button 
+              variant="secondary" 
+              size="sm" 
+              asChild
+              data-testid="button-github"
+            >
+              <a 
+                href={`https://github.com/laude-institute/terminal-bench/tree/main/tasks/${selectedTaskRun.taskId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2"
+              >
+                <ExternalLink className="h-4 w-4" />
+                View on GitHub
+              </a>
             </Button>
           </div>
         </div>
