@@ -50,6 +50,15 @@ export default function TaskQualityAssessment({ data }: TaskQualityAssessmentPro
         // If it's a flat object, convert each key-value pair
         return Object.entries(jsonData).map(([key, value]: [string, any]) => {
           if (typeof value === 'object' && value !== null) {
+            // Handle task.check.json format with outcome field
+            if (value.outcome) {
+              return {
+                property: key,
+                passed: value.outcome === 'pass',
+                explanation: value.explanation || value.description || value.reason || value.message || JSON.stringify(value)
+              };
+            }
+            // Handle other object formats
             return {
               property: key,
               passed: value.passed || value.success || value.status === 'passed' || false,
