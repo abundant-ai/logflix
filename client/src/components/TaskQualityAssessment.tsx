@@ -54,7 +54,7 @@ export default function TaskQualityAssessment({ data }: TaskQualityAssessmentPro
             if (value.outcome) {
               return {
                 property: key,
-                passed: value.outcome === 'pass',
+                passed: value.outcome === 'pass' || value.outcome === 'not_applicable',
                 explanation: value.explanation || value.description || value.reason || value.message || JSON.stringify(value)
               };
             }
