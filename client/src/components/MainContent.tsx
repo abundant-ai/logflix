@@ -217,13 +217,39 @@ export default function MainContent({ selectedTaskRun }: MainContentProps) {
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm text-muted-foreground">Accuracy</p>
-                      <p className="text-2xl font-bold text-success">
-                        {taskRun.resultsJson?.accuracy ? `${Math.round(taskRun.resultsJson.accuracy * 100)}%` : 'N/A'}
-                      </p>
+                      <p className="text-sm text-muted-foreground">Task Result</p>
+                      {taskRun.resultsJson?.accuracy !== undefined ? (
+                        <div className="flex items-center gap-2">
+                          {taskRun.resultsJson.accuracy >= 1.0 ? (
+                            <>
+                              <CheckCircle className="h-6 w-6 text-success" />
+                              <p className="text-2xl font-bold text-success">PASSED</p>
+                            </>
+                          ) : (
+                            <>
+                              <XCircle className="h-6 w-6 text-destructive" />
+                              <p className="text-2xl font-bold text-destructive">FAILED</p>
+                            </>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-2xl font-bold text-muted-foreground">N/A</p>
+                      )}
                     </div>
-                    <div className="p-2 bg-success/20 rounded-lg">
-                      <BarChart3 className="h-5 w-5 text-success" />
+                    <div className={`p-2 rounded-lg ${
+                      taskRun.resultsJson?.accuracy !== undefined 
+                        ? (taskRun.resultsJson.accuracy >= 1.0 ? 'bg-success/20' : 'bg-destructive/20')
+                        : 'bg-muted/20'
+                    }`}>
+                      {taskRun.resultsJson?.accuracy !== undefined ? (
+                        taskRun.resultsJson.accuracy >= 1.0 ? (
+                          <CheckCircle className="h-5 w-5 text-success" />
+                        ) : (
+                          <XCircle className="h-5 w-5 text-destructive" />
+                        )
+                      ) : (
+                        <BarChart3 className="h-5 w-5 text-muted-foreground" />
+                      )}
                     </div>
                   </div>
                 </CardContent>
