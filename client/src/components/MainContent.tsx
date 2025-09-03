@@ -44,15 +44,12 @@ export default function MainContent({ selectedTaskRun }: MainContentProps) {
     if (!taskRun?.resultsJson) return undefined;
     
     const resultsData = taskRun.resultsJson as any;
+    const result = resultsData.results?.[0];
     
-    // Use duration_seconds if available
-    if (resultsData.duration_seconds) {
-      return resultsData.duration_seconds;
-    }
+    if (!result) return undefined;
     
-    // Otherwise calculate from start_time and end_time
-    const startTime = resultsData.start_time;
-    const endTime = resultsData.end_time;
+    const startTime = result.agent_started_at;
+    const endTime = result.agent_ended_at;
     
     if (!startTime || !endTime) return undefined;
     
@@ -65,34 +62,26 @@ export default function MainContent({ selectedTaskRun }: MainContentProps) {
     if (!taskRun?.resultsJson) return null;
     
     const resultsData = taskRun.resultsJson as any;
-    
-    // Check for parser_results directly on the main object
-    if (resultsData.parser_results) {
-      return resultsData.parser_results;
-    }
-    
-    // Also check nested structure in case it exists
     const result = resultsData.results?.[0];
-    if (result?.parser_results) {
-      return result.parser_results;
-    }
     
-    return null;
+    if (!result?.parser_results) return null;
+    
+    return result.parser_results;
   };
 
   const isTaskIncomplete = () => {
     if (!taskRun?.resultsJson) return false;
     
     const resultsData = taskRun.resultsJson as any;
+    const result = resultsData.results?.[0];
     
-    // Check if task_completed is explicitly false
-    if (resultsData.task_completed === false) return true;
+    if (!result) return true;
     
-    // Check if accuracy is very low (might indicate incomplete task)
-    if (resultsData.accuracy !== undefined && resultsData.accuracy < 0.1) return true;
+    // Check if task was resolved successfully
+    if (result.is_resolved === false) return true;
     
     // Check if there's no end_time (task might have been interrupted)
-    if (!resultsData.end_time) return true;
+    if (!result.agent_ended_at) return true;
     
     return false;
   };
