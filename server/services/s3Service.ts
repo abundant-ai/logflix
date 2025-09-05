@@ -106,7 +106,7 @@ export class S3Service {
             const results = (resultsJson as any)?.results || [];
             const result = results.find((r: any) => r.task_id === taskId);
             if (result) {
-              accuracy = result.is_resolved ? 1.0 : 0.0;
+              accuracy = result.accuracy;
             }
           } catch {
             // Ignore if results.json doesn't exist

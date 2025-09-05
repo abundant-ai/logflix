@@ -73,6 +73,19 @@ export default function MainContent({ selectedTaskRun }: MainContentProps) {
     return result.parser_results;
   };
 
+  const getTaskAccuracy = () => {
+    if (!taskRun?.resultsJson || !selectedTaskRun) return undefined;
+    
+    const resultsData = taskRun.resultsJson as any;
+    const results = resultsData.results || [];
+    // Find the result that matches the current task_id
+    const result = results.find((r: any) => r.task_id === selectedTaskRun.taskId);
+    
+    if (!result) return undefined;
+    
+    return result.accuracy;
+  };
+
   const isTaskIncomplete = () => {
     if (!taskRun?.resultsJson || !selectedTaskRun) return false;
     
@@ -233,9 +246,9 @@ export default function MainContent({ selectedTaskRun }: MainContentProps) {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm text-muted-foreground">Task Result</p>
-                      {taskRun.resultsJson?.accuracy !== undefined ? (
+                      {getTaskAccuracy() !== undefined ? (
                         <div className="flex items-center gap-2">
-                          {taskRun.resultsJson.accuracy >= 1.0 ? (
+                          {getTaskAccuracy() >= 1.0 ? (
                             <>
                               <CheckCircle className="h-6 w-6 text-success" />
                               <p className="text-2xl font-bold text-success">PASSED</p>
@@ -252,12 +265,12 @@ export default function MainContent({ selectedTaskRun }: MainContentProps) {
                       )}
                     </div>
                     <div className={`p-2 rounded-lg ${
-                      taskRun.resultsJson?.accuracy !== undefined 
-                        ? (taskRun.resultsJson.accuracy >= 1.0 ? 'bg-success/20' : 'bg-destructive/20')
+                      getTaskAccuracy() !== undefined 
+                        ? (getTaskAccuracy() >= 1.0 ? 'bg-success/20' : 'bg-destructive/20')
                         : 'bg-muted/20'
                     }`}>
-                      {taskRun.resultsJson?.accuracy !== undefined ? (
-                        taskRun.resultsJson.accuracy >= 1.0 ? (
+                      {getTaskAccuracy() !== undefined ? (
+                        getTaskAccuracy() >= 1.0 ? (
                           <CheckCircle className="h-5 w-5 text-success" />
                         ) : (
                           <XCircle className="h-5 w-5 text-destructive" />
