@@ -105,12 +105,17 @@ export class S3Service {
             // Find the result that matches the current task_id
             const results = (resultsJson as any)?.results || [];
             const result = results.find((r: any) => r.task_id === taskId);
-            if (result && result.parser_results) {
-              // Calculate accuracy from parser_results
-              const testResults = Object.values(result.parser_results);
-              const passedTests = testResults.filter((status: any) => status === 'passed').length;
-              const totalTests = testResults.length;
-              accuracy = totalTests > 0 ? passedTests / totalTests : undefined;
+            if (result) {
+              if (result.parser_results) {
+                // Calculate accuracy from parser_results
+                const testResults = Object.values(result.parser_results);
+                const passedTests = testResults.filter((status: any) => status === 'passed').length;
+                const totalTests = testResults.length;
+                accuracy = totalTests > 0 ? passedTests / totalTests : (result.is_resolved ? 1.0 : 0.0);
+              } else {
+                // Fallback to is_resolved when no parser_results
+                accuracy = result.is_resolved ? 1.0 : 0.0;
+              }
             }
           } catch {
             // Ignore if results.json doesn't exist

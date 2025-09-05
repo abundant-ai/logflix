@@ -81,13 +81,18 @@ export default function MainContent({ selectedTaskRun }: MainContentProps) {
     // Find the result that matches the current task_id
     const result = results.find((r: any) => r.task_id === selectedTaskRun.taskId);
     
-    if (!result || !result.parser_results) return undefined;
+    if (!result) return undefined;
     
-    // Calculate accuracy from parser_results
-    const testResults = Object.values(result.parser_results);
-    const passedTests = testResults.filter((status: any) => status === 'passed').length;
-    const totalTests = testResults.length;
-    return totalTests > 0 ? passedTests / totalTests : undefined;
+    if (result.parser_results) {
+      // Calculate accuracy from parser_results
+      const testResults = Object.values(result.parser_results);
+      const passedTests = testResults.filter((status: any) => status === 'passed').length;
+      const totalTests = testResults.length;
+      return totalTests > 0 ? passedTests / totalTests : (result.is_resolved ? 1.0 : 0.0);
+    } else {
+      // Fallback to is_resolved when no parser_results
+      return result.is_resolved ? 1.0 : 0.0;
+    }
   };
 
   const isTaskIncomplete = () => {
