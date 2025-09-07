@@ -134,6 +134,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get post-test file content
+  app.get("/api/post-test/:date/:taskId/:modelName", async (req, res) => {
+    try {
+      const { date, taskId, modelName } = req.params;
+      
+      const postTestContent = await s3Service.getPostTestFile(date, taskId, modelName);
+      
+      if (postTestContent === null) {
+        return res.status(404).json({ error: "Post-test file not found" });
+      }
+      
+      res.json({ content: postTestContent });
+    } catch (error) {
+      console.error("Error fetching post-test file:", error);
+      res.status(500).json({ error: "Failed to fetch post-test file" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

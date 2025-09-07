@@ -275,4 +275,14 @@ export class S3Service {
   async downloadFile(path: string): Promise<string> {
     return await this.getS3Object(path);
   }
+
+  async getPostTestFile(date: string, taskId: string, modelName: string): Promise<string | null> {
+    try {
+      const key = `${this.basePath}/${date}/${taskId}/${modelName}/panes/post-test.txt`;
+      return await this.getS3Object(key);
+    } catch (error) {
+      console.error(`Error fetching post-test.txt for ${date}/${taskId}/${modelName}:`, error);
+      return null;
+    }
+  }
 }

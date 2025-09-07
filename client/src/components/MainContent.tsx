@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRight, Download, ExternalLink, BarChart3, Terminal, FileCode, Search, Bug, AlertTriangle, CheckCircle, XCircle } from "lucide-react";
+import { ChevronRight, ChevronDown, Download, ExternalLink, BarChart3, Terminal, FileCode, Search, Bug, AlertTriangle, CheckCircle, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,12 +16,20 @@ interface MainContentProps {
 
 export default function MainContent({ selectedTaskRun }: MainContentProps) {
   const [activeTab, setActiveTab] = useState("overview");
+  const [showPostTest, setShowPostTest] = useState(false);
 
   const { data: taskRun, isLoading, error } = useQuery<TaskRun>({
     queryKey: selectedTaskRun 
       ? ["/api/task-run", selectedTaskRun.date, selectedTaskRun.taskId, selectedTaskRun.modelName]
       : [],
     enabled: !!selectedTaskRun,
+  });
+
+  const { data: postTestData, isLoading: isPostTestLoading } = useQuery<{ content: string }>({
+    queryKey: selectedTaskRun 
+      ? ["/api/post-test", selectedTaskRun.date, selectedTaskRun.taskId, selectedTaskRun.modelName]
+      : [],
+    enabled: !!selectedTaskRun && showPostTest,
   });
 
   const getDifficultyColor = (difficulty: string) => {
@@ -336,6 +344,52 @@ export default function MainContent({ selectedTaskRun }: MainContentProps) {
                         </div>
                       );
                     })}
+                    
+                    {/* Post-test output dropdown */}
+                    <div className="mt-4 border-t pt-4">
+                      <Button
+                        variant="ghost"
+                        className="w-full justify-between p-2 h-auto"
+                        onClick={() => setShowPostTest(!showPostTest)}
+                        data-testid="button-post-test-toggle"
+                      >
+                        <span className="text-sm font-medium">Post-test Output</span>
+                        {showPostTest ? (
+                          <ChevronDown className="h-4 w-4" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4" />
+                        )}
+                      </Button>
+                      
+                      {showPostTest && (
+                        <div className="mt-3 border rounded-lg">
+                          <div className="p-3 bg-muted/50 border-b">
+                            <div className="flex items-center gap-2">
+                              <FileCode className="h-4 w-4 text-muted-foreground" />
+                              <span className="text-sm font-medium text-muted-foreground">panes/post-test.txt</span>
+                            </div>
+                          </div>
+                          <div className="p-0">
+                            {isPostTestLoading ? (
+                              <div className="p-4 flex items-center justify-center">
+                                <div className="animate-spin rounded-full h-4 w-4 border-2 border-primary border-t-transparent"></div>
+                                <span className="ml-2 text-sm text-muted-foreground">Loading post-test output...</span>
+                              </div>
+                            ) : postTestData?.content ? (
+                              <div className="max-h-96 overflow-y-auto">
+                                <pre className="text-xs font-mono p-4 whitespace-pre-wrap text-foreground bg-background">
+                                  {postTestData.content}
+                                </pre>
+                              </div>
+                            ) : (
+                              <div className="p-4 text-center text-sm text-muted-foreground">
+                                Post-test output not available
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </CardContent>
               </Card>
