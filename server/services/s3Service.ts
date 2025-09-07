@@ -18,6 +18,28 @@ export class S3Service {
   }
 
   async getHierarchy(): Promise<S3Hierarchy> {
+    // Optimized to only load data for 2025-09-07
+    return this.getHierarchyForDate("2025-09-07");
+  }
+
+  async getHierarchyForDate(targetDate: string): Promise<S3Hierarchy> {
+    try {
+      // Only load tasks for the specific date
+      const tasks = await this.getTasksForDate(targetDate);
+      
+      return { 
+        dates: [{
+          date: targetDate,
+          tasks
+        }]
+      };
+    } catch (error) {
+      console.error(`Error fetching S3 hierarchy for date ${targetDate}:`, error);
+      return { dates: [] };
+    }
+  }
+
+  async getFullHierarchy(): Promise<S3Hierarchy> {
     try {
       const command = new ListObjectsV2Command({
         Bucket: this.bucketName,
