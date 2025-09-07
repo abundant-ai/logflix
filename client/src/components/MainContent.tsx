@@ -41,77 +41,32 @@ export default function MainContent({ selectedTaskRun }: MainContentProps) {
   };
 
   const calculateDuration = () => {
-    if (!taskRun?.resultsJson || !selectedTaskRun) return undefined;
+    if (!taskRun?.resultsJson) return undefined;
     
-    const resultsData = taskRun.resultsJson as any;
-    const results = resultsData.results || [];
-    // Find the result that matches the current task_id
-    const result = results.find((r: any) => r.task_id === selectedTaskRun.taskId);
-    
-    if (!result) return undefined;
-    
-    const startTime = result.agent_started_at;
-    const endTime = result.agent_ended_at;
-    
-    if (!startTime || !endTime) return undefined;
-    
-    const start = new Date(startTime);
-    const end = new Date(endTime);
-    return Math.floor((end.getTime() - start.getTime()) / 1000);
+    // Now results.json contains direct result data for this specific run
+    return taskRun.resultsJson.duration_seconds;
   };
 
   const getTestResults = () => {
-    if (!taskRun?.resultsJson || !selectedTaskRun) return null;
+    if (!taskRun?.resultsJson) return null;
     
+    // Check if the results contain test/parser information
     const resultsData = taskRun.resultsJson as any;
-    const results = resultsData.results || [];
-    // Find the result that matches the current task_id
-    const result = results.find((r: any) => r.task_id === selectedTaskRun.taskId);
-    
-    if (!result?.parser_results) return null;
-    
-    return result.parser_results;
+    return resultsData.parser_results || resultsData.test_results || null;
   };
 
   const getTaskAccuracy = () => {
-    if (!taskRun?.resultsJson || !selectedTaskRun) return undefined;
+    if (!taskRun?.resultsJson) return undefined;
     
-    const resultsData = taskRun.resultsJson as any;
-    const results = resultsData.results || [];
-    // Find the result that matches the current task_id
-    const result = results.find((r: any) => r.task_id === selectedTaskRun.taskId);
-    
-    if (!result) return undefined;
-    
-    if (result.parser_results) {
-      // Calculate accuracy from parser_results
-      const testResults = Object.values(result.parser_results);
-      const passedTests = testResults.filter((status: any) => status === 'passed').length;
-      const totalTests = testResults.length;
-      return totalTests > 0 ? passedTests / totalTests : (result.is_resolved ? 1.0 : 0.0);
-    } else {
-      // Fallback to is_resolved when no parser_results
-      return result.is_resolved ? 1.0 : 0.0;
-    }
+    // Now results.json contains direct result data for this specific run
+    return taskRun.resultsJson.accuracy;
   };
 
   const isTaskIncomplete = () => {
-    if (!taskRun?.resultsJson || !selectedTaskRun) return false;
+    if (!taskRun?.resultsJson) return false;
     
-    const resultsData = taskRun.resultsJson as any;
-    const results = resultsData.results || [];
-    // Find the result that matches the current task_id
-    const result = results.find((r: any) => r.task_id === selectedTaskRun.taskId);
-    
-    if (!result) return true;
-    
-    // Check if task was resolved successfully
-    if (result.is_resolved === false) return true;
-    
-    // Check if there's no end_time (task might have been interrupted)
-    if (!result.agent_ended_at) return true;
-    
-    return false;
+    // Now results.json contains direct result data for this specific run
+    return !taskRun.resultsJson.task_completed;
   };
 
   const downloadFile = async (filename: string) => {

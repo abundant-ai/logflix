@@ -207,6 +207,11 @@ export default function NavigationSidebar({ onSelectTaskRun, selectedTaskRun }: 
                                 {model.modelName}
                               </span>
                               <div className="ml-auto flex items-center gap-1">
+                                {model.duration && (
+                                  <span className="text-xs text-muted-foreground">
+                                    {Math.round(model.duration)}s
+                                  </span>
+                                )}
                                 {model.accuracy !== undefined && (
                                   <div className="flex items-center gap-1">
                                     {getPassFailStatus(model.accuracy) ? (

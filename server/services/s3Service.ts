@@ -120,25 +120,16 @@ export class S3Service {
           
           const modelName = prefix.Prefix.replace(`${this.basePath}/${date}/${taskId}/`, "").replace("/", "");
           
-          // Try to get accuracy from results.json
+          // Try to get result data from results.json
           let accuracy: number | undefined;
+          let duration: number | undefined;
+          let taskCompleted: boolean | undefined;
           try {
             const resultsJson = await this.getResultsJson(date, taskId, modelName);
-            // Find the result that matches the current task_id
-            const results = (resultsJson as any)?.results || [];
-            const result = results.find((r: any) => r.task_id === taskId);
-            if (result) {
-              if (result.parser_results) {
-                // Calculate accuracy from parser_results
-                const testResults = Object.values(result.parser_results);
-                const passedTests = testResults.filter((status: any) => status === 'passed').length;
-                const totalTests = testResults.length;
-                accuracy = totalTests > 0 ? passedTests / totalTests : (result.is_resolved ? 1.0 : 0.0);
-              } else {
-                // Fallback to is_resolved when no parser_results
-                accuracy = result.is_resolved ? 1.0 : 0.0;
-              }
-            }
+            // Now results.json contains direct result data for this specific run
+            accuracy = resultsJson.accuracy;
+            duration = resultsJson.duration_seconds;
+            taskCompleted = resultsJson.task_completed;
           } catch {
             // Ignore if results.json doesn't exist
           }
@@ -146,6 +137,8 @@ export class S3Service {
           models.push({
             modelName,
             accuracy,
+            duration,
+            taskCompleted,
             hasData: true,
           });
         }

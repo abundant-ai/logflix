@@ -22,6 +22,8 @@ export const resultsJsonSchema = z.object({
   task_completed: z.boolean().optional(),
   command_count: z.number().optional(),
   error_count: z.number().optional(),
+  parser_results: z.record(z.string()).optional(), // test name -> 'passed'/'failed'
+  test_results: z.record(z.any()).optional(), // alternative test result format
   metadata: z.record(z.any()).optional(),
 });
 
@@ -66,6 +68,8 @@ export const s3HierarchySchema = z.object({
       models: z.array(z.object({
         modelName: z.string(),
         accuracy: z.number().optional(),
+        duration: z.number().optional(),
+        taskCompleted: z.boolean().optional(),
         hasData: z.boolean(),
       })),
     })),
