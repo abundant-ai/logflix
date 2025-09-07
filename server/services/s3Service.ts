@@ -126,10 +126,27 @@ export class S3Service {
           let taskCompleted: boolean | undefined;
           try {
             const resultsJson = await this.getResultsJson(date, taskId, modelName);
-            // Now results.json contains direct result data for this specific run
-            accuracy = resultsJson.accuracy;
-            duration = resultsJson.duration_seconds;
-            taskCompleted = resultsJson.task_completed;
+            
+            // Calculate accuracy from parser_results
+            if (resultsJson.parser_results) {
+              const testResults = Object.values(resultsJson.parser_results);
+              const passedTests = testResults.filter((status: string) => status === 'passed').length;
+              const totalTests = testResults.length;
+              accuracy = totalTests > 0 ? passedTests / totalTests : 0;
+            } else {
+              // Fallback to is_resolved
+              accuracy = resultsJson.is_resolved ? 1.0 : 0.0;
+            }
+            
+            // Calculate duration from agent time fields
+            if (resultsJson.agent_started_at && resultsJson.agent_ended_at) {
+              const startTime = new Date(resultsJson.agent_started_at);
+              const endTime = new Date(resultsJson.agent_ended_at);
+              duration = Math.floor((endTime.getTime() - startTime.getTime()) / 1000);
+            }
+            
+            // Task completion status
+            taskCompleted = resultsJson.is_resolved;
           } catch {
             // Ignore if results.json doesn't exist
           }
