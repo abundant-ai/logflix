@@ -43,8 +43,15 @@ export default function MainContent({ selectedTaskRun }: MainContentProps) {
   const calculateDuration = () => {
     if (!taskRun?.resultsJson) return undefined;
     
-    // Now results.json contains direct result data for this specific run
-    return taskRun.resultsJson.duration_seconds;
+    // Calculate duration from agent time fields
+    const startTime = taskRun.resultsJson.agent_started_at;
+    const endTime = taskRun.resultsJson.agent_ended_at;
+    
+    if (!startTime || !endTime) return undefined;
+    
+    const start = new Date(startTime);
+    const end = new Date(endTime);
+    return Math.floor((end.getTime() - start.getTime()) / 1000);
   };
 
   const getTestResults = () => {
@@ -58,15 +65,23 @@ export default function MainContent({ selectedTaskRun }: MainContentProps) {
   const getTaskAccuracy = () => {
     if (!taskRun?.resultsJson) return undefined;
     
-    // Now results.json contains direct result data for this specific run
-    return taskRun.resultsJson.accuracy;
+    // Calculate accuracy from parser_results
+    if (taskRun.resultsJson.parser_results) {
+      const testResults = Object.values(taskRun.resultsJson.parser_results);
+      const passedTests = testResults.filter((status: string) => status === 'passed').length;
+      const totalTests = testResults.length;
+      return totalTests > 0 ? passedTests / totalTests : 0;
+    }
+    
+    // Fallback to is_resolved
+    return taskRun.resultsJson.is_resolved ? 1.0 : 0.0;
   };
 
   const isTaskIncomplete = () => {
     if (!taskRun?.resultsJson) return false;
     
-    // Now results.json contains direct result data for this specific run
-    return !taskRun.resultsJson.task_completed;
+    // Task completion is based on is_resolved
+    return !taskRun.resultsJson.is_resolved;
   };
 
   const downloadFile = async (filename: string) => {
@@ -374,11 +389,11 @@ export default function MainContent({ selectedTaskRun }: MainContentProps) {
                   <CardTitle>Run Metadata</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {taskRun.resultsJson?.run_id && (
+                  {taskRun.resultsJson?.id && (
                     <div>
                       <label className="text-sm text-muted-foreground">Run ID</label>
                       <p className="font-mono text-sm bg-muted px-2 py-1 rounded mt-1">
-                        {taskRun.resultsJson.run_id}
+                        {taskRun.resultsJson.id}
                       </p>
                     </div>
                   )}
@@ -386,19 +401,19 @@ export default function MainContent({ selectedTaskRun }: MainContentProps) {
                     <label className="text-sm text-muted-foreground">Model</label>
                     <p className="text-sm mt-1">{selectedTaskRun.modelName}</p>
                   </div>
-                  {taskRun.resultsJson?.start_time && (
+                  {taskRun.resultsJson?.agent_started_at && (
                     <div>
                       <label className="text-sm text-muted-foreground">Start Time</label>
                       <p className="text-sm mt-1">
-                        {new Date(taskRun.resultsJson.start_time).toLocaleString()}
+                        {new Date(taskRun.resultsJson.agent_started_at).toLocaleString()}
                       </p>
                     </div>
                   )}
-                  {taskRun.resultsJson?.end_time && (
+                  {taskRun.resultsJson?.agent_ended_at && (
                     <div>
                       <label className="text-sm text-muted-foreground">End Time</label>
                       <p className="text-sm mt-1">
-                        {new Date(taskRun.resultsJson.end_time).toLocaleString()}
+                        {new Date(taskRun.resultsJson.agent_ended_at).toLocaleString()}
                       </p>
                     </div>
                   )}
