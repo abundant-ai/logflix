@@ -95,7 +95,7 @@ export default function NavigationSidebar({ onSelectTaskRun, selectedTaskRun }: 
       {/* Header */}
       <div className="p-4 border-b border-border">
         <h1 className="text-lg font-semibold text-foreground">Terminal-Bench Viewer</h1>
-        <p className="text-sm text-muted-foreground mt-1">s3://t-bench-mam/tb-2.0-audit/</p>
+        <p className="text-sm text-muted-foreground mt-1">s3://t-bench-mam/tb-2.0-audit/2025-09-07</p>
       </div>
 
       {/* Search and Filters */}
@@ -131,7 +131,7 @@ export default function NavigationSidebar({ onSelectTaskRun, selectedTaskRun }: 
 
       {/* S3 Hierarchy Tree */}
       <div className="flex-1 overflow-y-auto scrollbar-thin p-2">
-        {hierarchy?.dates.map((date) => (
+        {hierarchy?.dates.filter(date => date.date === '2025-09-07').map((date) => (
           <div key={date.date} className="mb-2">
             <div 
               className="flex items-center px-2 py-1 hover:bg-muted rounded cursor-pointer"
