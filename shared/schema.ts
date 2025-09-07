@@ -13,18 +13,22 @@ export const taskYamlSchema = z.object({
 });
 
 export const resultsJsonSchema = z.object({
-  run_id: z.string(),
-  model_name: z.string(),
-  accuracy: z.number(),
-  start_time: z.string(),
-  end_time: z.string(),
-  duration_seconds: z.number().optional(),
-  task_completed: z.boolean().optional(),
-  command_count: z.number().optional(),
-  error_count: z.number().optional(),
+  id: z.string(),
+  trial_name: z.string(),
+  task_id: z.string(),
+  instruction: z.string(),
+  is_resolved: z.boolean(),
+  failure_mode: z.string(),
   parser_results: z.record(z.string()).optional(), // test name -> 'passed'/'failed'
-  test_results: z.record(z.any()).optional(), // alternative test result format
-  metadata: z.record(z.any()).optional(),
+  recording_path: z.string(),
+  total_input_tokens: z.number(),
+  total_output_tokens: z.number(),
+  trial_started_at: z.string(),
+  trial_ended_at: z.string(),
+  agent_started_at: z.string(),
+  agent_ended_at: z.string(),
+  test_started_at: z.string().optional(),
+  test_ended_at: z.string().optional(),
 });
 
 export const agentThoughtSchema = z.object({
