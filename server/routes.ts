@@ -1,10 +1,12 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { S3Service } from "./services/s3Service";
+import { GitHubService } from "./services/githubService";
 import { z } from "zod";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const s3Service = new S3Service();
+  const githubService = new GitHubService();
 
   // Get S3 hierarchy (dates -> tasks -> models)
   app.get("/api/hierarchy", async (req, res) => {
@@ -149,6 +151,135 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching post-test file:", error);
       res.status(500).json({ error: "Failed to fetch post-test file" });
+    }
+  });
+
+  // ============= GITHUB API ROUTES =============
+
+  // Get GitHub workflow hierarchy
+  app.get("/api/github/hierarchy", async (req, res) => {
+    try {
+      const { limit } = req.query;
+      const limitNumber = limit && typeof limit === 'string' ? parseInt(limit, 10) : 30;
+      
+      if (isNaN(limitNumber) || limitNumber < 1 || limitNumber > 100) {
+        return res.status(400).json({ error: "Invalid limit parameter (must be 1-100)" });
+      }
+
+      const hierarchy = await githubService.getHierarchy(limitNumber);
+      res.json(hierarchy);
+    } catch (error) {
+      console.error("Error fetching GitHub hierarchy:", error);
+      res.status(500).json({ error: "Failed to fetch GitHub workflow hierarchy" });
+    }
+  });
+
+  // Get specific workflow run details with logs and artifacts
+  app.get("/api/github/workflow-run/:runId", async (req, res) => {
+    try {
+      const { runId } = req.params;
+      
+      if (!runId || isNaN(parseInt(runId, 10))) {
+        return res.status(400).json({ error: "Invalid run ID parameter" });
+      }
+
+      const runIdNumber = parseInt(runId, 10);
+      
+      // Fetch workflow run, logs, and artifacts in parallel
+      const [workflowRun, logs, artifacts] = await Promise.allSettled([
+        githubService.getWorkflowRun(runIdNumber),
+        githubService.getWorkflowRunLogs(runIdNumber),
+        githubService.getCastArtifacts(runIdNumber),
+      ]);
+      
+      const run = workflowRun.status === 'fulfilled' ? workflowRun.value : null;
+      
+      if (!run) {
+        return res.status(404).json({ error: "Workflow run not found" });
+      }
+
+      const response = {
+        run,
+        logs: logs.status === 'fulfilled' ? logs.value : [],
+        artifacts: artifacts.status === 'fulfilled' ? artifacts.value : [],
+        hasData: (logs.status === 'fulfilled' && logs.value.length > 0) || 
+                 (artifacts.status === 'fulfilled' && artifacts.value.length > 0),
+      };
+
+      res.json(response);
+    } catch (error) {
+      console.error("Error fetching workflow run details:", error);
+      res.status(500).json({ error: "Failed to fetch workflow run details" });
+    }
+  });
+
+  // Get workflow run logs
+  app.get("/api/github/workflow-logs/:runId", async (req, res) => {
+    try {
+      const { runId } = req.params;
+      
+      if (!runId || isNaN(parseInt(runId, 10))) {
+        return res.status(400).json({ error: "Invalid run ID parameter" });
+      }
+
+      const runIdNumber = parseInt(runId, 10);
+      const logs = await githubService.getWorkflowRunLogs(runIdNumber);
+      
+      res.json({ logs });
+    } catch (error) {
+      console.error("Error fetching workflow logs:", error);
+      res.status(500).json({ error: "Failed to fetch workflow logs" });
+    }
+  });
+
+  // Get workflow run artifacts (specifically cast files)
+  app.get("/api/github/workflow-artifacts/:runId", async (req, res) => {
+    try {
+      const { runId } = req.params;
+      
+      if (!runId || isNaN(parseInt(runId, 10))) {
+        return res.status(400).json({ error: "Invalid run ID parameter" });
+      }
+
+      const runIdNumber = parseInt(runId, 10);
+      const artifacts = await githubService.getCastArtifacts(runIdNumber);
+      
+      res.json({ artifacts });
+    } catch (error) {
+      console.error("Error fetching workflow artifacts:", error);
+      res.status(500).json({ error: "Failed to fetch workflow artifacts" });
+    }
+  });
+
+  // Download specific artifact
+  app.get("/api/github/download-artifact/:artifactId", async (req, res) => {
+    try {
+      const { artifactId } = req.params;
+      
+      if (!artifactId || isNaN(parseInt(artifactId, 10))) {
+        return res.status(400).json({ error: "Invalid artifact ID parameter" });
+      }
+
+      const artifactIdNumber = parseInt(artifactId, 10);
+      const content = await githubService.downloadArtifact(artifactIdNumber);
+      
+      if (!content) {
+        return res.status(404).json({ error: "Artifact not found or expired" });
+      }
+
+      // Set appropriate headers for artifact download
+      const filename = `artifact_${artifactIdNumber}.zip`;
+      
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Length', content.byteLength.toString());
+      
+      // Convert ArrayBuffer to Buffer for Express response
+      const buffer = Buffer.from(content);
+      res.send(buffer);
+    } catch (error) {
+      console.error("Error downloading artifact:", error);
+      res.status(500).json({ error: "Failed to download artifact" });
     }
   });
 
