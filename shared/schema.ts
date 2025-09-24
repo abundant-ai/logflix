@@ -80,6 +80,61 @@ export const s3HierarchySchema = z.object({
   })),
 });
 
+// GitHub workflow schemas
+export const githubWorkflowRunSchema = z.object({
+  id: z.number(),
+  name: z.string().nullable(),
+  status: z.enum(['queued', 'in_progress', 'completed']),
+  conclusion: z.enum(['success', 'failure', 'neutral', 'cancelled', 'skipped', 'timed_out', 'action_required']).nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
+  html_url: z.string(),
+  workflow_id: z.number().optional(),
+  workflow_name: z.string().optional(),
+  head_sha: z.string(),
+  head_branch: z.string().nullable(),
+  run_number: z.number(),
+  run_attempt: z.number(),
+});
+
+export const githubWorkflowLogSchema = z.object({
+  job_name: z.string(),
+  job_id: z.number(),
+  content: z.string(),
+  steps: z.array(z.object({
+    name: z.string(),
+    number: z.number(),
+    conclusion: z.enum(['success', 'failure', 'cancelled', 'skipped']).nullable(),
+    content: z.string(),
+  })).optional(),
+});
+
+export const githubWorkflowArtifactSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  size_in_bytes: z.number(),
+  download_url: z.string(),
+  created_at: z.string().nullable(),
+  updated_at: z.string().nullable(),
+  expired: z.boolean(),
+  workflow_run_id: z.number(),
+});
+
+export const githubWorkflowHierarchySchema = z.object({
+  workflow_runs: z.array(z.object({
+    run: githubWorkflowRunSchema,
+    logs: z.array(githubWorkflowLogSchema).optional(),
+    artifacts: z.array(githubWorkflowArtifactSchema).optional(),
+    hasData: z.boolean(),
+  })),
+  total_count: z.number(),
+  repository: z.object({
+    owner: z.string(),
+    name: z.string(),
+    workflow_name: z.string(),
+  }),
+});
+
 export type TaskYaml = z.infer<typeof taskYamlSchema>;
 export type ResultsJson = z.infer<typeof resultsJsonSchema>;
 export type AgentThought = z.infer<typeof agentThoughtSchema>;
@@ -87,3 +142,9 @@ export type AgentCastHeader = z.infer<typeof agentCastHeaderSchema>;
 export type S3File = z.infer<typeof s3FileSchema>;
 export type TaskRun = z.infer<typeof taskRunSchema>;
 export type S3Hierarchy = z.infer<typeof s3HierarchySchema>;
+
+// GitHub workflow types
+export type GitHubWorkflowRun = z.infer<typeof githubWorkflowRunSchema>;
+export type GitHubWorkflowLog = z.infer<typeof githubWorkflowLogSchema>;
+export type GitHubWorkflowArtifact = z.infer<typeof githubWorkflowArtifactSchema>;
+export type GitHubWorkflowHierarchy = z.infer<typeof githubWorkflowHierarchySchema>;
