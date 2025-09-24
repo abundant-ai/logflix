@@ -148,3 +148,27 @@ export type GitHubWorkflowRun = z.infer<typeof githubWorkflowRunSchema>;
 export type GitHubWorkflowLog = z.infer<typeof githubWorkflowLogSchema>;
 export type GitHubWorkflowArtifact = z.infer<typeof githubWorkflowArtifactSchema>;
 export type GitHubWorkflowHierarchy = z.infer<typeof githubWorkflowHierarchySchema>;
+
+// Unified selection types for dual-source navigation
+export const s3SelectionSchema = z.object({
+  type: z.literal('s3'),
+  date: z.string(),
+  taskId: z.string(),
+  modelName: z.string(),
+});
+
+export const githubSelectionSchema = z.object({
+  type: z.literal('github'),
+  runId: z.number(),
+  runNumber: z.number(),
+  workflowName: z.string().optional(),
+});
+
+export const unifiedSelectionSchema = z.discriminatedUnion('type', [
+  s3SelectionSchema,
+  githubSelectionSchema,
+]);
+
+export type S3Selection = z.infer<typeof s3SelectionSchema>;
+export type GitHubSelection = z.infer<typeof githubSelectionSchema>;
+export type UnifiedSelection = z.infer<typeof unifiedSelectionSchema>;
