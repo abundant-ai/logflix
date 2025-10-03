@@ -125,7 +125,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const [workflowRun, logs, artifacts] = await Promise.allSettled([
         githubService.getWorkflowRun(runIdNumber),
         githubService.getWorkflowRunLogs(runIdNumber),
-        githubService.getCastArtifacts(runIdNumber),
+        githubService.getWorkflowRunArtifacts(runIdNumber),
       ]);
       
       const run = workflowRun.status === 'fulfilled' ? workflowRun.value : null;
@@ -138,7 +138,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         run,
         logs: logs.status === 'fulfilled' ? logs.value : [],
         artifacts: artifacts.status === 'fulfilled' ? artifacts.value : [],
-        hasData: (logs.status === 'fulfilled' && logs.value.length > 0) || 
+        hasData: (logs.status === 'fulfilled' && logs.value.length > 0) ||
                  (artifacts.status === 'fulfilled' && artifacts.value.length > 0),
       };
 
@@ -178,7 +178,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const runIdNumber = parseInt(runId, 10);
-      const artifacts = await githubService.getCastArtifacts(runIdNumber);
+      const allArtifacts = await githubService.getWorkflowRunArtifacts(runIdNumber);
+      
+      // Filter for cast files
+      const artifacts = allArtifacts.filter(artifact =>
+        artifact.name.toLowerCase().includes('cast') ||
+        artifact.name.toLowerCase().includes('asciinema') ||
+        artifact.name.toLowerCase().includes('recording')
+      );
       
       res.json({ artifacts });
     } catch (error) {
@@ -247,6 +254,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching review comments:", error);
       res.status(500).json({ error: "Failed to fetch review comments" });
+    }
+  });
+
+  // Get cast file content from artifact
+  app.get("/api/github/cast-file/:artifactId", async (req, res) => {
+    try {
+      const { artifactId } = req.params;
+      
+      if (!artifactId || isNaN(parseInt(artifactId, 10))) {
+        return res.status(400).json({ error: "Invalid artifact ID parameter" });
+      }
+
+      const artifactIdNumber = parseInt(artifactId, 10);
+      const castContent = await githubService.getCastFileContent(artifactIdNumber);
+      
+      if (!castContent) {
+        return res.status(404).json({ error: "Cast file not found or expired" });
+      }
+
+      // Return the base64 encoded zip for now
+      // Frontend will need to handle unzipping
+      res.json({ content: castContent, encoding: 'base64' });
+    } catch (error) {
+      console.error("Error fetching cast file:", error);
+      res.status(500).json({ error: "Failed to fetch cast file" });
     }
   });
 

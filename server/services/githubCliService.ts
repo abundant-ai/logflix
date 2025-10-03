@@ -210,15 +210,17 @@ export class GitHubCliService {
   }
 
   /**
-   * Get workflow run logs
+   * Get workflow run logs with increased buffer for large logs
    */
   async getWorkflowRunLogs(runId: number): Promise<GitHubWorkflowLog[]> {
     try {
       const repoContext = this.getRepoContext();
       
-      // Get run logs (this downloads the full log)
+      // Get run logs with increased buffer size (50MB) for large terminal bench logs
       const logCommand = `run view ${runId} ${repoContext} --log`;
-      const { stdout } = await execAsync(`gh ${logCommand}`);
+      const { stdout } = await execAsync(`gh ${logCommand}`, {
+        maxBuffer: 50 * 1024 * 1024 // 50MB buffer
+      });
       
       // Parse the logs - gh CLI returns the full log as text
       // We'll create a single log entry with all content
@@ -237,16 +239,24 @@ export class GitHubCliService {
   }
 
   /**
-   * Get workflow run artifacts
+   * Get workflow run artifacts using GitHub API
    */
   async getWorkflowRunArtifacts(runId: number): Promise<GitHubWorkflowArtifact[]> {
     try {
       const repoContext = this.getRepoContext();
       
-      const artifactsCommand = `run view ${runId} ${repoContext} --json artifacts`;
-      const result = await this.executeGhCommand<{ artifacts: GHArtifactJSON[] }>(artifactsCommand);
+      // Use GitHub API to fetch artifacts since gh run view doesn't support artifacts field
+      const artifactsCommand = `api repos/${this.repositoryOwner}/${this.repositoryName}/actions/runs/${runId}/artifacts --jq '.artifacts[] | {id: .id, name: .name, size: .size_in_bytes, url: .archive_download_url, createdAt: .created_at, updatedAt: .updated_at, expired: .expired}'`;
+      const { stdout } = await execAsync(`gh ${artifactsCommand}`);
       
-      return result.artifacts.map(artifact => ({
+      // Parse newline-delimited JSON
+      const artifacts: GHArtifactJSON[] = stdout
+        .trim()
+        .split('\n')
+        .filter(line => line)
+        .map(line => JSON.parse(line));
+      
+      return artifacts.map(artifact => ({
         id: artifact.id,
         name: artifact.name,
         size_in_bytes: artifact.size,
@@ -281,23 +291,26 @@ export class GitHubCliService {
   }
 
   /**
-   * Get cast artifacts (artifacts containing recordings)
+   * Download and extract cast file content from artifact
    */
-  async getCastArtifacts(runId: number): Promise<GitHubWorkflowArtifact[]> {
+  async getCastFileContent(artifactId: number): Promise<string | null> {
     try {
-      const artifacts = await this.getWorkflowRunArtifacts(runId);
+      // Download artifact using GitHub API
+      const downloadCommand = `api repos/${this.repositoryOwner}/${this.repositoryName}/actions/artifacts/${artifactId}/zip --output -`;
+      const { stdout } = await execAsync(`gh ${downloadCommand}`, {
+        encoding: 'buffer',
+        maxBuffer: 50 * 1024 * 1024 // 50MB buffer
+      });
       
-      // Filter for .cast files or artifacts that might contain asciinema recordings
-      return artifacts.filter(artifact => 
-        artifact.name.toLowerCase().includes('cast') ||
-        artifact.name.toLowerCase().includes('asciinema') ||
-        artifact.name.toLowerCase().includes('recording')
-      );
+      // The artifact is a zip file, we need to extract the .cast file
+      // For now, return indication that we have the zip
+      return stdout.toString('base64');
     } catch (error) {
-      console.error(`Error fetching cast artifacts for run ${runId}:`, error);
-      return [];
+      console.error(`Error downloading cast file for artifact ${artifactId}:`, error);
+      return null;
     }
   }
+
 
   /**
    * Get specific workflow run details

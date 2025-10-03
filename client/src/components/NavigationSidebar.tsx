@@ -52,10 +52,20 @@ export default function NavigationSidebar({ onSelectPR, selectedPR }: Navigation
     <div className="w-80 bg-card border-r border-border flex flex-col" data-testid="navigation-sidebar">
       {/* Header */}
       <div className="p-4 border-b border-border">
-        <h1 className="text-lg font-semibold text-foreground flex items-center gap-2">
-          <GitPullRequest className="h-5 w-5" />
-          GitHub PR Viewer
-        </h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-lg font-semibold text-foreground flex items-center gap-2">
+            <GitPullRequest className="h-5 w-5" />
+            GitHub PR Viewer
+          </h1>
+          <div className="flex items-center gap-1.5">
+            <div className={`w-2 h-2 rounded-full ${
+              error ? 'bg-destructive' : isLoading ? 'bg-warning' : 'bg-success'
+            }`}></div>
+            <span className="text-xs text-muted-foreground">
+              {error ? 'Error' : isLoading ? 'Loading' : 'Connected'}
+            </span>
+          </div>
+        </div>
         <p className="text-sm text-muted-foreground mt-1">Pull requests & CI workflows</p>
       </div>
 
@@ -177,26 +187,6 @@ export default function NavigationSidebar({ onSelectPR, selectedPR }: Navigation
         )}
       </div>
 
-      {/* Sidebar Footer */}
-      <div className="p-4 border-t border-border">
-        <div className="space-y-2">
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>GitHub Connection</span>
-            <div className="flex items-center gap-1">
-              <div className={`w-2 h-2 rounded-full ${
-                error ? 'bg-destructive' : isLoading ? 'bg-warning' : 'bg-success'
-              }`}></div>
-              <span>{error ? 'Error' : isLoading ? 'Loading' : 'Connected'}</span>
-            </div>
-          </div>
-          {prData && (
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span>Total PRs</span>
-              <span className="font-medium">{prData.total_count}</span>
-            </div>
-          )}
-        </div>
-      </div>
     </div>
   );
 }
