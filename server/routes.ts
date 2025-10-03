@@ -1,162 +1,98 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { S3Service } from "./services/s3Service";
-import { GitHubService } from "./services/githubService";
-import { z } from "zod";
+import { GitHubCliService } from "./services/githubCliService";
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  const s3Service = new S3Service();
-  const githubService = new GitHubService();
-
-  // Get S3 hierarchy (dates -> tasks -> models)
-  app.get("/api/hierarchy", async (req, res) => {
-    try {
-      const hierarchy = await s3Service.getHierarchy();
-      res.json(hierarchy);
-    } catch (error) {
-      console.error("Error fetching hierarchy:", error);
-      res.status(500).json({ error: "Failed to fetch S3 hierarchy" });
-    }
-  });
-
-  // Get specific task run data
-  app.get("/api/task-run/:date/:taskId/:modelName", async (req, res) => {
-    try {
-      const { date, taskId, modelName } = req.params;
-      
-      if (!date || !taskId || !modelName) {
-        return res.status(400).json({ error: "Missing required parameters" });
-      }
-
-      const taskRun = await s3Service.getTaskRun(date, taskId, modelName);
-      
-      if (!taskRun) {
-        return res.status(404).json({ error: "Task run not found" });
-      }
-
-      res.json(taskRun);
-    } catch (error) {
-      console.error("Error fetching task run:", error);
-      res.status(500).json({ error: "Failed to fetch task run data" });
-    }
-  });
-
-  // Get task metadata (task.yaml) for task-level view
-  app.get("/api/task-yaml/:date/:taskId", async (req, res) => {
-    try {
-      const { date, taskId } = req.params;
-      
-      if (!date || !taskId) {
-        return res.status(400).json({ error: "Missing required parameters" });
-      }
-
-      const taskYaml = await s3Service.getTaskYaml(date, taskId);
-      
-      if (!taskYaml) {
-        return res.status(404).json({ error: "Task metadata not found" });
-      }
-
-      res.json(taskYaml);
-    } catch (error) {
-      console.error("Error fetching task metadata:", error);
-      res.status(500).json({ error: "Failed to fetch task metadata" });
-    }
-  });
-
-  // Download specific file
-  app.get("/api/download", async (req, res) => {
-    try {
-      const { path } = req.query;
-      
-      if (!path || typeof path !== "string") {
-        return res.status(400).json({ error: "Missing file path" });
-      }
-
-      const content = await s3Service.downloadFile(path);
-      
-      // Set appropriate headers based on file type
-      const filename = path.split('/').pop() || 'download';
-      const extension = filename.split('.').pop()?.toLowerCase();
-      
-      let contentType = 'application/octet-stream';
-      if (extension === 'json') contentType = 'application/json';
-      else if (extension === 'yaml' || extension === 'yml') contentType = 'text/yaml';
-      else if (extension === 'cast') contentType = 'application/json';
-      else if (extension === 'check' || extension === 'debug') contentType = 'text/plain';
-
-      res.setHeader('Content-Type', contentType);
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-      res.send(content);
-    } catch (error) {
-      console.error("Error downloading file:", error);
-      res.status(500).json({ error: "Failed to download file" });
-    }
-  });
-
-  // Search tasks
-  app.get("/api/search", async (req, res) => {
-    try {
-      const { q, difficulty, model } = req.query;
-      
-      // For now, return the full hierarchy and let frontend filter
-      // In a real implementation, you'd implement server-side filtering
-      const hierarchy = await s3Service.getHierarchy();
-      
-      // Basic filtering logic
-      let filteredHierarchy = hierarchy;
-      
-      if (difficulty && typeof difficulty === 'string') {
-        // This would require fetching task.yaml files to filter by difficulty
-        // For now, return unfiltered results
-      }
-      
-      if (q && typeof q === 'string') {
-        // Filter tasks and models by search query
-        filteredHierarchy = {
-          dates: hierarchy.dates.map(date => ({
-            ...date,
-            tasks: date.tasks.filter(task => 
-              task.taskId.toLowerCase().includes(q.toLowerCase()) ||
-              task.models.some(model => model.modelName.toLowerCase().includes(q.toLowerCase()))
-            ).map(task => ({
-              ...task,
-              models: task.models.filter(model => 
-                model.modelName.toLowerCase().includes(q.toLowerCase()) ||
-                task.taskId.toLowerCase().includes(q.toLowerCase())
-              )
-            }))
-          })).filter(date => date.tasks.length > 0)
-        };
-      }
-      
-      res.json(filteredHierarchy);
-    } catch (error) {
-      console.error("Error searching:", error);
-      res.status(500).json({ error: "Search failed" });
-    }
-  });
-
-  // Get post-test file content
-  app.get("/api/post-test/:date/:taskId/:modelName", async (req, res) => {
-    try {
-      const { date, taskId, modelName } = req.params;
-      
-      const postTestContent = await s3Service.getPostTestFile(date, taskId, modelName);
-      
-      if (postTestContent === null) {
-        return res.status(404).json({ error: "Post-test file not found" });
-      }
-      
-      res.json({ content: postTestContent });
-    } catch (error) {
-      console.error("Error fetching post-test file:", error);
-      res.status(500).json({ error: "Failed to fetch post-test file" });
-    }
-  });
+  const githubService = new GitHubCliService();
 
   // ============= GITHUB API ROUTES =============
 
-  // Get GitHub workflow hierarchy
+  // List pull requests with filters
+  app.get("/api/github/pull-requests", async (req, res) => {
+    try {
+      const { state, limit, sort, direction } = req.query;
+      
+      const stateValue = (state === 'open' || state === 'closed' || state === 'all') ? state : 'all';
+      const limitNumber = limit && typeof limit === 'string' ? parseInt(limit, 10) : 30;
+      const sortValue = (sort === 'created' || sort === 'updated' || sort === 'popularity' || sort === 'long-running') ? sort : 'updated';
+      const directionValue = (direction === 'asc' || direction === 'desc') ? direction : 'desc';
+      
+      if (isNaN(limitNumber) || limitNumber < 1 || limitNumber > 100) {
+        return res.status(400).json({ error: "Invalid limit parameter (must be 1-100)" });
+      }
+
+      const pullRequests = await githubService.listPullRequests(stateValue, limitNumber, sortValue, directionValue);
+      res.json({ pullRequests, total_count: pullRequests.length });
+    } catch (error) {
+      console.error("Error fetching pull requests:", error);
+      res.status(500).json({ error: "Failed to fetch pull requests" });
+    }
+  });
+
+  // Get a specific pull request
+  app.get("/api/github/pull-request/:prNumber", async (req, res) => {
+    try {
+      const { prNumber } = req.params;
+      
+      if (!prNumber || isNaN(parseInt(prNumber, 10))) {
+        return res.status(400).json({ error: "Invalid PR number parameter" });
+      }
+
+      const prNumberInt = parseInt(prNumber, 10);
+      const pullRequest = await githubService.getPullRequest(prNumberInt);
+      
+      if (!pullRequest) {
+        return res.status(404).json({ error: "Pull request not found" });
+      }
+
+      res.json(pullRequest);
+    } catch (error) {
+      console.error("Error fetching pull request:", error);
+      res.status(500).json({ error: "Failed to fetch pull request" });
+    }
+  });
+
+  // Get workflow runs for a pull request
+  app.get("/api/github/pr-workflow-runs/:prNumber", async (req, res) => {
+    try {
+      const { prNumber } = req.params;
+      const { limit } = req.query;
+      
+      if (!prNumber || isNaN(parseInt(prNumber, 10))) {
+        return res.status(400).json({ error: "Invalid PR number parameter" });
+      }
+
+      const prNumberInt = parseInt(prNumber, 10);
+      const limitNumber = limit && typeof limit === 'string' ? parseInt(limit, 10) : 10;
+      
+      const runs = await githubService.getWorkflowRunsForPR(prNumberInt, limitNumber);
+      res.json({ runs, total_count: runs.length });
+    } catch (error) {
+      console.error("Error fetching workflow runs for PR:", error);
+      res.status(500).json({ error: "Failed to fetch workflow runs for PR" });
+    }
+  });
+
+  // Get workflow bot comments for a pull request
+  app.get("/api/github/pr-bot-comments/:prNumber", async (req, res) => {
+    try {
+      const { prNumber } = req.params;
+      
+      if (!prNumber || isNaN(parseInt(prNumber, 10))) {
+        return res.status(400).json({ error: "Invalid PR number parameter" });
+      }
+
+      const prNumberInt = parseInt(prNumber, 10);
+      const comments = await githubService.getWorkflowBotComments(prNumberInt);
+      
+      res.json({ comments });
+    } catch (error) {
+      console.error("Error fetching workflow bot comments:", error);
+      res.status(500).json({ error: "Failed to fetch workflow bot comments" });
+    }
+  });
+
+  // Get GitHub workflow hierarchy (kept for backwards compatibility)
   app.get("/api/github/hierarchy", async (req, res) => {
     try {
       const { limit } = req.query;
@@ -252,34 +188,84 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Download specific artifact
-  app.get("/api/github/download-artifact/:artifactId", async (req, res) => {
+  app.get("/api/github/download-artifact/:runId/:artifactName", async (req, res) => {
     try {
-      const { artifactId } = req.params;
+      const { runId, artifactName } = req.params;
       
-      if (!artifactId || isNaN(parseInt(artifactId, 10))) {
-        return res.status(400).json({ error: "Invalid artifact ID parameter" });
+      if (!runId || isNaN(parseInt(runId, 10))) {
+        return res.status(400).json({ error: "Invalid run ID parameter" });
       }
 
-      const artifactIdNumber = parseInt(artifactId, 10);
-      const content = await githubService.downloadArtifact(artifactIdNumber);
-      
-      if (!content) {
-        return res.status(404).json({ error: "Artifact not found or expired" });
+      if (!artifactName) {
+        return res.status(400).json({ error: "Artifact name is required" });
       }
 
-      // Set appropriate headers for artifact download
-      const filename = `artifact_${artifactIdNumber}.zip`;
+      const runIdNumber = parseInt(runId, 10);
+      const result = await githubService.downloadArtifact(artifactName, runIdNumber);
       
-      res.setHeader('Content-Type', 'application/zip');
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-      res.setHeader('Content-Length', content.byteLength.toString());
-      
-      // Convert ArrayBuffer to Buffer for Express response
-      const buffer = Buffer.from(content);
-      res.send(buffer);
+      if (!result) {
+        return res.status(404).json({ error: "Artifact not found or failed to download" });
+      }
+
+      res.json({ message: result });
     } catch (error) {
       console.error("Error downloading artifact:", error);
       res.status(500).json({ error: "Failed to download artifact" });
+    }
+  });
+
+  // Get pull requests for a commit SHA
+  app.get("/api/github/pull-requests/:commitSha", async (req, res) => {
+    try {
+      const { commitSha } = req.params;
+      
+      if (!commitSha) {
+        return res.status(400).json({ error: "Commit SHA is required" });
+      }
+
+      const pullRequests = await githubService.getPullRequestsForCommit(commitSha);
+      res.json({ pullRequests });
+    } catch (error) {
+      console.error("Error fetching pull requests:", error);
+      res.status(500).json({ error: "Failed to fetch pull requests" });
+    }
+  });
+
+  // Get review comments for a pull request
+  app.get("/api/github/review-comments/:prNumber", async (req, res) => {
+    try {
+      const { prNumber } = req.params;
+      
+      if (!prNumber || isNaN(parseInt(prNumber, 10))) {
+        return res.status(400).json({ error: "Invalid PR number parameter" });
+      }
+
+      const prNumberInt = parseInt(prNumber, 10);
+      const comments = await githubService.getReviewComments(prNumberInt);
+      
+      res.json({ comments });
+    } catch (error) {
+      console.error("Error fetching review comments:", error);
+      res.status(500).json({ error: "Failed to fetch review comments" });
+    }
+  });
+
+  // Get review comments for a workflow run
+  app.get("/api/github/review-comments-for-run/:runId", async (req, res) => {
+    try {
+      const { runId } = req.params;
+      
+      if (!runId || isNaN(parseInt(runId, 10))) {
+        return res.status(400).json({ error: "Invalid run ID parameter" });
+      }
+
+      const runIdNumber = parseInt(runId, 10);
+      const comments = await githubService.getReviewCommentsForRun(runIdNumber);
+      
+      res.json({ comments });
+    } catch (error) {
+      console.error("Error fetching review comments for run:", error);
+      res.status(500).json({ error: "Failed to fetch review comments for run" });
     }
   });
 

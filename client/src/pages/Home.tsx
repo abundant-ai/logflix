@@ -1,45 +1,40 @@
 import { useState, useEffect } from "react";
 import { useSearch, useLocation } from "wouter";
 import NavigationSidebar from "@/components/NavigationSidebar";
-import MainContent from "@/components/MainContent";
-import { TaskRun } from "@shared/schema";
+import GitHubWorkflowContent from "@/components/GitHubWorkflowContent";
+import { GitHubPRSelection } from "@shared/schema";
 
 export default function Home() {
   const [, setLocation] = useLocation();
   const searchString = useSearch();
-  const searchParams = new URLSearchParams(searchString);
   
-  const [selectedTaskRun, setSelectedTaskRun] = useState<{
-    date: string;
-    taskId: string;
-    modelName: string;
-  } | null>(null);
+  const [selectedPR, setSelectedPR] = useState<GitHubPRSelection | null>(null);
 
-  // Initialize selectedTaskRun from URL parameters on mount
+  // Initialize from URL parameters
   useEffect(() => {
     const params = new URLSearchParams(searchString);
-    const date = params.get('date');
-    const taskId = params.get('task');
-    const model = params.get('model');
+    const prNumber = params.get('pr');
+    const prTitle = params.get('title');
     
-    if (date && taskId && model) {
-      setSelectedTaskRun({
-        date,
-        taskId,
-        modelName: model
+    if (prNumber) {
+      setSelectedPR({
+        type: 'pr',
+        prNumber: parseInt(prNumber, 10),
+        prTitle: prTitle || ''
       });
     }
   }, [searchString]);
 
-  // Handle task run selection and update URL
-  const handleSelectTaskRun = (taskRun: { date: string; taskId: string; modelName: string }) => {
-    setSelectedTaskRun(taskRun);
+  // Handle PR selection and update URL
+  const handleSelectPR = (selection: GitHubPRSelection) => {
+    setSelectedPR(selection);
     
     // Update URL with query parameters
     const params = new URLSearchParams();
-    params.set('date', taskRun.date);
-    params.set('task', taskRun.taskId);
-    params.set('model', taskRun.modelName);
+    params.set('pr', selection.prNumber.toString());
+    if (selection.prTitle) {
+      params.set('title', selection.prTitle);
+    }
     
     setLocation(`/?${params.toString()}`);
   };
@@ -47,10 +42,10 @@ export default function Home() {
   return (
     <div className="flex h-screen bg-background text-foreground">
       <NavigationSidebar 
-        onSelectTaskRun={handleSelectTaskRun} 
-        selectedTaskRun={selectedTaskRun}
+        onSelectPR={handleSelectPR} 
+        selectedPR={selectedPR}
       />
-      <MainContent selectedTaskRun={selectedTaskRun} />
+      <GitHubWorkflowContent selectedPR={selectedPR} />
     </div>
   );
 }
