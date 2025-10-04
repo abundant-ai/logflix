@@ -656,12 +656,13 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                           <p className="text-sm">
                             {taskData?.taskYaml?.author_name || commitData?.author || prData.user.login}
                             {(commitData?.email || taskData?.taskYaml?.author_email) && (
-                              <> &lt;{commitData?.email || taskData?.taskYaml?.author_email}&gt; ({prData.user.login})</>
-                            )}
-                            {!(commitData?.email || taskData?.taskYaml?.author_email) && (
-                              <> ({prData.user.login})</>
+                              <> &lt;{commitData?.email || taskData?.taskYaml?.author_email}&gt;</>
                             )}
                           </p>
+                        </div>
+                        <div>
+                          <label className="text-sm text-muted-foreground block mb-1">Author Github Handle</label>
+                          <p className="text-sm">{prData.user.login}</p>
                         </div>
                         <div>
                           <label className="text-sm text-muted-foreground block mb-1">Commit</label>
