@@ -364,10 +364,8 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                     </CardHeader>
                     <CardContent className="space-y-3">
                       <div>
-                        <label className="text-sm text-muted-foreground">Task ID</label>
-                        <p className="font-mono text-sm bg-muted px-2 py-1 rounded mt-1">
-                          {taskData?.taskId || 'N/A'}
-                        </p>
+                        <label className="text-sm font-semibold text-foreground">Task ID</label>
+                        <p className="text-sm mt-1">{taskData?.taskId || 'N/A'}</p>
                       </div>
                       {taskData?.taskYaml?.category && (
                         <div>
@@ -404,14 +402,18 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
 
                   <Card>
                     <CardHeader>
-                      <CardTitle>Workflow Details</CardTitle>
+                      <CardTitle>Pull Request Details</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-3">
                       <div>
-                        <label className="text-sm text-muted-foreground">Run Number</label>
-                        <p className="font-mono text-sm bg-muted px-2 py-1 rounded mt-1">
-                          #{selectedRun.run_number}
+                        <label className="text-sm font-semibold text-foreground">Author</label>
+                        <p className="text-sm mt-1">
+                          {taskData?.taskYaml?.author_name || prData.user.login} ({prData.user.login})
                         </p>
+                      </div>
+                      <div>
+                        <label className="text-sm font-semibold text-foreground">Run Number</label>
+                        <p className="text-sm mt-1">#{selectedRun.run_number}</p>
                       </div>
                       <div>
                         <label className="text-sm text-muted-foreground">Workflow</label>
@@ -422,10 +424,14 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                         <p className="text-sm mt-1">{formatDate(selectedRun.created_at)}</p>
                       </div>
                       <div>
-                        <label className="text-sm text-muted-foreground">Commit</label>
-                        <p className="font-mono text-xs bg-muted px-2 py-1 rounded mt-1">
-                          {selectedRun.head_sha.substring(0, 7)}
-                        </p>
+                        <label className="text-sm font-semibold text-foreground">Commit</label>
+                        <div className="flex items-center gap-2 mt-1">
+                          <code className="text-xs font-mono">{selectedRun.head_sha.substring(0, 7)}</code>
+                          <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                          <span className="text-sm text-muted-foreground truncate max-w-xs">
+                            {selectedRun.name || 'Workflow run'}
+                          </span>
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
@@ -498,123 +504,95 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
             </Card>
           </TabsContent>
 
-          <TabsContent value="files" className="p-6 space-y-6 m-0">
-            {selectedFile && fileContent ? (
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setSelectedFile(null);
-                          setFileContent(null);
-                        }}
-                        className="mb-2"
-                      >
-                        ← Back to Files
-                      </Button>
-                      <CardTitle className="flex items-center gap-2">
-                        <FileCode className="h-5 w-5" />
-                        {selectedFile.name}
-                      </CardTitle>
-                      <p className="text-xs text-muted-foreground font-mono mt-1">
-                        {selectedFile.path}
-                      </p>
-                    </div>
-                    {selectedFile.download_url && (
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        asChild
-                      >
-                        <a
-                          href={selectedFile.download_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-2"
-                        >
-                          <ExternalLink className="h-4 w-4" />
-                          View on GitHub
-                        </a>
-                      </Button>
-                    )}
+          <TabsContent value="files" className="p-0 m-0 h-full">
+            {prFilesData && prFilesData.files.length > 0 ? (
+              <div className="flex h-full">
+                {/* File Tree Sidebar */}
+                <div className="w-80 border-r border-border bg-card overflow-y-auto scrollbar-thin">
+                  <div className="p-4 border-b border-border">
+                    <h3 className="font-semibold text-sm">Files ({prFilesData.files.length})</h3>
                   </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="bg-black rounded-lg p-4 max-h-[600px] overflow-y-auto scrollbar-thin">
-                    <pre className="text-xs font-mono text-green-400 whitespace-pre-wrap break-words">
-                      {fileContent}
-                    </pre>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : prFilesData && prFilesData.files.length > 0 ? (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Pull Request Files ({prFilesData.files.length})</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
+                  <div className="p-2">
                     {prFilesData.files.map((file: any) => (
                       <div
                         key={file.sha}
-                        className="flex items-center justify-between p-3 hover:bg-muted rounded-lg transition-colors cursor-pointer"
+                        className={`flex items-center gap-2 p-2 hover:bg-muted rounded cursor-pointer transition-colors ${
+                          selectedFile?.sha === file.sha ? 'bg-primary/20 border border-primary/30' : ''
+                        }`}
                         onClick={async () => {
-                          if (file.type === 'file') {
-                            // Fetch and display file content inline
-                            try {
-                              const response = await fetch(`/api/github/pr-file-content/${selectedPR.prNumber}?path=${encodeURIComponent(file.path)}`);
-                              const data = await response.json();
-                              if (data.content) {
-                                setSelectedFile(file);
-                                setFileContent(data.content);
-                              }
-                            } catch (error) {
-                              console.error('Error fetching file:', error);
+                          setSelectedFile(file);
+                          // Fetch file content
+                          try {
+                            const response = await fetch(`/api/github/pr-file-content/${selectedPR.prNumber}?path=${encodeURIComponent(file.path)}`);
+                            const data = await response.json();
+                            if (data.content) {
+                              setFileContent(data.content);
                             }
+                          } catch (error) {
+                            console.error('Error fetching file:', error);
+                            setFileContent('Error loading file content');
                           }
                         }}
                       >
-                        <div className="flex items-center gap-3">
-                          <FileCode className="h-4 w-4 text-accent" />
-                          <div>
-                            <p className="text-sm font-medium">{file.name}</p>
-                            <p className="text-xs text-muted-foreground font-mono">
-                              {file.path}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground">
-                            {file.size} changes
-                          </span>
-                          {file.download_url && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                window.open(file.download_url, '_blank');
-                              }}
-                            >
-                              <ExternalLink className="h-4 w-4" />
-                            </Button>
-                          )}
+                        <FileCode className="h-4 w-4 text-accent flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{file.name}</p>
+                          <p className="text-xs text-muted-foreground truncate">{file.path}</p>
                         </div>
                       </div>
                     ))}
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+
+                {/* File Content Viewer */}
+                <div className="flex-1 flex flex-col">
+                  {selectedFile && fileContent ? (
+                    <>
+                      <div className="p-4 border-b border-border bg-card flex items-center justify-between">
+                        <div className="min-w-0 flex-1">
+                          <h3 className="font-semibold text-sm truncate">{selectedFile.name}</h3>
+                          <p className="text-xs text-muted-foreground font-mono truncate">{selectedFile.path}</p>
+                        </div>
+                        {selectedFile.download_url && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            asChild
+                          >
+                            <a
+                              href={selectedFile.download_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-2"
+                            >
+                              <ExternalLink className="h-4 w-4" />
+                            </a>
+                          </Button>
+                        )}
+                      </div>
+                      <div className="flex-1 overflow-auto bg-black p-4">
+                        <pre className="text-xs font-mono text-green-400 whitespace-pre-wrap break-words">
+                          {fileContent}
+                        </pre>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex-1 flex items-center justify-center">
+                      <div className="text-center">
+                        <FileCode className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
+                        <p className="text-muted-foreground">Select a file to view its content</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
             ) : (
-              <Card>
-                <CardContent className="p-8 text-center">
+              <div className="flex items-center justify-center h-full p-8">
+                <div className="text-center">
                   <FileCode className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
                   <p className="text-muted-foreground">No files found in this PR</p>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             )}
           </TabsContent>
 

@@ -55,7 +55,7 @@ export default function NavigationSidebar({ onSelectPR, selectedPR }: Navigation
         <div className="flex items-center justify-between">
           <h1 className="text-lg font-semibold text-foreground flex items-center gap-2">
             <GitPullRequest className="h-5 w-5" />
-            GitHub PR Viewer
+            Logflix
           </h1>
           <div className="flex items-center gap-1.5">
             <div className={`w-2 h-2 rounded-full ${
@@ -66,7 +66,6 @@ export default function NavigationSidebar({ onSelectPR, selectedPR }: Navigation
             </span>
           </div>
         </div>
-        <p className="text-sm text-muted-foreground mt-1">Pull requests & CI workflows</p>
       </div>
 
       {/* Search and Filters */}
