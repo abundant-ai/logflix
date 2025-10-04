@@ -1,6 +1,7 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as yaml from 'js-yaml';
+import AdmZip from 'adm-zip';
 import {
   GitHubWorkflowRun,
   GitHubWorkflowLog,
@@ -297,17 +298,105 @@ export class GitHubCliService {
   async getCastFileContent(artifactId: number): Promise<string | null> {
     try {
       // Download artifact using GitHub API
-      const downloadCommand = `api repos/${this.repositoryOwner}/${this.repositoryName}/actions/artifacts/${artifactId}/zip --output -`;
+      const downloadCommand = `api repos/${this.repositoryOwner}/${this.repositoryName}/actions/artifacts/${artifactId}/zip`;
       const { stdout } = await execAsync(`gh ${downloadCommand}`, {
         encoding: 'buffer',
         maxBuffer: 50 * 1024 * 1024 // 50MB buffer
       });
       
-      // The artifact is a zip file, we need to extract the .cast file
-      // For now, return indication that we have the zip
-      return stdout.toString('base64');
+      // Extract zip and find .cast file
+      const zip = new AdmZip(stdout);
+      const zipEntries = zip.getEntries();
+      
+      // Find first .cast file
+      const castEntry = zipEntries.find((entry: any) =>
+        !entry.isDirectory && entry.entryName.endsWith('.cast')
+      );
+      
+      if (!castEntry) {
+        console.error(`No .cast file found in artifact ${artifactId}`);
+        return null;
+      }
+      
+      // Read as text and validate size (max 10MB for cast files)
+      const content = zip.readAsText(castEntry);
+      if (content.length > 10 * 1024 * 1024) {
+        console.error(`Cast file ${castEntry.entryName} exceeds 10MB size limit`);
+        return null;
+      }
+      
+      return content;
     } catch (error) {
       console.error(`Error downloading cast file for artifact ${artifactId}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * List all .cast files in an artifact
+   */
+  async getCastFilesList(artifactId: number): Promise<Array<{ name: string; path: string; size: number }>> {
+    try {
+      // Download artifact zip
+      const downloadCommand = `api repos/${this.repositoryOwner}/${this.repositoryName}/actions/artifacts/${artifactId}/zip`;
+      const { stdout } = await execAsync(`gh ${downloadCommand}`, {
+        encoding: 'buffer',
+        maxBuffer: 50 * 1024 * 1024
+      });
+      
+      // Extract zip and find cast files
+      const zip = new AdmZip(stdout);
+      const zipEntries = zip.getEntries();
+      
+      const castFiles: Array<{ name: string; path: string; size: number }> = [];
+      zipEntries.forEach((entry: any) => {
+        if (!entry.isDirectory && entry.entryName.endsWith('.cast')) {
+          castFiles.push({
+            name: entry.entryName.split('/').pop() || entry.entryName,
+            path: entry.entryName,
+            size: entry.header.size
+          });
+        }
+      });
+      
+      return castFiles;
+    } catch (error) {
+      console.error(`Error listing cast files from artifact ${artifactId}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Get specific cast file content from artifact by path
+   */
+  async getCastFileByPath(artifactId: number, filePath: string): Promise<string | null> {
+    try {
+      // Download artifact zip
+      const downloadCommand = `api repos/${this.repositoryOwner}/${this.repositoryName}/actions/artifacts/${artifactId}/zip`;
+      const { stdout } = await execAsync(`gh ${downloadCommand}`, {
+        encoding: 'buffer',
+        maxBuffer: 50 * 1024 * 1024
+      });
+      
+      // Extract specific file
+      const zip = new AdmZip(stdout);
+      const entry = zip.getEntry(filePath);
+      
+      if (!entry) {
+        console.error(`Cast file ${filePath} not found in artifact`);
+        return null;
+      }
+      
+      // Read as text and validate size
+      const content = zip.readAsText(entry);
+      if (content.length > 10 * 1024 * 1024) {
+        console.error(`Cast file ${filePath} exceeds 10MB size limit`);
+        return null;
+      }
+      
+      return content;
+    } catch (error) {
+      console.error(`Error reading cast file ${filePath} from artifact ${artifactId}:`, error);
       return null;
     }
   }
@@ -797,6 +886,67 @@ export class GitHubCliService {
     } catch (error) {
       console.error(`Error fetching jobs for run ${runId}:`, error);
       return [];
+    }
+  }
+
+  /**
+   * Download artifact and extract log files
+   */
+  async getArtifactLogFiles(artifactId: number): Promise<Array<{ name: string; path: string }>> {
+    try {
+      // Download artifact zip
+      const downloadCommand = `api repos/${this.repositoryOwner}/${this.repositoryName}/actions/artifacts/${artifactId}/zip`;
+      const { stdout } = await execAsync(`gh ${downloadCommand}`, {
+        encoding: 'buffer',
+        maxBuffer: 50 * 1024 * 1024
+      });
+      
+      // Extract zip and find log files
+      const zip = new AdmZip(stdout);
+      const zipEntries = zip.getEntries();
+      
+      const logFiles: Array<{ name: string; path: string }> = [];
+      zipEntries.forEach((entry: any) => {
+        if (!entry.isDirectory && entry.entryName.endsWith('.log')) {
+          logFiles.push({
+            name: entry.entryName.split('/').pop() || entry.entryName,
+            path: entry.entryName
+          });
+        }
+      });
+      
+      return logFiles;
+    } catch (error) {
+      console.error(`Error extracting log files from artifact ${artifactId}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Get specific log file content from artifact
+   */
+  async getArtifactLogContent(artifactId: number, filePath: string): Promise<string | null> {
+    try {
+      // Download artifact zip
+      const downloadCommand = `api repos/${this.repositoryOwner}/${this.repositoryName}/actions/artifacts/${artifactId}/zip`;
+      const { stdout } = await execAsync(`gh ${downloadCommand}`, {
+        encoding: 'buffer',
+        maxBuffer: 50 * 1024 * 1024
+      });
+      
+      // Extract specific file
+      const zip = new AdmZip(stdout);
+      const entry = zip.getEntry(filePath);
+      
+      if (!entry) {
+        console.error(`File ${filePath} not found in artifact`);
+        return null;
+      }
+      
+      return zip.readAsText(entry);
+    } catch (error) {
+      console.error(`Error reading log file ${filePath} from artifact ${artifactId}:`, error);
+      return null;
     }
   }
 }

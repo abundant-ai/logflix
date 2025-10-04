@@ -3,7 +3,13 @@ import { createServer, type Server } from "http";
 import { GitHubCliService } from "./services/githubCliService";
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  const githubService = new GitHubCliService();
+  // Helper to create service instance with query params
+  const getGitHubService = (query: any) => {
+    const owner = typeof query.owner === 'string' ? query.owner : undefined;
+    const repo = typeof query.repo === 'string' ? query.repo : undefined;
+    const workflow = typeof query.workflow === 'string' ? query.workflow : undefined;
+    return new GitHubCliService(owner, repo, workflow);
+  };
 
   // ============= GITHUB API ROUTES =============
 
@@ -11,6 +17,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/github/pull-requests", async (req, res) => {
     try {
       const { state, limit, sort, direction } = req.query;
+      const githubService = getGitHubService(req.query);
       
       const stateValue = (state === 'open' || state === 'closed' || state === 'all') ? state : 'all';
       const limitNumber = limit && typeof limit === 'string' ? parseInt(limit, 10) : 30;
@@ -33,6 +40,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/github/pull-request/:prNumber", async (req, res) => {
     try {
       const { prNumber } = req.params;
+      const githubService = getGitHubService(req.query);
       
       if (!prNumber || isNaN(parseInt(prNumber, 10))) {
         return res.status(400).json({ error: "Invalid PR number parameter" });
@@ -57,6 +65,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { prNumber } = req.params;
       const { limit } = req.query;
+      const githubService = getGitHubService(req.query);
       
       if (!prNumber || isNaN(parseInt(prNumber, 10))) {
         return res.status(400).json({ error: "Invalid PR number parameter" });
@@ -77,6 +86,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/github/pr-bot-comments/:prNumber", async (req, res) => {
     try {
       const { prNumber } = req.params;
+      const githubService = getGitHubService(req.query);
       
       if (!prNumber || isNaN(parseInt(prNumber, 10))) {
         return res.status(400).json({ error: "Invalid PR number parameter" });
@@ -96,6 +106,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/github/hierarchy", async (req, res) => {
     try {
       const { limit } = req.query;
+      const githubService = getGitHubService(req.query);
       const limitNumber = limit && typeof limit === 'string' ? parseInt(limit, 10) : 30;
       
       if (isNaN(limitNumber) || limitNumber < 1 || limitNumber > 100) {
@@ -114,6 +125,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/github/workflow-run/:runId", async (req, res) => {
     try {
       const { runId } = req.params;
+      const githubService = getGitHubService(req.query);
       
       if (!runId || isNaN(parseInt(runId, 10))) {
         return res.status(400).json({ error: "Invalid run ID parameter" });
@@ -153,6 +165,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/github/workflow-logs/:runId", async (req, res) => {
     try {
       const { runId } = req.params;
+      const githubService = getGitHubService(req.query);
       
       if (!runId || isNaN(parseInt(runId, 10))) {
         return res.status(400).json({ error: "Invalid run ID parameter" });
@@ -172,6 +185,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/github/workflow-artifacts/:runId", async (req, res) => {
     try {
       const { runId } = req.params;
+      const githubService = getGitHubService(req.query);
       
       if (!runId || isNaN(parseInt(runId, 10))) {
         return res.status(400).json({ error: "Invalid run ID parameter" });
@@ -181,7 +195,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const allArtifacts = await githubService.getWorkflowRunArtifacts(runIdNumber);
       
       // Filter for cast files
-      const artifacts = allArtifacts.filter(artifact =>
+      const artifacts = allArtifacts.filter((artifact: any) =>
         artifact.name.toLowerCase().includes('cast') ||
         artifact.name.toLowerCase().includes('asciinema') ||
         artifact.name.toLowerCase().includes('recording')
@@ -198,6 +212,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/github/download-artifact/:runId/:artifactName", async (req, res) => {
     try {
       const { runId, artifactName } = req.params;
+      const githubService = getGitHubService(req.query);
       
       if (!runId || isNaN(parseInt(runId, 10))) {
         return res.status(400).json({ error: "Invalid run ID parameter" });
@@ -225,6 +240,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/github/pull-requests/:commitSha", async (req, res) => {
     try {
       const { commitSha } = req.params;
+      const githubService = getGitHubService(req.query);
       
       if (!commitSha) {
         return res.status(400).json({ error: "Commit SHA is required" });
@@ -242,6 +258,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/github/review-comments/:prNumber", async (req, res) => {
     try {
       const { prNumber } = req.params;
+      const githubService = getGitHubService(req.query);
       
       if (!prNumber || isNaN(parseInt(prNumber, 10))) {
         return res.status(400).json({ error: "Invalid PR number parameter" });
@@ -257,10 +274,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get cast file content from artifact
+  // Get cast file content from artifact (deprecated - use cast-playback instead)
   app.get("/api/github/cast-file/:artifactId", async (req, res) => {
     try {
       const { artifactId } = req.params;
+      const githubService = getGitHubService(req.query);
       
       if (!artifactId || isNaN(parseInt(artifactId, 10))) {
         return res.status(400).json({ error: "Invalid artifact ID parameter" });
@@ -273,11 +291,104 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Cast file not found or expired" });
       }
 
-      // Return the base64 encoded zip for now
-      // Frontend will need to handle unzipping
-      res.json({ content: castContent, encoding: 'base64' });
+      // Return the unzipped cast content (JSON format)
+      res.json({ content: castContent });
     } catch (error) {
       console.error("Error fetching cast file:", error);
+      res.status(500).json({ error: "Failed to fetch cast file" });
+    }
+  });
+
+  // Get first cast file content from artifact (for in-browser playback)
+  app.get("/api/github/cast-playback/:artifactId", async (req, res) => {
+    try {
+      const { artifactId } = req.params;
+      const githubService = getGitHubService(req.query);
+      
+      if (!artifactId || isNaN(parseInt(artifactId, 10))) {
+        return res.status(400).json({ error: "Invalid artifact ID parameter" });
+      }
+
+      const artifactIdNumber = parseInt(artifactId, 10);
+      const castContent = await githubService.getCastFileContent(artifactIdNumber);
+      
+      if (!castContent) {
+        return res.status(404).json({ error: "Cast file not found or expired" });
+      }
+
+      // Return as JSON for asciinema-player
+      res.json({ content: castContent });
+    } catch (error) {
+      console.error("Error fetching cast playback:", error);
+      res.status(500).json({ error: "Failed to fetch cast playback" });
+    }
+  });
+
+  // List all cast files in artifacts for a workflow run
+  app.get("/api/github/cast-list/:runId", async (req, res) => {
+    try {
+      const { runId } = req.params;
+      const githubService = getGitHubService(req.query);
+      
+      if (!runId || isNaN(parseInt(runId, 10))) {
+        return res.status(400).json({ error: "Invalid run ID parameter" });
+      }
+
+      const runIdNumber = parseInt(runId, 10);
+      const allArtifacts = await githubService.getWorkflowRunArtifacts(runIdNumber);
+      
+      // Filter for cast-related artifacts
+      const castArtifacts = allArtifacts.filter((artifact: any) =>
+        artifact.name.toLowerCase().includes('cast') ||
+        artifact.name.toLowerCase().includes('asciinema') ||
+        artifact.name.toLowerCase().includes('recording')
+      );
+
+      // Get cast files from each artifact
+      const castFilesPromises = castArtifacts.map(async (artifact: any) => {
+        const files = await githubService.getCastFilesList(artifact.id);
+        return {
+          artifact_id: artifact.id,
+          artifact_name: artifact.name,
+          expired: artifact.expired,
+          files
+        };
+      });
+
+      const castFiles = await Promise.all(castFilesPromises);
+      
+      res.json({ castFiles });
+    } catch (error) {
+      console.error("Error listing cast files:", error);
+      res.status(500).json({ error: "Failed to list cast files" });
+    }
+  });
+
+  // Get specific cast file by path from artifact
+  app.get("/api/github/cast-file-by-path/:artifactId", async (req, res) => {
+    try {
+      const { artifactId } = req.params;
+      const { path } = req.query;
+      const githubService = getGitHubService(req.query);
+      
+      if (!artifactId || isNaN(parseInt(artifactId, 10))) {
+        return res.status(400).json({ error: "Invalid artifact ID parameter" });
+      }
+
+      if (!path || typeof path !== 'string') {
+        return res.status(400).json({ error: "File path is required" });
+      }
+
+      const artifactIdNumber = parseInt(artifactId, 10);
+      const content = await githubService.getCastFileByPath(artifactIdNumber, path);
+      
+      if (!content) {
+        return res.status(404).json({ error: "Cast file not found" });
+      }
+
+      res.json({ content });
+    } catch (error) {
+      console.error("Error fetching cast file by path:", error);
       res.status(500).json({ error: "Failed to fetch cast file" });
     }
   });
@@ -286,6 +397,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/github/pr-files/:prNumber", async (req, res) => {
     try {
       const { prNumber } = req.params;
+      const githubService = getGitHubService(req.query);
       
       if (!prNumber || isNaN(parseInt(prNumber, 10))) {
         return res.status(400).json({ error: "Invalid PR number parameter" });
@@ -305,6 +417,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/github/pr-task-yaml/:prNumber", async (req, res) => {
     try {
       const { prNumber } = req.params;
+      const githubService = getGitHubService(req.query);
       
       if (!prNumber || isNaN(parseInt(prNumber, 10))) {
         return res.status(400).json({ error: "Invalid PR number parameter" });
@@ -328,6 +441,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { prNumber } = req.params;
       const { path } = req.query;
+      const githubService = getGitHubService(req.query);
       
       if (!prNumber || isNaN(parseInt(prNumber, 10))) {
         return res.status(400).json({ error: "Invalid PR number parameter" });
@@ -355,6 +469,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/github/commit/:commitSha", async (req, res) => {
     try {
       const { commitSha } = req.params;
+      const githubService = getGitHubService(req.query);
       
       if (!commitSha) {
         return res.status(400).json({ error: "Commit SHA is required" });
@@ -377,6 +492,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/github/pr-commits/:prNumber", async (req, res) => {
     try {
       const { prNumber } = req.params;
+      const githubService = getGitHubService(req.query);
       
       if (!prNumber || isNaN(parseInt(prNumber, 10))) {
         return res.status(400).json({ error: "Invalid PR number parameter" });
@@ -396,6 +512,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/github/workflow-jobs/:runId", async (req, res) => {
     try {
       const { runId } = req.params;
+      const githubService = getGitHubService(req.query);
       
       if (!runId || isNaN(parseInt(runId, 10))) {
         return res.status(400).json({ error: "Invalid run ID parameter" });
@@ -411,10 +528,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get log files from artifact
+  app.get("/api/github/artifact-logs/:artifactId", async (req, res) => {
+    try {
+      const { artifactId } = req.params;
+      const githubService = getGitHubService(req.query);
+      
+      if (!artifactId || isNaN(parseInt(artifactId, 10))) {
+        return res.status(400).json({ error: "Invalid artifact ID parameter" });
+      }
+
+      const artifactIdNumber = parseInt(artifactId, 10);
+      const logFiles = await githubService.getArtifactLogFiles(artifactIdNumber);
+      
+      res.json({ logFiles });
+    } catch (error) {
+      console.error("Error extracting log files:", error);
+      res.status(500).json({ error: "Failed to extract log files" });
+    }
+  });
+
+  // Get specific log file content from artifact
+  app.get("/api/github/artifact-log-content/:artifactId", async (req, res) => {
+    try {
+      const { artifactId } = req.params;
+      const { path } = req.query;
+      const githubService = getGitHubService(req.query);
+      
+      if (!artifactId || isNaN(parseInt(artifactId, 10))) {
+        return res.status(400).json({ error: "Invalid artifact ID parameter" });
+      }
+
+      if (!path || typeof path !== 'string') {
+        return res.status(400).json({ error: "File path is required" });
+      }
+
+      const artifactIdNumber = parseInt(artifactId, 10);
+      const content = await githubService.getArtifactLogContent(artifactIdNumber, path);
+      
+      if (!content) {
+        return res.status(404).json({ error: "Log file not found" });
+      }
+
+      res.json({ content });
+    } catch (error) {
+      console.error("Error reading log file:", error);
+      res.status(500).json({ error: "Failed to read log file" });
+    }
+  });
+
   // Get review comments for a workflow run
   app.get("/api/github/review-comments-for-run/:runId", async (req, res) => {
     try {
       const { runId } = req.params;
+      const githubService = getGitHubService(req.query);
       
       if (!runId || isNaN(parseInt(runId, 10))) {
         return res.status(400).json({ error: "Invalid run ID parameter" });

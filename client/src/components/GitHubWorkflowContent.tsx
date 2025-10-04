@@ -15,7 +15,10 @@ import {
   MessageSquare,
   User,
   BarChart3,
-  Bug
+  Bug,
+  RotateCcw,
+  Play,
+  Pause
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -48,7 +51,19 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
   const [selectedFile, setSelectedFile] = useState<any | null>(null);
   const [fileContent, setFileContent] = useState<string | null>(null);
+  const [selectedLogFile, setSelectedLogFile] = useState<string | null>(null);
+  const [logContent, setLogContent] = useState<string | null>(null);
+  const [logType, setLogType] = useState<'agent' | 'tests'>('agent');
+  const [castError, setCastError] = useState<string | null>(null);
+  const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+  const [castType, setCastType] = useState<'agent' | 'tests'>('agent');
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [playerDuration, setPlayerDuration] = useState(0);
+  const [actionMarkers, setActionMarkers] = useState<number[]>([]);
   const playerRef = useRef<HTMLDivElement>(null);
+  const playerInstanceRef = useRef<any>(null);
 
   // Fetch PR details
   const { data: prData, isLoading: isPRLoading } = useQuery<GitHubPullRequest>({
@@ -125,6 +140,48 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
     enabled: !!selectedRunId,
   });
 
+  // Find artifact with logs - prioritize recordings (which contain both .cast and .log)
+  // Then fall back to dedicated log/session/test-result artifacts
+  const logArtifact = runDetails?.artifacts.find(a =>
+    a.name.toLowerCase().includes('recording')
+  ) || runDetails?.artifacts.find(a =>
+    a.name.toLowerCase().includes('log') ||
+    a.name.toLowerCase().includes('session') ||
+    a.name.toLowerCase().includes('test-result')
+  );
+
+  // Fetch log files from artifact
+  const { data: logFilesData } = useQuery<{ logFiles: Array<{ name: string; path: string }> }>({
+    queryKey: logArtifact ? ["/api/github/artifact-logs", logArtifact.id] : [],
+    enabled: !!logArtifact && activeTab === 'logs',
+  });
+
+  // Auto-select first log file
+  useEffect(() => {
+    if (logFilesData && logFilesData.logFiles.length > 0 && !selectedLogFile) {
+      setSelectedLogFile(logFilesData.logFiles[0].path);
+    }
+  }, [logFilesData, selectedLogFile]);
+
+  // Fetch selected log file content
+  useEffect(() => {
+    if (logArtifact && selectedLogFile) {
+      const fetchLogContent = async () => {
+        try {
+          const response = await fetch(`/api/github/artifact-log-content/${logArtifact.id}?path=${encodeURIComponent(selectedLogFile)}`);
+          const data = await response.json();
+          if (data.content) {
+            setLogContent(data.content);
+          }
+        } catch (error) {
+          console.error('Error fetching log content:', error);
+          setLogContent('Error loading log file');
+        }
+      };
+      fetchLogContent();
+    }
+  }, [logArtifact, selectedLogFile]);
+
   const duration = selectedRun ?
     Math.floor((new Date(selectedRun.updated_at).getTime() - new Date(selectedRun.created_at).getTime()) / 1000) : 0;
   const formatDuration = (secs: number) => {
@@ -133,12 +190,165 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
     return `${mins}m ${remainingSecs}s`;
   };
 
-  // Find cast artifact
-  const castArtifact = runDetails?.artifacts.find(a => 
-    a.name.toLowerCase().includes('cast') || 
-    a.name.toLowerCase().includes('asciinema') ||
-    a.name.toLowerCase().includes('recording')
+  // Fetch cast list to get all available agents and cast files
+  const { data: castListData } = useQuery<{
+    castFiles: Array<{
+      artifact_id: number;
+      artifact_name: string;
+      expired: boolean;
+      files: Array<{ name: string; path: string; size: number }>;
+    }>
+  }>({
+    queryKey: selectedRunId ? ["/api/github/cast-list", selectedRunId] : [],
+    enabled: !!selectedRunId && activeTab === 'terminal',
+  });
+
+  // Parse available agents from cast list - filter out artifacts with no .cast files
+  const availableAgents = castListData?.castFiles
+    .filter(cf => cf.files.length > 0) // Only include artifacts that have .cast files
+    .map(cf => {
+      // Parse agent name from artifact name: recordings-nop → NOP, recordings-terminus-gpt4 → Terminus (GPT-4)
+      const name = cf.artifact_name.replace(/^recordings-/i, '');
+      const displayName = name.split('-').map((part, idx) => {
+        if (idx === 0) {
+          return part.charAt(0).toUpperCase() + part.slice(1);
+        }
+        return part.toUpperCase();
+      }).join(' ');
+      
+      return {
+        id: cf.artifact_id,
+        name: name,
+        displayName: displayName,
+        artifact_name: cf.artifact_name,
+        files: cf.files,
+        expired: cf.expired
+      };
+    }) || [];
+
+  // Auto-select first agent
+  useEffect(() => {
+    if (availableAgents.length > 0 && !selectedAgent) {
+      setSelectedAgent(availableAgents[0].artifact_name);
+    }
+  }, [availableAgents, selectedAgent]);
+
+  // Get selected agent data
+  const selectedAgentData = availableAgents.find(a => a.artifact_name === selectedAgent);
+  const selectedCastFile = selectedAgentData?.files.find(f =>
+    f.name === `${castType}.cast`
   );
+
+  // Fetch and render cast file when terminal tab is active
+  useEffect(() => {
+    // Clean up previous player instance
+    if (playerInstanceRef.current) {
+      playerInstanceRef.current.dispose();
+      playerInstanceRef.current = null;
+    }
+
+    // Reset error state
+    setCastError(null);
+
+    // Load if terminal tab is active, agent selected, cast file available, and player ref available
+    if (activeTab === 'terminal' && selectedAgentData && selectedCastFile && playerRef.current) {
+      const fetchAndRenderCast = async () => {
+        try {
+          const response = await fetch(
+            `/api/github/cast-file-by-path/${selectedAgentData.id}?path=${encodeURIComponent(selectedCastFile.path)}`
+          );
+          
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: response.statusText }));
+            throw new Error(errorData.error || `Failed to fetch cast: ${response.statusText}`);
+          }
+          
+          const data = await response.json();
+          
+          if (!data.content) {
+            throw new Error('No cast content returned from server');
+          }
+
+          // Clear the container
+          if (playerRef.current) {
+            playerRef.current.innerHTML = '';
+            
+            // Create asciinema player - pass raw string content
+            // The player handles parsing newline-delimited JSON format itself
+            playerInstanceRef.current = AsciinemaPlayer.create(
+              { data: data.content },
+              playerRef.current,
+              {
+                autoPlay: false,
+                loop: false,
+                fit: 'both',
+                terminalFontSize: 'medium',
+                theme: 'asciinema',
+                idleTimeLimit: 2,
+              }
+            );
+
+            // Parse cast content to extract duration and action markers
+            const lines = data.content.trim().split('\n');
+            const events = lines.slice(1).map((line: string) => JSON.parse(line));
+            
+            // Extract duration and action markers from events
+            if (events.length > 0) {
+              const totalDuration = events[events.length - 1]?.[0] || 0;
+              setPlayerDuration(totalDuration);
+              
+              // Extract action markers (timestamps where output changes significantly)
+              const markers: number[] = [];
+              events.forEach((event: any, idx: number) => {
+                if (idx > 0 && idx % Math.ceil(events.length / 15) === 0) {
+                  markers.push(event[0]);
+                }
+              });
+              setActionMarkers(markers);
+            }
+
+            // Hide default asciinema controls
+            const controlBar = playerRef.current?.querySelector('.asciinema-player-wrapper .control-bar');
+            if (controlBar) {
+              (controlBar as HTMLElement).style.display = 'none';
+            }
+          }
+        } catch (error) {
+          console.error('Error loading cast file:', error);
+          const errorMessage = error instanceof Error ? error.message : 'Failed to load cast file';
+          setCastError(errorMessage);
+          
+          if (selectedAgentData.expired) {
+            setCastError(`${errorMessage} (Artifact marked as expired)`);
+          }
+        }
+      };
+
+      fetchAndRenderCast();
+    }
+
+    // Cleanup on unmount or when dependencies change
+    return () => {
+      if (playerInstanceRef.current) {
+        playerInstanceRef.current.dispose();
+        playerInstanceRef.current = null;
+      }
+    };
+  }, [activeTab, selectedAgentData, selectedCastFile, castType]);
+
+  // Track player progress
+  useEffect(() => {
+    if (!playerInstanceRef.current) return;
+
+    const interval = setInterval(() => {
+      if (playerInstanceRef.current) {
+        setCurrentTime(playerInstanceRef.current.currentTime || 0);
+        setIsPlaying(!playerInstanceRef.current.isPaused);
+      }
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [playerInstanceRef.current]);
 
   const getWorkflowStatusColor = (status: string, conclusion?: string | null) => {
     if (status === 'completed') {
@@ -330,7 +540,7 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
             {selectedRun && (
               <>
                 <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                <span className="text-foreground font-medium whitespace-nowrap">Run #{selectedRun.run_number}</span>
+                <span className="text-foreground font-medium whitespace-nowrap">#{selectedRun.run_number}</span>
               </>
             )}
           </nav>
@@ -731,52 +941,211 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
             ) : null}
           </TabsContent>
 
-          <TabsContent value="terminal" className="p-6 space-y-6 m-0">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle>Terminal Recording</CardTitle>
-                  {castArtifact && (
-                    <Button 
-                      variant="secondary" 
-                      size="sm"
-                      onClick={() => window.open(`/api/github/download-artifact/${selectedRunId}/${castArtifact.name}`, '_blank')}
-                      disabled={castArtifact.expired}
-                      data-testid="button-download-cast"
-                    >
-                      <Download className="h-4 w-4 mr-1" />
-                      Download .cast
-                    </Button>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent>
-                {castArtifact ? (
-                  castArtifact.expired ? (
-                    <div className="bg-black rounded-lg p-8 text-center">
-                      <XCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
-                      <p className="text-gray-400">This artifact has expired</p>
-                      <p className="text-sm text-gray-500 mt-2">GitHub artifacts expire after 90 days</p>
-                    </div>
-                  ) : (
-                    <div className="bg-black rounded-lg overflow-hidden">
-                      <div ref={playerRef} className="w-full min-h-[400px] flex items-center justify-center">
-                        <div className="text-green-400 font-mono text-sm p-4">
-                          <Terminal className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                          <p>Cast file: {castArtifact.name}</p>
-                          <p className="text-xs text-gray-500 mt-2">Download to view locally</p>
-                        </div>
+          <TabsContent value="terminal" className="p-0 m-0 h-full">
+            {availableAgents.length > 0 ? (
+              <div className="flex h-full">
+                {/* Terminal Player */}
+                <div className="flex-1 flex flex-col border-r border-border">
+                  <div className="bg-card border-b border-border p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Select
+                        value={selectedAgent || ""}
+                        onValueChange={setSelectedAgent}
+                      >
+                        <SelectTrigger className="w-64">
+                          <SelectValue placeholder="Select Agent" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableAgents.map((agent) => (
+                            <SelectItem key={agent.artifact_name} value={agent.artifact_name}>
+                              {agent.displayName}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <div className="flex gap-2">
+                        <Button
+                          variant={castType === 'agent' ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setCastType('agent')}
+                        >
+                          Agent
+                        </Button>
+                        <Button
+                          variant={castType === 'tests' ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setCastType('tests')}
+                        >
+                          Tests
+                        </Button>
                       </div>
                     </div>
-                  )
-                ) : (
-                  <div className="bg-black rounded-lg p-8 text-center">
-                    <Terminal className="h-12 w-12 text-gray-600 mx-auto mb-4" />
-                    <p className="text-gray-400">No terminal recording available</p>
+                    {selectedAgentData && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => window.open(`/api/github/download-artifact/${selectedRunId}/${selectedAgentData.artifact_name}`, '_blank')}
+                      >
+                        <Download className="h-4 w-4 mr-1" />
+                        Download
+                      </Button>
+                    )}
                   </div>
-                )}
-              </CardContent>
-            </Card>
+                  <div className="flex-1 flex flex-col bg-black overflow-hidden">
+                    {castError ? (
+                      <div className="h-full flex items-center justify-center p-8">
+                        <div className="text-center">
+                          <XCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
+                          <p className="text-gray-400">Error loading cast file</p>
+                          <p className="text-sm text-gray-500 mt-2">{castError}</p>
+                        </div>
+                      </div>
+                    ) : !selectedCastFile ? (
+                      <div className="h-full flex items-center justify-center p-8">
+                        <div className="text-center">
+                          <Terminal className="h-12 w-12 text-gray-600 mx-auto mb-4" />
+                          <p className="text-gray-400">No {castType} recording found for this agent</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        {/* Custom Control Bar */}
+                        <div className="bg-gray-900 border-b border-gray-800 px-4 py-3">
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-3">
+                              <ChevronRight className="h-4 w-4 text-gray-400" />
+                              <span className="text-sm font-semibold text-gray-200">Agent Terminal Session</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-gray-400 hover:text-gray-200 hover:bg-gray-800"
+                                onClick={() => {
+                                  if (playerInstanceRef.current) {
+                                    playerInstanceRef.current.seek(0);
+                                  }
+                                }}
+                                title="Restart"
+                              >
+                                <RotateCcw className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-gray-400 hover:text-gray-200 hover:bg-gray-800"
+                                onClick={() => {
+                                  if (playerInstanceRef.current) {
+                                    if (isPlaying) {
+                                      playerInstanceRef.current.pause();
+                                      setIsPlaying(false);
+                                    } else {
+                                      playerInstanceRef.current.play();
+                                      setIsPlaying(true);
+                                    }
+                                  }
+                                }}
+                                title={isPlaying ? "Pause" : "Play"}
+                              >
+                                {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                              </Button>
+                              <Select
+                                value={playbackSpeed.toString()}
+                                onValueChange={(value) => {
+                                  const speed = parseFloat(value);
+                                  setPlaybackSpeed(speed);
+                                  if (playerInstanceRef.current) {
+                                    playerInstanceRef.current.speed = speed;
+                                  }
+                                }}
+                              >
+                                <SelectTrigger className="w-16 h-8 bg-gray-800 border-gray-700 text-gray-200">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="0.5">0.5x</SelectItem>
+                                  <SelectItem value="1">1x</SelectItem>
+                                  <SelectItem value="1.5">1.5x</SelectItem>
+                                  <SelectItem value="2">2x</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                          
+                          {/* Timeline with Action Markers */}
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between text-xs text-gray-400">
+                              <span>{Math.floor(currentTime / 60)}:{String(Math.floor(currentTime % 60)).padStart(2, '0')}</span>
+                              <span>Action {actionMarkers.findIndex(m => m > currentTime) > 0 ? actionMarkers.findIndex(m => m > currentTime) : actionMarkers.length} of {actionMarkers.length}</span>
+                              <span>{Math.floor(playerDuration / 60)}:{String(Math.floor(playerDuration % 60)).padStart(2, '0')}</span>
+                            </div>
+                            <div className="relative h-2 bg-gray-800 rounded-full cursor-pointer"
+                              onClick={(e) => {
+                                if (playerInstanceRef.current) {
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  const percent = (e.clientX - rect.left) / rect.width;
+                                  playerInstanceRef.current.seek(percent * playerDuration);
+                                }
+                              }}
+                            >
+                              {/* Progress bar */}
+                              <div 
+                                className="absolute left-0 top-0 h-full bg-blue-500 rounded-full transition-all"
+                                style={{ width: `${playerDuration > 0 ? (currentTime / playerDuration) * 100 : 0}%` }}
+                              />
+                              {/* Action markers */}
+                              {actionMarkers.map((marker, idx) => (
+                                <div
+                                  key={idx}
+                                  className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-yellow-500 rounded-full cursor-pointer hover:scale-125 transition-transform"
+                                  style={{ left: `${playerDuration > 0 ? (marker / playerDuration) * 100 : 0}%` }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (playerInstanceRef.current) {
+                                      playerInstanceRef.current.seek(marker);
+                                    }
+                                  }}
+                                  title={`Action ${idx + 1}`}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {/* Player Container */}
+                        <div ref={playerRef} className="flex-1 w-full overflow-hidden"></div>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Agent Thinking Panel */}
+                <div className="w-96 flex flex-col bg-card">
+                  <div className="p-4 border-b border-border">
+                    <h3 className="text-sm font-semibold flex items-center gap-2">
+                      <User className="h-4 w-4" />
+                      Agent Thinking
+                    </h3>
+                  </div>
+                  <div className="flex-1 overflow-auto p-4">
+                    <div className="flex flex-col items-center justify-center h-full text-center">
+                      <User className="h-12 w-12 text-muted-foreground mb-4 opacity-50" />
+                      <p className="text-sm font-medium text-foreground mb-2">No agent thinking data yet</p>
+                      <p className="text-xs text-muted-foreground">
+                        Play the session to see the agent's reasoning
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center h-full p-8">
+                <div className="text-center">
+                  <Terminal className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
+                  <p className="text-muted-foreground">No terminal recordings available</p>
+                </div>
+              </div>
+            )}
           </TabsContent>
 
           <TabsContent value="files" className="p-0 m-0 h-full">
@@ -855,32 +1224,78 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
             )}
           </TabsContent>
 
-          <TabsContent value="logs" className="p-6 space-y-6 m-0">
-            {runDetails?.logs && runDetails.logs.length > 0 ? (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Workflow Execution Logs</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="bg-black rounded-lg p-4 max-h-[600px] overflow-y-auto scrollbar-thin">
-                    <pre className="text-xs font-mono text-green-400 whitespace-pre-wrap">
-                      {runDetails.logs[0]?.content || 'No logs available'}
-                    </pre>
+          <TabsContent value="logs" className="p-0 m-0 h-full">
+            {logFilesData && logFilesData.logFiles.length > 0 ? (
+              <div className="flex flex-col h-full">
+                <div className="bg-card border-b border-border p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="flex gap-2">
+                      <Button
+                        variant={logType === 'agent' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => {
+                          setLogType('agent');
+                          const agentLog = logFilesData.logFiles.find(f => f.name.includes('agent'));
+                          if (agentLog) setSelectedLogFile(agentLog.path);
+                        }}
+                      >
+                        Agent
+                      </Button>
+                      <Button
+                        variant={logType === 'tests' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => {
+                          setLogType('tests');
+                          const testsLog = logFilesData.logFiles.find(f => f.name.includes('tests'));
+                          if (testsLog) setSelectedLogFile(testsLog.path);
+                        }}
+                      >
+                        Tests
+                      </Button>
+                    </div>
+                    {selectedLogFile && (
+                      <span className="text-sm text-muted-foreground">
+                        {logFilesData.logFiles.find(f => f.path === selectedLogFile)?.name}
+                      </span>
+                    )}
                   </div>
-                </CardContent>
-              </Card>
+                  {logContent && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => copyToClipboard(logContent)}
+                      title="Copy log content"
+                    >
+                      <FileCode className="h-4 w-4 mr-1" />
+                      Copy
+                    </Button>
+                  )}
+                </div>
+                <div className="flex-1 overflow-auto bg-black p-4">
+                  {logContent ? (
+                    <pre className="text-xs font-mono text-green-400 whitespace-pre-wrap">
+                      {logContent}
+                    </pre>
+                  ) : (
+                    <div className="flex items-center justify-center h-full">
+                      <div className="animate-spin rounded-full h-6 w-6 border-2 border-primary border-t-transparent"></div>
+                      <span className="ml-3 text-gray-400">Loading log file...</span>
+                    </div>
+                  )}
+                </div>
+              </div>
             ) : isRunDetailsLoading ? (
-              <div className="flex items-center justify-center py-12">
+              <div className="flex items-center justify-center h-full">
                 <div className="animate-spin rounded-full h-6 w-6 border-2 border-primary border-t-transparent"></div>
                 <span className="ml-3 text-muted-foreground">Loading logs...</span>
               </div>
             ) : (
-              <Card>
-                <CardContent className="p-8 text-center">
+              <div className="flex items-center justify-center h-full p-8">
+                <div className="text-center">
                   <Terminal className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
-                  <p className="text-muted-foreground">No logs available</p>
-                </CardContent>
-              </Card>
+                  <p className="text-muted-foreground">No log files available in artifacts</p>
+                </div>
+              </div>
             )}
           </TabsContent>
 

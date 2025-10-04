@@ -1,9 +1,19 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search, Filter, GitPullRequest, CheckCircle, XCircle, Clock, User } from "lucide-react";
+import { Search, Filter, GitPullRequest, CheckCircle, XCircle, Clock, User, Settings } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { GitHubPullRequest, GitHubPRSelection } from "@shared/schema";
 
 interface NavigationSidebarProps {
@@ -15,9 +25,47 @@ export default function NavigationSidebar({ onSelectPR, selectedPR }: Navigation
   const [searchQuery, setSearchQuery] = useState("");
   const [stateFilter, setStateFilter] = useState<'all' | 'open' | 'closed'>('all');
   const [sortBy, setSortBy] = useState<'created' | 'updated'>('updated');
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  
+  // Repository settings with localStorage persistence
+  const [repoOwner, setRepoOwner] = useState(() =>
+    localStorage.getItem('github_repo_owner') || 'abundant-ai'
+  );
+  const [repoName, setRepoName] = useState(() =>
+    localStorage.getItem('github_repo_name') || 'tbench-hammer'
+  );
+  const [workflowFile, setWorkflowFile] = useState(() =>
+    localStorage.getItem('github_workflow_file') || 'test-tasks.yaml'
+  );
+
+  // Temporary state for settings dialog
+  const [tempRepoOwner, setTempRepoOwner] = useState(repoOwner);
+  const [tempRepoName, setTempRepoName] = useState(repoName);
+  const [tempWorkflowFile, setTempWorkflowFile] = useState(workflowFile);
+
+  // Save settings to localStorage
+  const saveSettings = () => {
+    localStorage.setItem('github_repo_owner', tempRepoOwner);
+    localStorage.setItem('github_repo_name', tempRepoName);
+    localStorage.setItem('github_workflow_file', tempWorkflowFile);
+    setRepoOwner(tempRepoOwner);
+    setRepoName(tempRepoName);
+    setWorkflowFile(tempWorkflowFile);
+    setSettingsOpen(false);
+    // Force query refetch
+    window.location.reload();
+  };
 
   const { data: prData, isLoading, error } = useQuery<{ pullRequests: GitHubPullRequest[]; total_count: number }>({
-    queryKey: ["/api/github/pull-requests", { state: stateFilter, limit: 50, sort: sortBy, direction: 'desc' }],
+    queryKey: ["/api/github/pull-requests", {
+      state: stateFilter,
+      limit: 50,
+      sort: sortBy,
+      direction: 'desc',
+      owner: repoOwner,
+      repo: repoName,
+      workflow: workflowFile
+    }],
     refetchInterval: 30000, // Refresh every 30 seconds
   });
 
@@ -57,14 +105,71 @@ export default function NavigationSidebar({ onSelectPR, selectedPR }: Navigation
             <GitPullRequest className="h-5 w-5" />
             Logflix
           </h1>
-          <div className="flex items-center gap-1.5">
-            <div className={`w-2 h-2 rounded-full ${
-              error ? 'bg-destructive' : isLoading ? 'bg-warning' : 'bg-success'
-            }`}></div>
-            <span className="text-xs text-muted-foreground">
-              {error ? 'Error' : isLoading ? 'Loading' : 'Connected'}
-            </span>
+          <div className="flex items-center gap-2">
+            <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+              <DialogTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                  <Settings className="h-4 w-4" />
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Repository Settings</DialogTitle>
+                  <DialogDescription>
+                    Configure the GitHub repository and workflow to monitor
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="repo-owner">Repository Owner</Label>
+                    <Input
+                      id="repo-owner"
+                      placeholder="e.g., abundant-ai"
+                      value={tempRepoOwner}
+                      onChange={(e) => setTempRepoOwner(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="repo-name">Repository Name</Label>
+                    <Input
+                      id="repo-name"
+                      placeholder="e.g., tbench-hammer"
+                      value={tempRepoName}
+                      onChange={(e) => setTempRepoName(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="workflow-file">Workflow File</Label>
+                    <Input
+                      id="workflow-file"
+                      placeholder="e.g., test-tasks.yaml"
+                      value={tempWorkflowFile}
+                      onChange={(e) => setTempWorkflowFile(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setSettingsOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button onClick={saveSettings}>
+                    Save Settings
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+            <div className="flex items-center gap-1.5">
+              <div className={`w-2 h-2 rounded-full ${
+                error ? 'bg-destructive' : isLoading ? 'bg-warning' : 'bg-success'
+              }`}></div>
+              <span className="text-xs text-muted-foreground">
+                {error ? 'Error' : isLoading ? 'Loading' : 'Connected'}
+              </span>
+            </div>
           </div>
+        </div>
+        <div className="mt-2 text-xs text-muted-foreground truncate" title={`${repoOwner}/${repoName} • ${workflowFile}`}>
+          {repoOwner}/{repoName} • {workflowFile}
         </div>
       </div>
 
