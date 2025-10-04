@@ -45,6 +45,8 @@ interface WorkflowRunDetails {
 export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowContentProps) {
   const [activeTab, setActiveTab] = useState("overview");
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
+  const [selectedFile, setSelectedFile] = useState<any | null>(null);
+  const [fileContent, setFileContent] = useState<string | null>(null);
   const playerRef = useRef<HTMLDivElement>(null);
 
   // Fetch PR details
@@ -75,6 +77,18 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
   // Fetch bot comments for this PR
   const { data: botCommentsData } = useQuery<{ comments: GitHubReviewComment[] }>({
     queryKey: selectedPR ? ["/api/github/pr-bot-comments", selectedPR.prNumber] : [],
+    enabled: !!selectedPR,
+  });
+
+  // Fetch task.yaml data for this PR
+  const { data: taskData } = useQuery<{ taskYaml: any; taskId: string | null }>({
+    queryKey: selectedPR ? ["/api/github/pr-task-yaml", selectedPR.prNumber] : [],
+    enabled: !!selectedPR,
+  });
+
+  // Fetch PR files
+  const { data: prFilesData } = useQuery<{ files: any[] }>({
+    queryKey: selectedPR ? ["/api/github/pr-files", selectedPR.prNumber] : [],
     enabled: !!selectedPR,
   });
 
@@ -251,40 +265,40 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
         <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full">
           <div className="bg-card border-b border-border px-6">
             <TabsList className="grid grid-cols-5 w-full max-w-2xl bg-transparent h-auto p-0">
-              <TabsTrigger 
-                value="overview" 
+              <TabsTrigger
+                value="overview"
                 className="flex items-center gap-2 px-1 py-4 border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent"
                 data-testid="tab-overview"
               >
                 <BarChart3 className="h-4 w-4" />
                 Overview
               </TabsTrigger>
-              <TabsTrigger 
-                value="terminal" 
+              <TabsTrigger
+                value="terminal"
                 className="flex items-center gap-2 px-1 py-4 border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent"
                 data-testid="tab-terminal"
               >
                 <Terminal className="h-4 w-4" />
                 Terminal
               </TabsTrigger>
-              <TabsTrigger 
-                value="files" 
-                className="flex items-center gap-2 px-1 py-4 border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent"
-                data-testid="tab-files"
-              >
-                <FileCode className="h-4 w-4" />
-                Files
-              </TabsTrigger>
-              <TabsTrigger 
-                value="logs" 
+              <TabsTrigger
+                value="logs"
                 className="flex items-center gap-2 px-1 py-4 border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent"
                 data-testid="tab-logs"
               >
                 <Bug className="h-4 w-4" />
                 Logs
               </TabsTrigger>
-              <TabsTrigger 
-                value="comments" 
+              <TabsTrigger
+                value="files"
+                className="flex items-center gap-2 px-1 py-4 border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent"
+                data-testid="tab-files"
+              >
+                <FileCode className="h-4 w-4" />
+                Files
+              </TabsTrigger>
+              <TabsTrigger
+                value="comments"
                 className="flex items-center gap-2 px-1 py-4 border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent"
                 data-testid="tab-comments"
               >
@@ -303,7 +317,7 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                     <CardContent className="p-4">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-sm text-muted-foreground">Workflow Result</p>
+                          <p className="text-sm text-muted-foreground">Task Result</p>
                           <div className="flex items-center gap-2 mt-1">
                             {getStatusIcon(selectedRun.status, selectedRun.conclusion)}
                             <p className={`text-2xl font-bold ${getStatusColor(selectedRun.status, selectedRun.conclusion)}`}>
@@ -331,47 +345,60 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                     <CardContent className="p-4">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-sm text-muted-foreground">Artifacts</p>
-                          <p className="text-2xl font-bold">{runDetails?.artifacts.length || 0}</p>
+                          <p className="text-sm text-muted-foreground">Difficulty</p>
+                          <p className="text-2xl font-bold capitalize">
+                            {taskData?.taskYaml?.difficulty || 'N/A'}
+                          </p>
                         </div>
-                        <FileCode className="h-5 w-5 text-muted-foreground" />
+                        <BarChart3 className="h-5 w-5 text-muted-foreground" />
                       </div>
                     </CardContent>
                   </Card>
                 </div>
 
-                {/* PR Information */}
+                {/* Task Information */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <Card>
                     <CardHeader>
-                      <CardTitle>Pull Request Details</CardTitle>
+                      <CardTitle>Task Details</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-3">
                       <div>
-                        <label className="text-sm text-muted-foreground">Title</label>
-                        <p className="text-sm mt-1">{prData.title}</p>
-                      </div>
-                      <div>
-                        <label className="text-sm text-muted-foreground">Author</label>
-                        <div className="flex items-center gap-2 mt-1">
-                          <User className="h-4 w-4 text-muted-foreground" />
-                          <p className="text-sm">{prData.user.login}</p>
-                        </div>
-                      </div>
-                      <div>
-                        <label className="text-sm text-muted-foreground">Branch</label>
+                        <label className="text-sm text-muted-foreground">Task ID</label>
                         <p className="font-mono text-sm bg-muted px-2 py-1 rounded mt-1">
-                          {prData.head.ref} → {prData.base.ref}
+                          {taskData?.taskId || 'N/A'}
                         </p>
                       </div>
-                      <div>
-                        <label className="text-sm text-muted-foreground">State</label>
-                        <div className="mt-1">
-                          <Badge className={prData.state === 'open' ? 'bg-success/20 text-success' : 'bg-muted/20 text-muted-foreground'}>
-                            {prData.merged_at ? 'Merged' : prData.state}
-                          </Badge>
+                      {taskData?.taskYaml?.category && (
+                        <div>
+                          <label className="text-sm text-muted-foreground">Category</label>
+                          <p className="text-sm mt-1">{taskData.taskYaml.category}</p>
                         </div>
-                      </div>
+                      )}
+                      {taskData?.taskYaml?.tags && taskData.taskYaml.tags.length > 0 && (
+                        <div>
+                          <label className="text-sm text-muted-foreground">Tags</label>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {taskData.taskYaml.tags.map((tag: string) => (
+                              <Badge key={tag} variant="secondary" className="text-xs">
+                                {tag}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {taskData?.taskYaml?.max_agent_timeout_sec && (
+                        <div>
+                          <label className="text-sm text-muted-foreground">Max Agent Timeout</label>
+                          <p className="text-sm mt-1">{taskData.taskYaml.max_agent_timeout_sec}s</p>
+                        </div>
+                      )}
+                      {taskData?.taskYaml?.max_test_timeout_sec && (
+                        <div>
+                          <label className="text-sm text-muted-foreground">Max Test Timeout</label>
+                          <p className="text-sm mt-1">{taskData.taskYaml.max_test_timeout_sec}s</p>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
 
@@ -403,6 +430,22 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                     </CardContent>
                   </Card>
                 </div>
+
+                {/* Task Instruction */}
+                {taskData?.taskYaml?.instruction && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Task Instruction</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="bg-muted rounded-lg p-4">
+                        <pre className="text-sm whitespace-pre-wrap text-foreground">
+                          {taskData.taskYaml.instruction}
+                        </pre>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
               </>
             )}
           </TabsContent>
@@ -456,40 +499,109 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
           </TabsContent>
 
           <TabsContent value="files" className="p-6 space-y-6 m-0">
-            {runDetails?.artifacts && runDetails.artifacts.length > 0 ? (
+            {selectedFile && fileContent ? (
               <Card>
                 <CardHeader>
-                  <CardTitle>Workflow Artifacts</CardTitle>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setSelectedFile(null);
+                          setFileContent(null);
+                        }}
+                        className="mb-2"
+                      >
+                        ← Back to Files
+                      </Button>
+                      <CardTitle className="flex items-center gap-2">
+                        <FileCode className="h-5 w-5" />
+                        {selectedFile.name}
+                      </CardTitle>
+                      <p className="text-xs text-muted-foreground font-mono mt-1">
+                        {selectedFile.path}
+                      </p>
+                    </div>
+                    {selectedFile.download_url && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        asChild
+                      >
+                        <a
+                          href={selectedFile.download_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-2"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                          View on GitHub
+                        </a>
+                      </Button>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="bg-black rounded-lg p-4 max-h-[600px] overflow-y-auto scrollbar-thin">
+                    <pre className="text-xs font-mono text-green-400 whitespace-pre-wrap break-words">
+                      {fileContent}
+                    </pre>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : prFilesData && prFilesData.files.length > 0 ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Pull Request Files ({prFilesData.files.length})</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
-                    {runDetails.artifacts.map((artifact) => (
-                      <div 
-                        key={artifact.id}
-                        className="flex items-center justify-between p-3 hover:bg-muted rounded-lg transition-colors"
+                    {prFilesData.files.map((file: any) => (
+                      <div
+                        key={file.sha}
+                        className="flex items-center justify-between p-3 hover:bg-muted rounded-lg transition-colors cursor-pointer"
+                        onClick={async () => {
+                          if (file.type === 'file') {
+                            // Fetch and display file content inline
+                            try {
+                              const response = await fetch(`/api/github/pr-file-content/${selectedPR.prNumber}?path=${encodeURIComponent(file.path)}`);
+                              const data = await response.json();
+                              if (data.content) {
+                                setSelectedFile(file);
+                                setFileContent(data.content);
+                              }
+                            } catch (error) {
+                              console.error('Error fetching file:', error);
+                            }
+                          }
+                        }}
                       >
                         <div className="flex items-center gap-3">
                           <FileCode className="h-4 w-4 text-accent" />
                           <div>
-                            <p className="text-sm font-medium">{artifact.name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {(artifact.size_in_bytes / 1024).toFixed(1)} KB
-                              {artifact.expired && <span className="text-destructive ml-2">(Expired)</span>}
+                            <p className="text-sm font-medium">{file.name}</p>
+                            <p className="text-xs text-muted-foreground font-mono">
+                              {file.path}
                             </p>
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-muted-foreground">
-                            {artifact.created_at && formatDate(artifact.created_at)}
+                            {file.size} changes
                           </span>
-                          <Button 
-                            variant="ghost" 
-                            size="sm"
-                            disabled={artifact.expired}
-                            onClick={() => window.open(`/api/github/download-artifact/${selectedRunId}/${artifact.name}`, '_blank')}
-                          >
-                            <Download className="h-4 w-4" />
-                          </Button>
+                          {file.download_url && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                window.open(file.download_url, '_blank');
+                              }}
+                            >
+                              <ExternalLink className="h-4 w-4" />
+                            </Button>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -500,7 +612,7 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
               <Card>
                 <CardContent className="p-8 text-center">
                   <FileCode className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
-                  <p className="text-muted-foreground">No artifacts available</p>
+                  <p className="text-muted-foreground">No files found in this PR</p>
                 </CardContent>
               </Card>
             )}

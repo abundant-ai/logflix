@@ -1,5 +1,32 @@
 import { z } from "zod";
 
+// Task metadata from task.yaml
+export const taskYamlSchema = z.object({
+  instruction: z.string(),
+  author_name: z.string().optional(),
+  author_email: z.string().optional(),
+  difficulty: z.enum(['easy', 'medium', 'hard']).optional(),
+  category: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+  max_agent_timeout_sec: z.number().optional(),
+  max_test_timeout_sec: z.number().optional(),
+});
+
+export type TaskYaml = z.infer<typeof taskYamlSchema>;
+
+// PR file structure
+export const prFileSchema = z.object({
+  name: z.string(),
+  path: z.string(),
+  sha: z.string(),
+  size: z.number(),
+  type: z.enum(['file', 'dir']),
+  download_url: z.string().nullable(),
+  content: z.string().optional(), // Base64 encoded or decoded content
+});
+
+export type PRFile = z.infer<typeof prFileSchema>;
+
 // GitHub workflow schemas
 export const githubWorkflowRunSchema = z.object({
   id: z.number(),

@@ -282,6 +282,75 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get files changed in a pull request
+  app.get("/api/github/pr-files/:prNumber", async (req, res) => {
+    try {
+      const { prNumber } = req.params;
+      
+      if (!prNumber || isNaN(parseInt(prNumber, 10))) {
+        return res.status(400).json({ error: "Invalid PR number parameter" });
+      }
+
+      const prNumberInt = parseInt(prNumber, 10);
+      const files = await githubService.getPRFiles(prNumberInt);
+      
+      res.json({ files });
+    } catch (error) {
+      console.error("Error fetching PR files:", error);
+      res.status(500).json({ error: "Failed to fetch PR files" });
+    }
+  });
+
+  // Get task.yaml content for a pull request
+  app.get("/api/github/pr-task-yaml/:prNumber", async (req, res) => {
+    try {
+      const { prNumber } = req.params;
+      
+      if (!prNumber || isNaN(parseInt(prNumber, 10))) {
+        return res.status(400).json({ error: "Invalid PR number parameter" });
+      }
+
+      const prNumberInt = parseInt(prNumber, 10);
+      const [taskYaml, taskId] = await Promise.all([
+        githubService.getTaskYaml(prNumberInt),
+        githubService.getTaskId(prNumberInt)
+      ]);
+      
+      res.json({ taskYaml, taskId });
+    } catch (error) {
+      console.error("Error fetching task.yaml:", error);
+      res.status(500).json({ error: "Failed to fetch task.yaml" });
+    }
+  });
+
+  // Get specific file content from PR
+  app.get("/api/github/pr-file-content/:prNumber", async (req, res) => {
+    try {
+      const { prNumber } = req.params;
+      const { path } = req.query;
+      
+      if (!prNumber || isNaN(parseInt(prNumber, 10))) {
+        return res.status(400).json({ error: "Invalid PR number parameter" });
+      }
+
+      if (!path || typeof path !== 'string') {
+        return res.status(400).json({ error: "File path is required" });
+      }
+
+      const prNumberInt = parseInt(prNumber, 10);
+      const content = await githubService.getPRFileContent(prNumberInt, path);
+      
+      if (!content) {
+        return res.status(404).json({ error: "File not found" });
+      }
+
+      res.json({ content });
+    } catch (error) {
+      console.error("Error fetching file content:", error);
+      res.status(500).json({ error: "Failed to fetch file content" });
+    }
+  });
+
   // Get review comments for a workflow run
   app.get("/api/github/review-comments-for-run/:runId", async (req, res) => {
     try {

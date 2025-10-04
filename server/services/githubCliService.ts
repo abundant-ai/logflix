@@ -1,9 +1,10 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { 
-  GitHubWorkflowRun, 
-  GitHubWorkflowLog, 
-  GitHubWorkflowArtifact, 
+import * as yaml from 'js-yaml';
+import {
+  GitHubWorkflowRun,
+  GitHubWorkflowLog,
+  GitHubWorkflowArtifact,
   GitHubWorkflowHierarchy,
   GitHubReviewComment,
   GitHubPullRequest
@@ -615,6 +616,107 @@ export class GitHubCliService {
       };
     } catch (error) {
       console.error(`Error fetching PR ${prNumber}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Get files changed in a pull request
+   */
+  async getPRFiles(prNumber: number): Promise<any[]> {
+    try {
+      // Use GitHub API to get PR files
+      const filesCommand = `api repos/${this.repositoryOwner}/${this.repositoryName}/pulls/${prNumber}/files --jq '.[] | {name: .filename, path: .filename, sha: .sha, size: (.additions + .deletions), type: "file", download_url: .raw_url}'`;
+      const { stdout } = await execAsync(`gh ${filesCommand}`);
+      
+      // Parse newline-delimited JSON
+      const files = stdout
+        .trim()
+        .split('\n')
+        .filter(line => line)
+        .map(line => JSON.parse(line));
+      
+      return files;
+    } catch (error) {
+      console.error(`Error fetching PR files for ${prNumber}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Get file content from PR
+   */
+  async getPRFileContent(prNumber: number, filePath: string): Promise<string | null> {
+    try {
+      // Get PR to find the head SHA
+      const pr = await this.getPullRequest(prNumber);
+      if (!pr) return null;
+
+      // Fetch file content from the PR's head commit
+      const contentCommand = `api repos/${this.repositoryOwner}/${this.repositoryName}/contents/${filePath}?ref=${pr.head.sha} --jq '.content'`;
+      const { stdout } = await execAsync(`gh ${contentCommand}`);
+      
+      // Decode base64 content
+      const base64Content = stdout.trim().replace(/"/g, '');
+      return Buffer.from(base64Content, 'base64').toString('utf-8');
+    } catch (error) {
+      console.error(`Error fetching file content ${filePath}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Get task.yaml content and parse it
+   */
+  async getTaskYaml(prNumber: number): Promise<any | null> {
+    try {
+      const files = await this.getPRFiles(prNumber);
+      
+      // Find task.yaml file in the PR files
+      const taskYamlFile = files.find(f =>
+        f.name.endsWith('task.yaml') || f.name.endsWith('task.yml')
+      );
+      
+      if (!taskYamlFile) {
+        console.log(`No task.yaml found in PR ${prNumber}`);
+        return null;
+      }
+
+      // Fetch and parse task.yaml content
+      const content = await this.getPRFileContent(prNumber, taskYamlFile.path);
+      if (!content) return null;
+
+      // Parse YAML
+      return yaml.load(content);
+    } catch (error) {
+      console.error(`Error fetching task.yaml for PR ${prNumber}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Extract task ID from PR files (directory name)
+   */
+  async getTaskId(prNumber: number): Promise<string | null> {
+    try {
+      const files = await this.getPRFiles(prNumber);
+      
+      // Find the common directory prefix (task ID)
+      if (files.length === 0) return null;
+      
+      // Extract directory from first file path
+      const firstPath = files[0].path;
+      const parts = firstPath.split('/');
+      
+      // If in tasks/ directory, return the task folder name
+      if (parts[0] === 'tasks' && parts.length > 1) {
+        return parts[1];
+      }
+      
+      // Otherwise return the first directory
+      return parts.length > 1 ? parts[0] : null;
+    } catch (error) {
+      console.error(`Error extracting task ID for PR ${prNumber}:`, error);
       return null;
     }
   }
