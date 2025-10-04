@@ -935,7 +935,10 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                   </div>
                 ) : castFileQuery.data?.content ? (
                   <div className="h-full">
-                    <CustomTerminalViewer castContent={castFileQuery.data.content} />
+                    <CustomTerminalViewer
+                      castContent={castFileQuery.data.content}
+                      showAgentThinking={castType === 'agent'}
+                    />
                   </div>
                 ) : (
                   <div className="h-full flex items-center justify-center p-8">

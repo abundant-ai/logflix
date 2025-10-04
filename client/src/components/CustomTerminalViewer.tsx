@@ -23,9 +23,10 @@ interface AgentThinking {
 
 interface CustomTerminalViewerProps {
   castContent: string;
+  showAgentThinking?: boolean;
 }
 
-export default function CustomTerminalViewer({ castContent }: CustomTerminalViewerProps) {
+export default function CustomTerminalViewer({ castContent, showAgentThinking = true }: CustomTerminalViewerProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
@@ -198,9 +199,9 @@ export default function CustomTerminalViewer({ castContent }: CustomTerminalView
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 h-[600px]">
+    <div className={`grid ${showAgentThinking ? 'grid-cols-1 lg:grid-cols-3' : 'grid-cols-1'} gap-4 h-[600px]`}>
       {/* Terminal Display */}
-      <div className="lg:col-span-2">
+      <div className={showAgentThinking ? "lg:col-span-2" : "col-span-1"}>
         <Card className="h-full">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
@@ -241,10 +242,10 @@ export default function CustomTerminalViewer({ castContent }: CustomTerminalView
               </div>
             </div>
             
-            {/* Progress bar with Action Markers */}
-            <div className="space-y-1">
+            {/* Streamlined Progress Bar */}
+            <div className="space-y-2">
               <div
-                className="relative w-full bg-muted rounded-full h-4 cursor-pointer"
+                className="relative w-full bg-muted/60 rounded-full h-2 cursor-pointer group hover:bg-muted transition-colors"
                 onClick={(e) => {
                   // Handle direct clicks on the progress bar
                   const rect = e.currentTarget.getBoundingClientRect();
@@ -253,34 +254,32 @@ export default function CustomTerminalViewer({ castContent }: CustomTerminalView
                   setCurrentTime(targetTime);
                 }}
               >
-                {/* Progress fill */}
+                {/* Progress fill - sleeker with gradient */}
                 <div
-                  className="bg-primary h-4 rounded-full transition-all"
+                  className="bg-gradient-to-r from-blue-500 to-blue-400 h-2 rounded-full transition-all duration-200 ease-out"
                   style={{ width: `${maxTime > 0 ? (currentTime / maxTime) * 100 : 0}%` }}
                 />
                 
-                {/* Action Markers - Higher z-index to ensure clickability */}
+                {/* Action Markers - Smaller and more elegant */}
                 {thinkingEvents.map((event, index) => {
                   const position = maxTime > 0 ? (event.timestamp / maxTime) * 100 : 0;
                   return (
                     <button
                       key={index}
                       onClick={(e) => {
-                        e.stopPropagation(); // Prevent progress bar click
+                        e.stopPropagation();
                         setCurrentTime(event.timestamp);
                       }}
-                      className="absolute top-1/2 w-4 h-4 -translate-y-1/2 bg-yellow-500 rounded-full border-2 border-background hover:bg-yellow-400 hover:scale-110 transition-all shadow-md z-30"
+                      className="absolute top-1/2 w-2.5 h-2.5 -translate-y-1/2 bg-amber-400 rounded-full border border-white/50 hover:bg-amber-300 hover:scale-125 transition-all duration-150 shadow-sm z-30 group-hover:opacity-100 opacity-90"
                       style={{ left: `${position}%`, transform: 'translateX(-50%) translateY(-50%)' }}
-                      title={`Jump to action ${index + 1} at ${formatTime(event.timestamp)}`}
-                    >
-                      <span className="sr-only">Jump to action {index + 1}</span>
-                    </button>
+                      title={`Action ${index + 1} • ${formatTime(event.timestamp)}`}
+                    />
                   );
                 })}
                 
-                {/* Progress indicator handle */}
+                {/* Progress handle - Minimal and elegant */}
                 <div
-                  className="absolute top-1/2 w-3 h-3 -translate-y-1/2 bg-white rounded-full border-2 border-primary shadow-sm z-20"
+                  className="absolute top-1/2 w-3 h-3 -translate-y-1/2 bg-white rounded-full border-2 border-blue-500 shadow-sm z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
                   style={{ left: `${maxTime > 0 ? (currentTime / maxTime) * 100 : 0}%`, transform: 'translateX(-50%) translateY(-50%)' }}
                 />
               </div>
@@ -318,140 +317,142 @@ export default function CustomTerminalViewer({ castContent }: CustomTerminalView
         </Card>
       </div>
 
-      {/* Agent Thinking Panel */}
-      <div className="lg:col-span-1">
-        <Card className="h-full">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2">
-              <Brain className="h-4 w-4" />
-              Agent Thinking
-            </CardTitle>
-          </CardHeader>
-          
-          <CardContent className="space-y-4">
-            <ScrollArea className="h-[500px]">
-              {currentThinking ? (
-                <div className="space-y-4">
-                  {/* Task Completion Status */}
-                  {currentThinking.is_task_complete !== undefined && (
-                    <div>
-                      <Badge 
-                        variant={currentThinking.is_task_complete ? "default" : "secondary"}
-                        className="mb-2"
-                      >
-                        {currentThinking.is_task_complete ? "Task Complete" : "In Progress"}
-                      </Badge>
-                    </div>
-                  )}
-
-                  {/* State Analysis */}
-                  {currentThinking.state_analysis && (
-                    <div>
-                      <h4 className="font-medium text-sm mb-2 text-accent">State Analysis</h4>
-                      <p className="text-xs text-muted-foreground leading-relaxed">
-                        {currentThinking.state_analysis}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Explanation */}
-                  {currentThinking.explanation && (
-                    <div>
-                      <h4 className="font-medium text-sm mb-2 text-primary">Next Actions</h4>
-                      <p className="text-xs text-muted-foreground leading-relaxed">
-                        {currentThinking.explanation}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Commands */}
-                  {currentThinking.commands && currentThinking.commands.length > 0 && (
-                    <div>
-                      <h4 className="font-medium text-sm mb-2 text-warning">Planned Commands</h4>
-                      <div className="space-y-2">
-                        {currentThinking.commands.map((cmd, index) => {
-                          let commandText = '';
-                          let timeout = null;
-                          
-                          if (typeof cmd === 'string') {
-                            commandText = cmd;
-                          } else if (typeof cmd === 'object' && cmd !== null) {
-                            commandText = cmd.command || cmd.cmd || cmd.text || cmd.action || '';
-                            timeout = cmd.timeout || cmd.timeout_sec || cmd.max_timeout_sec;
-                            
-                            if (!commandText) {
-                              const stringValues = Object.values(cmd).filter(v => typeof v === 'string');
-                              if (stringValues.length > 0) {
-                                commandText = stringValues[0];
-                              } else {
-                                commandText = `Unknown command format: ${Object.keys(cmd).join(', ')}`;
-                              }
-                            }
-                          }
-                          
-                          return (
-                            <div key={index} className="bg-muted rounded p-2">
-                              <code className="text-xs font-mono text-foreground">
-                                {commandText || 'Empty command'}
-                              </code>
-                              {timeout && (
-                                <div className="flex items-center gap-1 mt-1">
-                                  <Clock className="h-3 w-3 text-muted-foreground" />
-                                  <span className="text-xs text-muted-foreground">
-                                    {timeout}s timeout
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
+      {/* Agent Thinking Panel - Only show for agent recordings */}
+      {showAgentThinking && (
+        <div className="lg:col-span-1">
+          <Card className="h-full">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2">
+                <Brain className="h-4 w-4" />
+                Agent Thinking
+              </CardTitle>
+            </CardHeader>
+            
+            <CardContent className="space-y-4">
+              <ScrollArea className="h-[500px]">
+                {currentThinking ? (
+                  <div className="space-y-4">
+                    {/* Task Completion Status */}
+                    {currentThinking.is_task_complete !== undefined && (
+                      <div>
+                        <Badge
+                          variant={currentThinking.is_task_complete ? "default" : "secondary"}
+                          className="mb-2"
+                        >
+                          {currentThinking.is_task_complete ? "Task Complete" : "In Progress"}
+                        </Badge>
                       </div>
-                    </div>
-                  )}
+                    )}
 
-                  {/* Show any other fields */}
-                  {Object.entries(currentThinking).map(([key, value]) => {
-                    if (['timestamp', 'state_analysis', 'explanation', 'commands', 'is_task_complete', 'raw_content'].includes(key)) {
-                      return null;
-                    }
-                    return (
-                      <div key={key}>
-                        <h4 className="font-medium text-sm mb-2 capitalize">{key.replace(/_/g, ' ')}</h4>
+                    {/* State Analysis */}
+                    {currentThinking.state_analysis && (
+                      <div>
+                        <h4 className="font-medium text-sm mb-2 text-accent">State Analysis</h4>
                         <p className="text-xs text-muted-foreground leading-relaxed">
-                          {typeof value === 'string' ? value : JSON.stringify(value, null, 2)}
+                          {currentThinking.state_analysis}
                         </p>
                       </div>
-                    );
-                  })}
+                    )}
 
-                  {/* Raw content fallback */}
-                  {currentThinking.raw_content && (
-                    <div>
-                      <h4 className="font-medium text-sm mb-2 text-muted-foreground">Raw Marker Data</h4>
-                      <pre className="text-xs bg-muted rounded p-2 overflow-x-auto">
-                        {currentThinking.raw_content}
-                      </pre>
+                    {/* Explanation */}
+                    {currentThinking.explanation && (
+                      <div>
+                        <h4 className="font-medium text-sm mb-2 text-primary">Next Actions</h4>
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          {currentThinking.explanation}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Commands */}
+                    {currentThinking.commands && currentThinking.commands.length > 0 && (
+                      <div>
+                        <h4 className="font-medium text-sm mb-2 text-warning">Planned Commands</h4>
+                        <div className="space-y-2">
+                          {currentThinking.commands.map((cmd, index) => {
+                            let commandText = '';
+                            let timeout = null;
+                            
+                            if (typeof cmd === 'string') {
+                              commandText = cmd;
+                            } else if (typeof cmd === 'object' && cmd !== null) {
+                              commandText = cmd.command || cmd.cmd || cmd.text || cmd.action || '';
+                              timeout = cmd.timeout || cmd.timeout_sec || cmd.max_timeout_sec;
+                              
+                              if (!commandText) {
+                                const stringValues = Object.values(cmd).filter(v => typeof v === 'string');
+                                if (stringValues.length > 0) {
+                                  commandText = stringValues[0];
+                                } else {
+                                  commandText = `Unknown command format: ${Object.keys(cmd).join(', ')}`;
+                                }
+                              }
+                            }
+                            
+                            return (
+                              <div key={index} className="bg-muted rounded p-2">
+                                <code className="text-xs font-mono text-foreground">
+                                  {commandText || 'Empty command'}
+                                </code>
+                                {timeout && (
+                                  <div className="flex items-center gap-1 mt-1">
+                                    <Clock className="h-3 w-3 text-muted-foreground" />
+                                    <span className="text-xs text-muted-foreground">
+                                      {timeout}s timeout
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Show any other fields */}
+                    {Object.entries(currentThinking).map(([key, value]) => {
+                      if (['timestamp', 'state_analysis', 'explanation', 'commands', 'is_task_complete', 'raw_content'].includes(key)) {
+                        return null;
+                      }
+                      return (
+                        <div key={key}>
+                          <h4 className="font-medium text-sm mb-2 capitalize">{key.replace(/_/g, ' ')}</h4>
+                          <p className="text-xs text-muted-foreground leading-relaxed">
+                            {typeof value === 'string' ? value : JSON.stringify(value, null, 2)}
+                          </p>
+                        </div>
+                      );
+                    })}
+
+                    {/* Raw content fallback */}
+                    {currentThinking.raw_content && (
+                      <div>
+                        <h4 className="font-medium text-sm mb-2 text-muted-foreground">Raw Marker Data</h4>
+                        <pre className="text-xs bg-muted rounded p-2 overflow-x-auto">
+                          {currentThinking.raw_content}
+                        </pre>
+                      </div>
+                    )}
+
+                    {/* Timestamp */}
+                    <div className="pt-2 border-t border-border">
+                      <span className="text-xs text-muted-foreground">
+                        Thinking at {formatTime(currentThinking.timestamp)}
+                      </span>
                     </div>
-                  )}
-
-                  {/* Timestamp */}
-                  <div className="pt-2 border-t border-border">
-                    <span className="text-xs text-muted-foreground">
-                      Thinking at {formatTime(currentThinking.timestamp)}
-                    </span>
                   </div>
-                </div>
-              ) : (
-                <div className="text-center text-muted-foreground">
-                  <Brain className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">No agent thinking data yet</p>
-                  <p className="text-xs">Play the session to see the agent's reasoning</p>
-                </div>
-              )}
-            </ScrollArea>
-          </CardContent>
-        </Card>
-      </div>
+                ) : (
+                  <div className="text-center text-muted-foreground">
+                    <Brain className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">No agent thinking data yet</p>
+                    <p className="text-xs">Play the session to see the agent's reasoning</p>
+                  </div>
+                )}
+              </ScrollArea>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }
