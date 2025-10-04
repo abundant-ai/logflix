@@ -527,7 +527,8 @@ export class GitHubCliService {
       
       for (const commit of commits) {
         try {
-          const runsCommand = `run list ${repoContext} --commit ${commit.sha} --limit ${Math.ceil(limit / commits.length)} --json databaseId,displayTitle,status,conclusion,createdAt,updatedAt,url,workflowDatabaseId,workflowName,headSha,headBranch,number,attempt`;
+          // Filter to only test-tasks.yaml workflow runs
+          const runsCommand = `run list ${repoContext} --commit ${commit.sha} --workflow="${this.workflowFileName}" --limit ${Math.ceil(limit / commits.length)} --json databaseId,displayTitle,status,conclusion,createdAt,updatedAt,url,workflowDatabaseId,workflowName,headSha,headBranch,number,attempt`;
           const runs = await this.executeGhCommand<GHRunJSON[]>(runsCommand);
           
           const mappedRuns = runs.map(run => ({
