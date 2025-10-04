@@ -583,7 +583,7 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                                       {agentName}
                                     </div>
                                     {tests.map((test, idx) => (
-                                      <div key={idx} className="flex items-center justify-between pl-4 py-1.5 bg-muted/30 rounded px-3">
+                                      <div key={idx} className="flex items-center justify-between pl-8 pr-3 py-1.5 bg-muted/30 rounded">
                                         <span className="text-sm text-muted-foreground">
                                           {test.model || 'Default'}
                                         </span>
