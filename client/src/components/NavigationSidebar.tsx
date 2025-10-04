@@ -66,7 +66,10 @@ export default function NavigationSidebar({ onSelectPR, selectedPR }: Navigation
       repo: repoName,
       workflow: workflowFile
     }],
-    refetchInterval: 30000, // Refresh every 30 seconds
+    // Remove automatic refetching to prevent flickering
+    refetchInterval: false,
+    refetchOnWindowFocus: false,
+    staleTime: 5 * 60 * 1000, // Consider data fresh for 5 minutes
   });
 
   const getPRStatusColor = (state: string, merged: boolean) => {

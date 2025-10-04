@@ -1,24 +1,20 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import * as AsciinemaPlayer from "asciinema-player";
-import "asciinema-player/dist/bundle/asciinema-player.css";
-import { 
+import CustomTerminalViewer from "./CustomTerminalViewer";
+import {
   ChevronRight,
   Download,
-  ExternalLink, 
-  Terminal, 
-  FileCode, 
-  CheckCircle, 
-  XCircle, 
+  ExternalLink,
+  Terminal,
+  FileCode,
+  CheckCircle,
+  XCircle,
   Clock,
   GitPullRequest,
   MessageSquare,
   User,
   BarChart3,
-  Bug,
-  RotateCcw,
-  Play,
-  Pause
+  Bug
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -54,16 +50,8 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
   const [selectedLogFile, setSelectedLogFile] = useState<string | null>(null);
   const [logContent, setLogContent] = useState<string | null>(null);
   const [logType, setLogType] = useState<'agent' | 'tests'>('agent');
-  const [castError, setCastError] = useState<string | null>(null);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [castType, setCastType] = useState<'agent' | 'tests'>('agent');
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [playbackSpeed, setPlaybackSpeed] = useState(1);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [playerDuration, setPlayerDuration] = useState(0);
-  const [actionMarkers, setActionMarkers] = useState<number[]>([]);
-  const playerRef = useRef<HTMLDivElement>(null);
-  const playerInstanceRef = useRef<any>(null);
 
   // Fetch PR details
   const { data: prData, isLoading: isPRLoading } = useQuery<GitHubPullRequest>({
@@ -233,82 +221,44 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
     }
   }, [availableAgents, selectedAgent]);
 
-  // Get selected agent data
-  const selectedAgentData = availableAgents.find(a => a.artifact_name === selectedAgent);
-  const selectedCastFile = selectedAgentData?.files.find(f =>
-    f.name === `${castType}.cast`
-  );
+  // Memoize selected agent data to prevent constant re-renders
+  const selectedAgentData = useMemo(() => {
+    return availableAgents.find(a => a.artifact_name === selectedAgent);
+  }, [availableAgents, selectedAgent]);
+  
+  const selectedCastFile = useMemo(() => {
+    return selectedAgentData?.files.find(f => f.name === `${castType}.cast`);
+  }, [selectedAgentData, castType]);
 
-  // Fetch and render cast file when terminal tab is active
-  useEffect(() => {
-    // Clean up previous player instance
-    if (playerInstanceRef.current) {
-      playerInstanceRef.current.dispose();
-      playerInstanceRef.current = null;
-    }
-
-    // Reset error state
-    setCastError(null);
-
-    // Load if terminal tab is active, agent selected, cast file available, and player ref available
-    if (activeTab === 'terminal' && selectedAgentData && selectedCastFile && playerRef.current) {
-      const fetchAndRenderCast = async () => {
-        try {
-          const response = await fetch(
-            `/api/github/cast-file-by-path/${selectedAgentData.id}?path=${encodeURIComponent(selectedCastFile.path)}`
-          );
-          
-          if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ error: response.statusText }));
-            throw new Error(errorData.error || `Failed to fetch cast: ${response.statusText}`);
-          }
-          
-          const data = await response.json();
-          
-          if (!data.content) {
-            throw new Error('No cast content returned from server');
-          }
-
-          // Clear the container
-          if (playerRef.current) {
-            playerRef.current.innerHTML = '';
-            
-            // Create asciinema player with default controls
-            playerInstanceRef.current = AsciinemaPlayer.create(
-              { data: data.content },
-              playerRef.current,
-              {
-                autoPlay: false,
-                loop: false,
-                fit: 'width',
-                terminalFontSize: '14px',
-                idleTimeLimit: 2,
-                // Keep default controls visible
-              }
-            );
-          }
-        } catch (error) {
-          console.error('Error loading cast file:', error);
-          const errorMessage = error instanceof Error ? error.message : 'Failed to load cast file';
-          setCastError(errorMessage);
-          
-          if (selectedAgentData.expired) {
-            setCastError(`${errorMessage} (Artifact marked as expired)`);
-          }
-        }
-      };
-
-      fetchAndRenderCast();
-    }
-
-    // Cleanup on unmount or when dependencies change
-    return () => {
-      if (playerInstanceRef.current) {
-        playerInstanceRef.current.dispose();
-        playerInstanceRef.current = null;
+  // Use React Query for cast file caching with custom queryFn
+  const castFileQuery = useQuery<{ content: string }>({
+    queryKey: selectedAgentData && selectedCastFile ? [
+      "cast-file",
+      selectedAgentData.id,
+      selectedCastFile.path
+    ] : [],
+    queryFn: async () => {
+      if (!selectedAgentData || !selectedCastFile) {
+        throw new Error('No agent or cast file selected');
       }
-    };
-  }, [activeTab, selectedAgentData, selectedCastFile, castType]);
+      
+      const response = await fetch(
+        `/api/github/cast-file-by-path/${selectedAgentData.id}?path=${encodeURIComponent(selectedCastFile.path)}`
+      );
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: response.statusText }));
+        throw new Error(errorData.error || `Failed to fetch cast: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    },
+    enabled: !!(activeTab === 'terminal' && selectedAgentData && selectedCastFile),
+    staleTime: 10 * 60 * 1000, // Cache for 10 minutes
+    gcTime: 15 * 60 * 1000, // Keep in memory for 15 minutes
+    retry: 1,
+    refetchOnWindowFocus: false,
+  });
 
   const getWorkflowStatusColor = (status: string, conclusion?: string | null) => {
     if (status === 'completed') {
@@ -901,24 +851,12 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
             ) : null}
           </TabsContent>
 
-          <TabsContent value="terminal" className="p-6 space-y-6 m-0">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle>Terminal Recording</CardTitle>
-                  {selectedAgentData && (
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => window.open(`/api/github/download-artifact/${selectedRunId}/${selectedAgentData.artifact_name}`, '_blank')}
-                    >
-                      <Download className="h-4 w-4 mr-1" />
-                      Download
-                    </Button>
-                  )}
-                </div>
-                {availableAgents.length > 0 && (
-                  <div className="flex items-center gap-3 mt-4">
+          <TabsContent value="terminal" className="p-0 m-0 h-full">
+            <div className="h-full flex flex-col">
+              {/* Stable Control Bar */}
+              {availableAgents.length > 0 && (
+                <div className="bg-card border-b border-border p-4 flex-shrink-0">
+                  <div className="flex items-center gap-3">
                     <Select
                       value={selectedAgent || ""}
                       onValueChange={setSelectedAgent}
@@ -950,37 +888,65 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                         Tests
                       </Button>
                     </div>
+                    {selectedAgentData && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => window.open(`/api/github/download-artifact/${selectedRunId}/${selectedAgentData.artifact_name}`, '_blank')}
+                      >
+                        <Download className="h-4 w-4 mr-1" />
+                        Download
+                      </Button>
+                    )}
                   </div>
-                )}
-              </CardHeader>
-              <CardContent>
-                {availableAgents.length > 0 ? (
-                  castError ? (
-                    <div className="bg-muted rounded-lg p-8 text-center">
+                </div>
+              )}
+
+              {/* Stable Content Area */}
+              <div className="flex-1 min-h-0">
+                {castFileQuery.error ? (
+                  <div className="h-full flex items-center justify-center p-8">
+                    <div className="text-center">
                       <XCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
                       <p className="text-muted-foreground">Error loading cast file</p>
-                      <p className="text-sm text-muted-foreground mt-2">{castError}</p>
+                      <p className="text-sm text-muted-foreground mt-2">
+                        {(castFileQuery.error as Error)?.message || 'Failed to load cast file'}
+                      </p>
                     </div>
-                  ) : !selectedCastFile ? (
-                    <div className="bg-muted rounded-lg p-8 text-center">
+                  </div>
+                ) : !selectedCastFile ? (
+                  <div className="h-full flex items-center justify-center p-8">
+                    <div className="text-center">
                       <Terminal className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                      <p className="text-muted-foreground">No {castType} recording found for this agent</p>
+                      <p className="text-muted-foreground">
+                        {availableAgents.length > 0 ?
+                          `No ${castType} recording found for this agent` :
+                          'No terminal recordings available'
+                        }
+                      </p>
                     </div>
-                  ) : (
-                    <div className="bg-black rounded-lg overflow-hidden">
-                      <div ref={playerRef} className="w-full" style={{ minHeight: '400px' }}>
-                        {/* Asciinema player will render here with default controls */}
-                      </div>
+                  </div>
+                ) : castFileQuery.isLoading ? (
+                  <div className="h-full flex items-center justify-center p-8">
+                    <div className="text-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent mx-auto mb-4"></div>
+                      <p className="text-muted-foreground">Loading terminal session...</p>
                     </div>
-                  )
+                  </div>
+                ) : castFileQuery.data?.content ? (
+                  <div className="h-full">
+                    <CustomTerminalViewer castContent={castFileQuery.data.content} />
+                  </div>
                 ) : (
-                  <div className="bg-muted rounded-lg p-8 text-center">
-                    <Terminal className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                    <p className="text-muted-foreground">No terminal recordings available</p>
+                  <div className="h-full flex items-center justify-center p-8">
+                    <div className="text-center">
+                      <Terminal className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                      <p className="text-muted-foreground">No cast content available</p>
+                    </div>
                   </div>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           </TabsContent>
 
           <TabsContent value="files" className="p-0 m-0 h-full">
