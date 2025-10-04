@@ -114,9 +114,15 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
   const selectedCommit = commitsData?.commits.find(c => c.sha === selectedCommitSha);
 
   // Fetch commit details for display
-  const { data: commitData } = useQuery<{ message: string; author: string }>({
+  const { data: commitData } = useQuery<{ message: string; author: string; email: string }>({
     queryKey: selectedCommitSha ? ["/api/github/commit", selectedCommitSha] : [],
     enabled: !!selectedCommitSha,
+  });
+
+  // Fetch jobs for selected run to show agent results
+  const { data: jobsData } = useQuery<{ jobs: Array<{ name: string; conclusion: string | null; status: string }> }>({
+    queryKey: selectedRunId ? ["/api/github/workflow-jobs", selectedRunId] : [],
+    enabled: !!selectedRunId,
   });
 
   const duration = selectedRun ?
@@ -461,91 +467,92 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
               </Card>
             ) : selectedRun ? (
               <>
-                {/* Summary Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <Card>
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm text-muted-foreground">Task Result</p>
-                          <div className="flex items-center gap-2 mt-1">
-                            {getStatusIcon(selectedRun.status, selectedRun.conclusion)}
-                            <p className={`text-2xl font-bold ${getStatusColor(selectedRun.status, selectedRun.conclusion)}`}>
-                              {selectedRun.conclusion?.toUpperCase() || selectedRun.status.toUpperCase()}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm text-muted-foreground">Duration</p>
-                          <p className="text-2xl font-bold">{formatDuration(duration)}</p>
-                        </div>
-                        <Clock className="h-5 w-5 text-muted-foreground" />
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm text-muted-foreground">Difficulty</p>
-                          <p className="text-2xl font-bold capitalize">
-                            {taskData?.taskYaml?.difficulty || 'N/A'}
-                          </p>
-                        </div>
-                        <BarChart3 className="h-5 w-5 text-muted-foreground" />
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                {/* Task Information */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Task Information - Three Column Layout */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                   <Card>
                     <CardHeader>
                       <CardTitle>Task Details</CardTitle>
                     </CardHeader>
-                    <CardContent className="space-y-3">
-                      <div>
-                        <label className="text-sm font-semibold text-foreground">Task ID</label>
-                        <p className="text-sm mt-1">{taskData?.taskId || 'N/A'}</p>
-                      </div>
-                      {taskData?.taskYaml?.category && (
+                    <CardContent>
+                      <div className="space-y-4">
                         <div>
-                          <label className="text-sm text-muted-foreground">Category</label>
-                          <p className="text-sm mt-1">{taskData.taskYaml.category}</p>
+                          <label className="text-sm text-muted-foreground block mb-1">Task ID</label>
+                          <p className="text-sm">{taskData?.taskId || 'N/A'}</p>
                         </div>
-                      )}
-                      {taskData?.taskYaml?.tags && taskData.taskYaml.tags.length > 0 && (
                         <div>
-                          <label className="text-sm text-muted-foreground">Tags</label>
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {taskData.taskYaml.tags.map((tag: string) => (
-                              <Badge key={tag} variant="secondary" className="text-xs">
-                                {tag}
-                              </Badge>
-                            ))}
+                          <label className="text-sm text-muted-foreground block mb-1">Duration</label>
+                          <p className="text-sm">{formatDuration(duration)}</p>
+                        </div>
+                        <div>
+                          <label className="text-sm text-muted-foreground block mb-1">Difficulty</label>
+                          <p className="text-sm capitalize">{taskData?.taskYaml?.difficulty || 'N/A'}</p>
+                        </div>
+                        {taskData?.taskYaml?.category && (
+                          <div>
+                            <label className="text-sm text-muted-foreground block mb-1">Category</label>
+                            <p className="text-sm">{taskData.taskYaml.category}</p>
                           </div>
+                        )}
+                        {taskData?.taskYaml?.max_agent_timeout_sec && (
+                          <div>
+                            <label className="text-sm text-muted-foreground block mb-1">Max Agent Timeout</label>
+                            <p className="text-sm">{taskData.taskYaml.max_agent_timeout_sec}s</p>
+                          </div>
+                        )}
+                        {taskData?.taskYaml?.max_test_timeout_sec && (
+                          <div>
+                            <label className="text-sm text-muted-foreground block mb-1">Max Test Timeout</label>
+                            <p className="text-sm">{taskData.taskYaml.max_test_timeout_sec}s</p>
+                          </div>
+                        )}
+                        {taskData?.taskYaml?.tags && taskData.taskYaml.tags.length > 0 && (
+                          <div>
+                            <label className="text-sm text-muted-foreground block mb-1">Tags</label>
+                            <div className="flex flex-wrap gap-1">
+                              {taskData.taskYaml.tags.map((tag: string) => (
+                                <Badge key={tag} variant="secondary" className="text-xs">
+                                  {tag}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Agent Results</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {jobsData && jobsData.jobs.length > 0 ? (
+                        <div className="space-y-2">
+                          {jobsData.jobs.map((job, index) => (
+                            <div key={index} className="flex items-center justify-between p-2 bg-muted/50 rounded">
+                              <span className="text-sm">{job.name}</span>
+                              <div className="flex items-center gap-2">
+                                {job.conclusion === 'success' ? (
+                                  <>
+                                    <CheckCircle className="h-4 w-4 text-success" />
+                                    <span className="text-sm text-success font-medium">PASS</span>
+                                  </>
+                                ) : job.conclusion === 'failure' ? (
+                                  <>
+                                    <XCircle className="h-4 w-4 text-destructive" />
+                                    <span className="text-sm text-destructive font-medium">FAIL</span>
+                                  </>
+                                ) : (
+                                  <span className="text-sm text-muted-foreground">
+                                    {job.status?.toUpperCase() || 'PENDING'}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                      )}
-                      {taskData?.taskYaml?.max_agent_timeout_sec && (
-                        <div>
-                          <label className="text-sm text-muted-foreground">Max Agent Timeout</label>
-                          <p className="text-sm mt-1">{taskData.taskYaml.max_agent_timeout_sec}s</p>
-                        </div>
-                      )}
-                      {taskData?.taskYaml?.max_test_timeout_sec && (
-                        <div>
-                          <label className="text-sm text-muted-foreground">Max Test Timeout</label>
-                          <p className="text-sm mt-1">{taskData.taskYaml.max_test_timeout_sec}s</p>
-                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No agent results available</p>
                       )}
                     </CardContent>
                   </Card>
@@ -554,47 +561,52 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                     <CardHeader>
                       <CardTitle>Pull Request Details</CardTitle>
                     </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div>
-                        <label className="text-sm font-semibold text-foreground block mb-1">Author</label>
-                        <p className="text-sm">
-                          {taskData?.taskYaml?.author_name || commitData?.author || prData.user.login} ({prData.user.login})
-                        </p>
-                        {taskData?.taskYaml?.author_email && (
-                          <p className="text-xs text-muted-foreground mt-1">{taskData.taskYaml.author_email}</p>
-                        )}
-                      </div>
-                      <div>
-                        <label className="text-sm font-semibold text-foreground block mb-1">Commit</label>
-                        <Button
-                          variant="link"
-                          className="p-0 h-auto text-sm justify-start font-normal hover:underline"
-                          asChild
-                        >
-                          <a
-                            href={`https://github.com/abundant-ai/tbench-hammer/commit/${selectedCommitSha || selectedRun?.head_sha}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            title={commitData?.message || selectedCommit?.message}
-                          >
-                            <div className="flex items-center gap-2">
-                              <code className="text-xs font-mono">{(selectedCommitSha || selectedRun?.head_sha || '').substring(0, 7)}</code>
-                              <ChevronRight className="h-3 w-3" />
-                              <span className="text-sm truncate max-w-md">
-                                {commitData?.message?.split('\n')[0] || selectedCommit?.message?.split('\n')[0] || 'View commit'}
-                              </span>
-                            </div>
-                          </a>
-                        </Button>
-                        {selectedCommit && (
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {new Date(selectedCommit.date).toLocaleString()}
+                    <CardContent>
+                      <div className="space-y-4">
+                        <div>
+                          <label className="text-sm text-muted-foreground block mb-1">Author</label>
+                          <p className="text-sm">
+                            {taskData?.taskYaml?.author_name || commitData?.author || prData.user.login}
+                            {(commitData?.email || taskData?.taskYaml?.author_email) && (
+                              <> &lt;{commitData?.email || taskData?.taskYaml?.author_email}&gt; ({prData.user.login})</>
+                            )}
+                            {!(commitData?.email || taskData?.taskYaml?.author_email) && (
+                              <> ({prData.user.login})</>
+                            )}
                           </p>
-                        )}
-                      </div>
-                      <div>
-                        <label className="text-sm text-muted-foreground block mb-1">Created At</label>
-                        <p className="text-sm">{formatDate(prData.created_at)}</p>
+                        </div>
+                        <div>
+                          <label className="text-sm text-muted-foreground block mb-1">Commit</label>
+                          <Button
+                            variant="link"
+                            className="p-0 h-auto text-sm justify-start font-normal hover:underline"
+                            asChild
+                          >
+                            <a
+                              href={`https://github.com/abundant-ai/tbench-hammer/commit/${selectedCommitSha || selectedRun?.head_sha}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title={commitData?.message || selectedCommit?.message}
+                            >
+                              <div className="flex items-center gap-2">
+                                <code className="text-xs font-mono">{(selectedCommitSha || selectedRun?.head_sha || '').substring(0, 7)}</code>
+                                <ChevronRight className="h-3 w-3" />
+                                <span className="text-sm truncate max-w-md">
+                                  {commitData?.message?.split('\n')[0] || selectedCommit?.message?.split('\n')[0] || 'View commit'}
+                                </span>
+                              </div>
+                            </a>
+                          </Button>
+                          {selectedCommit && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {new Date(selectedCommit.date).toLocaleString()}
+                            </p>
+                          )}
+                        </div>
+                        <div>
+                          <label className="text-sm text-muted-foreground block mb-1">Created At</label>
+                          <p className="text-sm">{formatDate(prData.created_at)}</p>
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
@@ -604,7 +616,18 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                 {taskData?.taskYaml?.instruction && (
                   <Card>
                     <CardHeader>
-                      <CardTitle>Task Instruction</CardTitle>
+                      <div className="flex items-center justify-between">
+                        <CardTitle>Task Instruction</CardTitle>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => copyToClipboard(taskData.taskYaml.instruction)}
+                          title="Copy instruction"
+                        >
+                          <FileCode className="h-4 w-4 mr-1" />
+                          Copy
+                        </Button>
+                      </div>
                     </CardHeader>
                     <CardContent>
                       <div className="bg-muted rounded-lg p-4">

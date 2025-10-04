@@ -741,11 +741,11 @@ export class GitHubCliService {
   }
 
   /**
-   * Get commit details including message
+   * Get commit details including message and email
    */
-  async getCommitDetails(commitSha: string): Promise<{ message: string; author: string } | null> {
+  async getCommitDetails(commitSha: string): Promise<{ message: string; author: string; email: string } | null> {
     try {
-      const commitCommand = `api repos/${this.repositoryOwner}/${this.repositoryName}/commits/${commitSha} --jq '{message: .commit.message, author: .commit.author.name}'`;
+      const commitCommand = `api repos/${this.repositoryOwner}/${this.repositoryName}/commits/${commitSha} --jq '{message: .commit.message, author: .commit.author.name, email: .commit.author.email}'`;
       const { stdout } = await execAsync(`gh ${commitCommand}`);
       
       return JSON.parse(stdout.trim());
@@ -774,6 +774,28 @@ export class GitHubCliService {
       return commits;
     } catch (error) {
       console.error(`Error fetching commits for PR ${prNumber}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Get jobs for a workflow run (to show individual agent results)
+   */
+  async getWorkflowJobs(runId: number): Promise<Array<{ name: string; conclusion: string | null; status: string }>> {
+    try {
+      const jobsCommand = `api repos/${this.repositoryOwner}/${this.repositoryName}/actions/runs/${runId}/jobs --jq '.jobs[] | {name: .name, conclusion: .conclusion, status: .status}'`;
+      const { stdout } = await execAsync(`gh ${jobsCommand}`);
+      
+      // Parse newline-delimited JSON
+      const jobs = stdout
+        .trim()
+        .split('\n')
+        .filter(line => line)
+        .map(line => JSON.parse(line));
+      
+      return jobs;
+    } catch (error) {
+      console.error(`Error fetching jobs for run ${runId}:`, error);
       return [];
     }
   }

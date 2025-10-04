@@ -390,6 +390,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error fetching PR commits:", error);
       res.status(500).json({ error: "Failed to fetch PR commits" });
     }
+
+  // Get jobs for a workflow run
+  app.get("/api/github/workflow-jobs/:runId", async (req, res) => {
+    try {
+      const { runId } = req.params;
+      
+      if (!runId || isNaN(parseInt(runId, 10))) {
+        return res.status(400).json({ error: "Invalid run ID parameter" });
+      }
+
+      const runIdNumber = parseInt(runId, 10);
+      const jobs = await githubService.getWorkflowJobs(runIdNumber);
+      
+      res.json({ jobs });
+    } catch (error) {
+      console.error("Error fetching workflow jobs:", error);
+      res.status(500).json({ error: "Failed to fetch workflow jobs" });
+    }
+  });
   });
 
   // Get review comments for a workflow run
