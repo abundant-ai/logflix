@@ -509,35 +509,53 @@ export class GitHubCliService {
   }
 
   /**
-   * Get workflow runs associated with a pull request
+   * Get workflow runs associated with a pull request (for all commits)
    */
-  async getWorkflowRunsForPR(prNumber: number, limit: number = 10): Promise<GitHubWorkflowRun[]> {
+  async getWorkflowRunsForPR(prNumber: number, limit: number = 50): Promise<GitHubWorkflowRun[]> {
     try {
       const repoContext = this.getRepoContext();
       
-      // Get PR details to get the head SHA
-      const prCommand = `pr view ${prNumber} ${repoContext} --json headRefOid`;
-      const prData = await this.executeGhCommand<{ headRefOid: string }>(prCommand);
+      // Get all commits for this PR
+      const commits = await this.getPRCommits(prNumber);
       
-      // Get workflow runs for this commit
-      const runsCommand = `run list ${repoContext} --commit ${prData.headRefOid} --limit ${limit} --json databaseId,displayTitle,status,conclusion,createdAt,updatedAt,url,workflowDatabaseId,workflowName,headSha,headBranch,number,attempt`;
-      const runs = await this.executeGhCommand<GHRunJSON[]>(runsCommand);
+      if (commits.length === 0) {
+        return [];
+      }
 
-      return runs.map(run => ({
-        id: run.databaseId,
-        name: run.displayTitle || null,
-        status: run.status as 'queued' | 'in_progress' | 'completed',
-        conclusion: run.conclusion as 'success' | 'failure' | 'neutral' | 'cancelled' | 'skipped' | 'timed_out' | 'action_required' | null,
-        created_at: run.createdAt,
-        updated_at: run.updatedAt,
-        html_url: run.url,
-        workflow_id: run.workflowDatabaseId,
-        workflow_name: run.workflowName,
-        head_sha: run.headSha,
-        head_branch: run.headBranch,
-        run_number: run.number,
-        run_attempt: run.attempt,
-      }));
+      // Fetch workflow runs for all commits in the PR
+      const allRuns: GitHubWorkflowRun[] = [];
+      
+      for (const commit of commits) {
+        try {
+          const runsCommand = `run list ${repoContext} --commit ${commit.sha} --limit ${Math.ceil(limit / commits.length)} --json databaseId,displayTitle,status,conclusion,createdAt,updatedAt,url,workflowDatabaseId,workflowName,headSha,headBranch,number,attempt`;
+          const runs = await this.executeGhCommand<GHRunJSON[]>(runsCommand);
+          
+          const mappedRuns = runs.map(run => ({
+            id: run.databaseId,
+            name: run.displayTitle || null,
+            status: run.status as 'queued' | 'in_progress' | 'completed',
+            conclusion: run.conclusion as 'success' | 'failure' | 'neutral' | 'cancelled' | 'skipped' | 'timed_out' | 'action_required' | null,
+            created_at: run.createdAt,
+            updated_at: run.updatedAt,
+            html_url: run.url,
+            workflow_id: run.workflowDatabaseId,
+            workflow_name: run.workflowName,
+            head_sha: run.headSha,
+            head_branch: run.headBranch,
+            run_number: run.number,
+            run_attempt: run.attempt,
+          }));
+          
+          allRuns.push(...mappedRuns);
+        } catch (error) {
+          console.error(`Error fetching runs for commit ${commit.sha}:`, error);
+          // Continue with other commits
+        }
+      }
+      
+      // Sort by created_at descending and limit to requested number
+      allRuns.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      return allRuns.slice(0, limit);
     } catch (error) {
       console.error(`Error fetching workflow runs for PR ${prNumber}:`, error);
       return [];
@@ -733,6 +751,29 @@ export class GitHubCliService {
     } catch (error) {
       console.error(`Error fetching commit details for ${commitSha}:`, error);
       return null;
+    }
+  }
+
+  /**
+   * Get all commits for a pull request
+   */
+  async getPRCommits(prNumber: number): Promise<Array<{ sha: string; message: string; author: string; date: string }>> {
+    try {
+      // Use GitHub API to get PR commits
+      const commitsCommand = `api repos/${this.repositoryOwner}/${this.repositoryName}/pulls/${prNumber}/commits --jq '.[] | {sha: .sha, message: .commit.message, author: .commit.author.name, date: .commit.author.date}'`;
+      const { stdout } = await execAsync(`gh ${commitsCommand}`);
+      
+      // Parse newline-delimited JSON
+      const commits = stdout
+        .trim()
+        .split('\n')
+        .filter(line => line)
+        .map(line => JSON.parse(line));
+      
+      return commits;
+    } catch (error) {
+      console.error(`Error fetching commits for PR ${prNumber}:`, error);
+      return [];
     }
   }
 }

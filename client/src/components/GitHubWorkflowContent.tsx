@@ -44,6 +44,7 @@ interface WorkflowRunDetails {
 
 export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowContentProps) {
   const [activeTab, setActiveTab] = useState("overview");
+  const [selectedCommitSha, setSelectedCommitSha] = useState<string | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
   const [selectedFile, setSelectedFile] = useState<any | null>(null);
   const [fileContent, setFileContent] = useState<string | null>(null);
@@ -55,18 +56,34 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
     enabled: !!selectedPR,
   });
 
+  // Fetch commits for this PR
+  const { data: commitsData } = useQuery<{ commits: Array<{ sha: string; message: string; author: string; date: string }> }>({
+    queryKey: selectedPR ? ["/api/github/pr-commits", selectedPR.prNumber] : [],
+    enabled: !!selectedPR,
+  });
+
+  // Auto-select the latest commit
+  useEffect(() => {
+    if (commitsData && commitsData.commits.length > 0 && !selectedCommitSha) {
+      setSelectedCommitSha(commitsData.commits[commitsData.commits.length - 1].sha);
+    }
+  }, [commitsData, selectedCommitSha]);
+
   // Fetch workflow runs for this PR
   const { data: runsData, isLoading: isRunsLoading } = useQuery<{ runs: GitHubWorkflowRun[]; total_count: number }>({
     queryKey: selectedPR ? ["/api/github/pr-workflow-runs", selectedPR.prNumber] : [],
     enabled: !!selectedPR,
   });
 
-  // Auto-select the latest run when data loads
+  // Filter runs by selected commit
+  const filteredRuns = runsData?.runs.filter(run => run.head_sha === selectedCommitSha) || [];
+
+  // Auto-select the latest run for the selected commit
   useEffect(() => {
-    if (runsData && runsData.runs.length > 0) {
-      setSelectedRunId(runsData.runs[0].id);
+    if (filteredRuns.length > 0 && (!selectedRunId || !filteredRuns.find(r => r.id === selectedRunId))) {
+      setSelectedRunId(filteredRuns[0].id);
     }
-  }, [runsData]);
+  }, [selectedCommitSha, filteredRuns, selectedRunId]);
 
   // Fetch details for selected workflow run
   const { data: runDetails, isLoading: isRunDetailsLoading } = useQuery<WorkflowRunDetails>({
@@ -92,14 +109,23 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
     enabled: !!selectedPR,
   });
 
-  // Get selected run from runs data
-  const selectedRun = runsData?.runs.find(r => r.id === selectedRunId);
+  // Get selected run from filtered runs
+  const selectedRun = filteredRuns.find(r => r.id === selectedRunId);
+  const selectedCommit = commitsData?.commits.find(c => c.sha === selectedCommitSha);
 
-  // Fetch commit details for selected run (must be before any conditional returns)
+  // Fetch commit details for display
   const { data: commitData } = useQuery<{ message: string; author: string }>({
-    queryKey: selectedRun ? ["/api/github/commit", selectedRun.head_sha] : [],
-    enabled: !!selectedRun,
+    queryKey: selectedCommitSha ? ["/api/github/commit", selectedCommitSha] : [],
+    enabled: !!selectedCommitSha,
   });
+
+  const duration = selectedRun ?
+    Math.floor((new Date(selectedRun.updated_at).getTime() - new Date(selectedRun.created_at).getTime()) / 1000) : 0;
+  const formatDuration = (secs: number) => {
+    const mins = Math.floor(secs / 60);
+    const remainingSecs = secs % 60;
+    return `${mins}m ${remainingSecs}s`;
+  };
 
   // Find cast artifact
   const castArtifact = runDetails?.artifacts.find(a => 
@@ -189,14 +215,6 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
       </div>
     );
   }
-
-  const duration = selectedRun ?
-    Math.floor((new Date(selectedRun.updated_at).getTime() - new Date(selectedRun.created_at).getTime()) / 1000) : 0;
-  const formatDuration = (secs: number) => {
-    const mins = Math.floor(secs / 60);
-    const remainingSecs = secs % 60;
-    return `${mins}m ${remainingSecs}s`;
-  };
 
   // Copy file content to clipboard
   const copyToClipboard = async (content: string) => {
@@ -292,25 +310,53 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
       <header className="bg-card border-b border-border px-6 py-5">
         <div className="flex items-center justify-between gap-8">
           <nav className="flex items-center space-x-2 text-base flex-shrink min-w-0" data-testid="breadcrumbs">
-            <span className="text-muted-foreground flex-shrink-0">Pull Requests</span>
-            <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
             <span className="text-muted-foreground font-medium truncate max-w-2xl" title={`#${prData.number}: ${prData.title}`}>
               #{prData.number}: {prData.title}
             </span>
-            <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+            {selectedCommit && (
+              <>
+                <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                <code className="text-foreground font-medium whitespace-nowrap" title={selectedCommit.message}>
+                  {selectedCommit.sha.substring(0, 7)}
+                </code>
+              </>
+            )}
             {selectedRun && (
-              <div className="flex items-center gap-2 flex-shrink-0 whitespace-nowrap">
-                <span className="text-foreground font-medium">#{selectedRun.run_number}</span>
-                <Badge className={`${getWorkflowStatusColor(selectedRun.status, selectedRun.conclusion)} text-xs`}>
-                  {selectedRun.conclusion || selectedRun.status}
-                </Badge>
-              </div>
+              <>
+                <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                <span className="text-foreground font-medium whitespace-nowrap">Run #{selectedRun.run_number}</span>
+              </>
             )}
           </nav>
 
-          <div className="flex items-center gap-4 flex-shrink-0">
-            {/* Compact Run Selector - Only show if multiple runs */}
-            {runsData && runsData.runs.length > 1 && (
+          <div className="flex items-center gap-3 flex-shrink-0">
+            {/* Commit Selector */}
+            {commitsData && commitsData.commits.length > 1 && (
+              <Select
+                value={selectedCommitSha || ""}
+                onValueChange={(value) => setSelectedCommitSha(value)}
+              >
+                <SelectTrigger className="w-80 h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="w-96">
+                  {commitsData.commits.map((commit, index) => (
+                    <SelectItem key={commit.sha} value={commit.sha}>
+                      <div className="flex items-center gap-2" title={commit.message}>
+                        <code className="text-xs font-mono flex-shrink-0">{commit.sha.substring(0, 7)}</code>
+                        {index === commitsData.commits.length - 1 && <Badge variant="outline" className="text-xs">Latest</Badge>}
+                        <span className="text-xs text-muted-foreground truncate">
+                          {commit.message.split('\n')[0]}
+                        </span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+
+            {/* Run Selector - Filtered by commit */}
+            {filteredRuns.length > 1 && (
               <Select
                 value={selectedRunId?.toString() || ""}
                 onValueChange={(value) => setSelectedRunId(parseInt(value, 10))}
@@ -319,7 +365,7 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="w-80">
-                  {runsData.runs.map((run, index) => {
+                  {filteredRuns.map((run, index) => {
                     const date = new Date(run.created_at);
                     const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                     const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
@@ -405,7 +451,15 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
           </div>
 
           <TabsContent value="overview" className="p-6 space-y-6 m-0">
-            {selectedRun && (
+            {!selectedRun && selectedCommitSha && filteredRuns.length === 0 ? (
+              <Card>
+                <CardContent className="p-8 text-center">
+                  <Clock className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
+                  <h3 className="text-lg font-semibold mb-2">No Workflow Runs</h3>
+                  <p className="text-muted-foreground">No workflow runs found for this commit.</p>
+                </CardContent>
+              </Card>
+            ) : selectedRun ? (
               <>
                 {/* Summary Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -500,10 +554,10 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                     <CardHeader>
                       <CardTitle>Pull Request Details</CardTitle>
                     </CardHeader>
-                    <CardContent className="space-y-3">
+                    <CardContent className="space-y-4">
                       <div>
-                        <label className="text-sm font-semibold text-foreground">Author</label>
-                        <p className="text-sm mt-1">
+                        <label className="text-sm font-semibold text-foreground block mb-1">Author</label>
+                        <p className="text-sm">
                           {taskData?.taskYaml?.author_name || commitData?.author || prData.user.login} ({prData.user.login})
                         </p>
                         {taskData?.taskYaml?.author_email && (
@@ -511,30 +565,36 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                         )}
                       </div>
                       <div>
-                        <label className="text-sm text-muted-foreground">Created</label>
-                        <p className="text-sm mt-1">{formatDate(selectedRun.created_at)}</p>
-                      </div>
-                      <div>
-                        <label className="text-sm font-semibold text-foreground">Commit</label>
+                        <label className="text-sm font-semibold text-foreground block mb-1">Commit</label>
                         <Button
                           variant="link"
-                          className="p-0 h-auto text-sm justify-start mt-1 font-normal"
+                          className="p-0 h-auto text-sm justify-start font-normal hover:underline"
                           asChild
                         >
                           <a
-                            href={`https://github.com/${prData.head.ref.split(':')[0] || 'abundant-ai'}/tbench-hammer/commit/${selectedRun.head_sha}`}
+                            href={`https://github.com/abundant-ai/tbench-hammer/commit/${selectedCommitSha || selectedRun?.head_sha}`}
                             target="_blank"
                             rel="noopener noreferrer"
+                            title={commitData?.message || selectedCommit?.message}
                           >
                             <div className="flex items-center gap-2">
-                              <code className="text-xs font-mono">{selectedRun.head_sha.substring(0, 7)}</code>
+                              <code className="text-xs font-mono">{(selectedCommitSha || selectedRun?.head_sha || '').substring(0, 7)}</code>
                               <ChevronRight className="h-3 w-3" />
-                              <span className="text-sm truncate max-w-sm" title={commitData?.message}>
-                                {commitData?.message?.split('\n')[0] || selectedRun.name || 'View commit'}
+                              <span className="text-sm truncate max-w-md">
+                                {commitData?.message?.split('\n')[0] || selectedCommit?.message?.split('\n')[0] || 'View commit'}
                               </span>
                             </div>
                           </a>
                         </Button>
+                        {selectedCommit && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {new Date(selectedCommit.date).toLocaleString()}
+                          </p>
+                        )}
+                      </div>
+                      <div>
+                        <label className="text-sm text-muted-foreground block mb-1">Created At</label>
+                        <p className="text-sm">{formatDate(prData.created_at)}</p>
                       </div>
                     </CardContent>
                   </Card>
@@ -556,7 +616,7 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                   </Card>
                 )}
               </>
-            )}
+            ) : null}
           </TabsContent>
 
           <TabsContent value="terminal" className="p-6 space-y-6 m-0">

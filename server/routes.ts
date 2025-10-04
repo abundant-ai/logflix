@@ -373,6 +373,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get commits for a pull request
+  app.get("/api/github/pr-commits/:prNumber", async (req, res) => {
+    try {
+      const { prNumber } = req.params;
+      
+      if (!prNumber || isNaN(parseInt(prNumber, 10))) {
+        return res.status(400).json({ error: "Invalid PR number parameter" });
+      }
+
+      const prNumberInt = parseInt(prNumber, 10);
+      const commits = await githubService.getPRCommits(prNumberInt);
+      
+      res.json({ commits });
+    } catch (error) {
+      console.error("Error fetching PR commits:", error);
+      res.status(500).json({ error: "Failed to fetch PR commits" });
+    }
+  });
+
   // Get review comments for a workflow run
   app.get("/api/github/review-comments-for-run/:runId", async (req, res) => {
     try {
