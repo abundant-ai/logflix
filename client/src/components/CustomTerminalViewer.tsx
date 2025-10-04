@@ -242,10 +242,10 @@ export default function CustomTerminalViewer({ castContent, showAgentThinking = 
               </div>
             </div>
             
-            {/* Streamlined Progress Bar */}
+            {/* Streamlined Progress Bar - Fully Opaque */}
             <div className="space-y-2">
               <div
-                className="relative w-full bg-muted/60 rounded-full h-2 cursor-pointer group hover:bg-muted transition-colors"
+                className="relative w-full bg-gray-300 dark:bg-gray-600 rounded-full h-2 cursor-pointer group hover:bg-gray-400 dark:hover:bg-gray-500 transition-colors"
                 onClick={(e) => {
                   // Handle direct clicks on the progress bar
                   const rect = e.currentTarget.getBoundingClientRect();
@@ -260,7 +260,7 @@ export default function CustomTerminalViewer({ castContent, showAgentThinking = 
                   style={{ width: `${maxTime > 0 ? (currentTime / maxTime) * 100 : 0}%` }}
                 />
                 
-                {/* Action Markers - Smaller and more elegant */}
+                {/* Action Markers - Fully visible */}
                 {thinkingEvents.map((event, index) => {
                   const position = maxTime > 0 ? (event.timestamp / maxTime) * 100 : 0;
                   return (
@@ -270,16 +270,16 @@ export default function CustomTerminalViewer({ castContent, showAgentThinking = 
                         e.stopPropagation();
                         setCurrentTime(event.timestamp);
                       }}
-                      className="absolute top-1/2 w-2.5 h-2.5 -translate-y-1/2 bg-amber-400 rounded-full border border-white/50 hover:bg-amber-300 hover:scale-125 transition-all duration-150 shadow-sm z-30 group-hover:opacity-100 opacity-90"
+                      className="absolute top-1/2 w-2.5 h-2.5 -translate-y-1/2 bg-amber-400 rounded-full border-2 border-white hover:bg-amber-300 hover:scale-125 transition-all duration-150 shadow-md z-30"
                       style={{ left: `${position}%`, transform: 'translateX(-50%) translateY(-50%)' }}
                       title={`Action ${index + 1} • ${formatTime(event.timestamp)}`}
                     />
                   );
                 })}
                 
-                {/* Progress handle - Minimal and elegant */}
+                {/* Progress handle - Fully visible */}
                 <div
-                  className="absolute top-1/2 w-3 h-3 -translate-y-1/2 bg-white rounded-full border-2 border-blue-500 shadow-sm z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                  className="absolute top-1/2 w-3 h-3 -translate-y-1/2 bg-white rounded-full border-2 border-blue-500 shadow-md z-20"
                   style={{ left: `${maxTime > 0 ? (currentTime / maxTime) * 100 : 0}%`, transform: 'translateX(-50%) translateY(-50%)' }}
                 />
               </div>
