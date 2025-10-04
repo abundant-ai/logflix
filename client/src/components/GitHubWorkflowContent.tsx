@@ -48,7 +48,6 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
   const [selectedFile, setSelectedFile] = useState<any | null>(null);
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [selectedLogFile, setSelectedLogFile] = useState<string | null>(null);
-  const [logContent, setLogContent] = useState<string | null>(null);
   const [logType, setLogType] = useState<'agent' | 'tests'>('agent');
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [castType, setCastType] = useState<'agent' | 'tests'>('agent');
@@ -138,10 +137,12 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
     a.name.toLowerCase().includes('test-result')
   );
 
-  // Fetch log files from artifact
+  // Fetch log files from artifact - PRELOAD for performance
   const { data: logFilesData } = useQuery<{ logFiles: Array<{ name: string; path: string }> }>({
     queryKey: logArtifact ? ["/api/github/artifact-logs", logArtifact.id] : [],
-    enabled: !!logArtifact && activeTab === 'logs',
+    enabled: !!logArtifact, // Preload immediately when artifact is available
+    staleTime: 10 * 60 * 1000, // Cache for 10 minutes
+    gcTime: 15 * 60 * 1000, // Keep in memory for 15 minutes
   });
 
   // Auto-select first log file
@@ -151,24 +152,38 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
     }
   }, [logFilesData, selectedLogFile]);
 
-  // Fetch selected log file content
-  useEffect(() => {
-    if (logArtifact && selectedLogFile) {
-      const fetchLogContent = async () => {
-        try {
-          const response = await fetch(`/api/github/artifact-log-content/${logArtifact.id}?path=${encodeURIComponent(selectedLogFile)}`);
-          const data = await response.json();
-          if (data.content) {
-            setLogContent(data.content);
-          }
-        } catch (error) {
-          console.error('Error fetching log content:', error);
-          setLogContent('Error loading log file');
-        }
-      };
-      fetchLogContent();
-    }
-  }, [logArtifact, selectedLogFile]);
+  // Use React Query for log content fetching - REPLACE useEffect for consistency and caching
+  const logContentQuery = useQuery<{ content: string }>({
+    queryKey: logArtifact && selectedLogFile ? [
+      "log-content",
+      logArtifact.id,
+      selectedLogFile
+    ] : [],
+    queryFn: async () => {
+      if (!logArtifact || !selectedLogFile) {
+        throw new Error('No log artifact or file selected');
+      }
+      
+      const response = await fetch(
+        `/api/github/artifact-log-content/${logArtifact.id}?path=${encodeURIComponent(selectedLogFile)}`
+      );
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: response.statusText }));
+        throw new Error(errorData.error || `Failed to fetch log: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    },
+    enabled: !!(logArtifact && selectedLogFile), // Preload immediately when log file selected
+    staleTime: 10 * 60 * 1000, // Cache for 10 minutes
+    gcTime: 15 * 60 * 1000, // Keep in memory for 15 minutes
+    retry: 1,
+    refetchOnWindowFocus: false,
+  });
+
+  // Update logContent state from React Query
+  const logContent = logContentQuery.data?.content || null;
 
   const duration = selectedRun ?
     Math.floor((new Date(selectedRun.updated_at).getTime() - new Date(selectedRun.created_at).getTime()) / 1000) : 0;
@@ -178,7 +193,7 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
     return `${mins}m ${remainingSecs}s`;
   };
 
-  // Fetch cast list to get all available agents and cast files
+  // Fetch cast list to get all available agents and cast files - PRELOAD for performance
   const { data: castListData } = useQuery<{
     castFiles: Array<{
       artifact_id: number;
@@ -188,7 +203,9 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
     }>
   }>({
     queryKey: selectedRunId ? ["/api/github/cast-list", selectedRunId] : [],
-    enabled: !!selectedRunId && activeTab === 'terminal',
+    enabled: !!selectedRunId, // Preload immediately when run is selected
+    staleTime: 10 * 60 * 1000, // Cache for 10 minutes
+    gcTime: 15 * 60 * 1000, // Keep in memory for 15 minutes
   });
 
   // Parse available agents from cast list - filter out artifacts with no .cast files
@@ -230,7 +247,7 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
     return selectedAgentData?.files.find(f => f.name === `${castType}.cast`);
   }, [selectedAgentData, castType]);
 
-  // Use React Query for cast file caching with custom queryFn
+  // Use React Query for cast file caching with custom queryFn - PRELOAD first agent
   const castFileQuery = useQuery<{ content: string }>({
     queryKey: selectedAgentData && selectedCastFile ? [
       "cast-file",
@@ -253,7 +270,7 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
       
       return await response.json();
     },
-    enabled: !!(activeTab === 'terminal' && selectedAgentData && selectedCastFile),
+    enabled: !!(selectedAgentData && selectedCastFile), // Preload immediately when agent/cast selected
     staleTime: 10 * 60 * 1000, // Cache for 10 minutes
     gcTime: 15 * 60 * 1000, // Keep in memory for 15 minutes
     retry: 1,
@@ -1076,7 +1093,14 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                   )}
                 </div>
                 <div className="flex-1 overflow-auto bg-black p-4">
-                  {logContent ? (
+                  {logContentQuery.error ? (
+                    <div className="text-center text-red-400 p-8">
+                      <p>Error loading log file</p>
+                      <p className="text-sm mt-2">
+                        {(logContentQuery.error as Error)?.message || 'Failed to load log file'}
+                      </p>
+                    </div>
+                  ) : logContent ? (
                     <pre className="text-xs font-mono text-green-400 whitespace-pre-wrap">
                       {logContent}
                     </pre>
