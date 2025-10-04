@@ -243,43 +243,45 @@ export default function CustomTerminalViewer({ castContent }: CustomTerminalView
             
             {/* Progress bar with Action Markers */}
             <div className="space-y-1">
-              <div className="relative w-full bg-muted rounded-full h-2">
-                <div 
-                  className="bg-primary h-2 rounded-full transition-all"
+              <div
+                className="relative w-full bg-muted rounded-full h-4 cursor-pointer"
+                onClick={(e) => {
+                  // Handle direct clicks on the progress bar
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const percent = (e.clientX - rect.left) / rect.width;
+                  const targetTime = Math.max(0, Math.min(maxTime, percent * maxTime));
+                  setCurrentTime(targetTime);
+                }}
+              >
+                {/* Progress fill */}
+                <div
+                  className="bg-primary h-4 rounded-full transition-all"
                   style={{ width: `${maxTime > 0 ? (currentTime / maxTime) * 100 : 0}%` }}
                 />
                 
-                {/* Action Markers */}
+                {/* Action Markers - Higher z-index to ensure clickability */}
                 {thinkingEvents.map((event, index) => {
                   const position = maxTime > 0 ? (event.timestamp / maxTime) * 100 : 0;
                   return (
                     <button
                       key={index}
-                      onClick={() => setCurrentTime(event.timestamp)}
-                      className="absolute top-0 w-3 h-3 -mt-0.5 bg-yellow-500 rounded-full border-2 border-background hover:bg-yellow-400 transition-colors shadow-sm z-10"
-                      style={{ left: `${position}%`, transform: 'translateX(-50%)' }}
-                      title={`Jump to action ${index + 1}`}
+                      onClick={(e) => {
+                        e.stopPropagation(); // Prevent progress bar click
+                        setCurrentTime(event.timestamp);
+                      }}
+                      className="absolute top-1/2 w-4 h-4 -translate-y-1/2 bg-yellow-500 rounded-full border-2 border-background hover:bg-yellow-400 hover:scale-110 transition-all shadow-md z-30"
+                      style={{ left: `${position}%`, transform: 'translateX(-50%) translateY(-50%)' }}
+                      title={`Jump to action ${index + 1} at ${formatTime(event.timestamp)}`}
                     >
                       <span className="sr-only">Jump to action {index + 1}</span>
                     </button>
                   );
                 })}
                 
-                {/* Clickable overlay for scrubbing */}
-                <input
-                  type="range"
-                  min="0"
-                  max={maxTime}
-                  step="0.1"
-                  value={currentTime}
-                  onChange={(e) => setCurrentTime(parseFloat(e.target.value))}
-                  onMouseDown={handleScrubStart}
-                  onMouseUp={handleScrubEnd}
-                  onTouchStart={handleScrubStart}
-                  onTouchEnd={handleScrubEnd}
-                  className="absolute inset-0 w-full h-2 opacity-0 cursor-pointer"
-                  style={{ zIndex: 20 }}
-                  data-testid="playback-scrubber"
+                {/* Progress indicator handle */}
+                <div
+                  className="absolute top-1/2 w-3 h-3 -translate-y-1/2 bg-white rounded-full border-2 border-primary shadow-sm z-20"
+                  style={{ left: `${maxTime > 0 ? (currentTime / maxTime) * 100 : 0}%`, transform: 'translateX(-50%) translateY(-50%)' }}
                 />
               </div>
               
