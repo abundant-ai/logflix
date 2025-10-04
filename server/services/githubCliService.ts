@@ -720,4 +720,19 @@ export class GitHubCliService {
       return null;
     }
   }
+
+  /**
+   * Get commit details including message
+   */
+  async getCommitDetails(commitSha: string): Promise<{ message: string; author: string } | null> {
+    try {
+      const commitCommand = `api repos/${this.repositoryOwner}/${this.repositoryName}/commits/${commitSha} --jq '{message: .commit.message, author: .commit.author.name}'`;
+      const { stdout } = await execAsync(`gh ${commitCommand}`);
+      
+      return JSON.parse(stdout.trim());
+    } catch (error) {
+      console.error(`Error fetching commit details for ${commitSha}:`, error);
+      return null;
+    }
+  }
 }

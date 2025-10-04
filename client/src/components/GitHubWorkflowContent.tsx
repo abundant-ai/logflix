@@ -92,6 +92,15 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
     enabled: !!selectedPR,
   });
 
+  // Get selected run from runs data
+  const selectedRun = runsData?.runs.find(r => r.id === selectedRunId);
+
+  // Fetch commit details for selected run (must be before any conditional returns)
+  const { data: commitData } = useQuery<{ message: string; author: string }>({
+    queryKey: selectedRun ? ["/api/github/commit", selectedRun.head_sha] : [],
+    enabled: !!selectedRun,
+  });
+
   // Find cast artifact
   const castArtifact = runDetails?.artifacts.find(a => 
     a.name.toLowerCase().includes('cast') || 
@@ -181,14 +190,101 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
     );
   }
 
-  const selectedRun = runsData?.runs.find(r => r.id === selectedRunId);
-  const duration = selectedRun ? 
+  const duration = selectedRun ?
     Math.floor((new Date(selectedRun.updated_at).getTime() - new Date(selectedRun.created_at).getTime()) / 1000) : 0;
   const formatDuration = (secs: number) => {
     const mins = Math.floor(secs / 60);
     const remainingSecs = secs % 60;
     return `${mins}m ${remainingSecs}s`;
   };
+
+  // Copy file content to clipboard
+  const copyToClipboard = async (content: string) => {
+    try {
+      await navigator.clipboard.writeText(content);
+    } catch (error) {
+      console.error('Failed to copy:', error);
+    }
+  };
+
+  // Build file tree from flat list
+  const buildFileTree = (files: any[]) => {
+    const tree: any = {};
+    files.forEach((file: any) => {
+      const parts = file.path.split('/');
+      let current = tree;
+      parts.forEach((part: string, index: number) => {
+        if (index === parts.length - 1) {
+          // Leaf node (file)
+          if (!current._files) current._files = [];
+          current._files.push({ ...file, name: part });
+        } else {
+          // Directory node
+          if (!current[part]) {
+            current[part] = {};
+          }
+          current = current[part];
+        }
+      });
+    });
+    return tree;
+  };
+
+  // Render tree recursively
+  const renderTree = (node: any, path: string = ''): JSX.Element[] => {
+    const elements: JSX.Element[] = [];
+    
+    // Render directories
+    Object.keys(node).forEach(key => {
+      if (key === '_files') return;
+      
+      const fullPath = path ? `${path}/${key}` : key;
+      elements.push(
+        <div key={fullPath} className="ml-2">
+          <div className="flex items-center gap-1 p-1 text-xs text-muted-foreground">
+            <ChevronRight className="h-3 w-3" />
+            <span>{key}/</span>
+          </div>
+          {renderTree(node[key], fullPath)}
+        </div>
+      );
+    });
+    
+    // Render files
+    if (node._files) {
+      node._files.forEach((file: any) => {
+        elements.push(
+          <div
+            key={file.sha}
+            className={`flex items-center gap-2 p-2 ml-2 hover:bg-muted rounded cursor-pointer transition-colors ${
+              selectedFile?.sha === file.sha ? 'bg-primary/20 border border-primary/30' : ''
+            }`}
+            onClick={async () => {
+              setSelectedFile(file);
+              // Fetch file content
+              try {
+                const response = await fetch(`/api/github/pr-file-content/${selectedPR.prNumber}?path=${encodeURIComponent(file.path)}`);
+                const data = await response.json();
+                if (data.content) {
+                  setFileContent(data.content);
+                }
+              } catch (error) {
+                console.error('Error fetching file:', error);
+                setFileContent('Error loading file content');
+              }
+            }}
+          >
+            <FileCode className="h-3 w-3 text-accent flex-shrink-0" />
+            <span className="text-sm truncate">{file.name}</span>
+          </div>
+        );
+      });
+    }
+    
+    return elements;
+  };
+
+  const fileTree = prFilesData ? buildFileTree(prFilesData.files) : {};
 
   return (
     <div className="flex-1 flex flex-col">
@@ -408,16 +504,11 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                       <div>
                         <label className="text-sm font-semibold text-foreground">Author</label>
                         <p className="text-sm mt-1">
-                          {taskData?.taskYaml?.author_name || prData.user.login} ({prData.user.login})
+                          {taskData?.taskYaml?.author_name || commitData?.author || prData.user.login} ({prData.user.login})
                         </p>
-                      </div>
-                      <div>
-                        <label className="text-sm font-semibold text-foreground">Run Number</label>
-                        <p className="text-sm mt-1">#{selectedRun.run_number}</p>
-                      </div>
-                      <div>
-                        <label className="text-sm text-muted-foreground">Workflow</label>
-                        <p className="text-sm mt-1">{selectedRun.workflow_name}</p>
+                        {taskData?.taskYaml?.author_email && (
+                          <p className="text-xs text-muted-foreground mt-1">{taskData.taskYaml.author_email}</p>
+                        )}
                       </div>
                       <div>
                         <label className="text-sm text-muted-foreground">Created</label>
@@ -425,13 +516,25 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                       </div>
                       <div>
                         <label className="text-sm font-semibold text-foreground">Commit</label>
-                        <div className="flex items-center gap-2 mt-1">
-                          <code className="text-xs font-mono">{selectedRun.head_sha.substring(0, 7)}</code>
-                          <ChevronRight className="h-3 w-3 text-muted-foreground" />
-                          <span className="text-sm text-muted-foreground truncate max-w-xs">
-                            {selectedRun.name || 'Workflow run'}
-                          </span>
-                        </div>
+                        <Button
+                          variant="link"
+                          className="p-0 h-auto text-sm justify-start mt-1 font-normal"
+                          asChild
+                        >
+                          <a
+                            href={`https://github.com/${prData.head.ref.split(':')[0] || 'abundant-ai'}/tbench-hammer/commit/${selectedRun.head_sha}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <div className="flex items-center gap-2">
+                              <code className="text-xs font-mono">{selectedRun.head_sha.substring(0, 7)}</code>
+                              <ChevronRight className="h-3 w-3" />
+                              <span className="text-sm truncate max-w-sm" title={commitData?.message}>
+                                {commitData?.message?.split('\n')[0] || selectedRun.name || 'View commit'}
+                              </span>
+                            </div>
+                          </a>
+                        </Button>
                       </div>
                     </CardContent>
                   </Card>
@@ -513,34 +616,7 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                     <h3 className="font-semibold text-sm">Files ({prFilesData.files.length})</h3>
                   </div>
                   <div className="p-2">
-                    {prFilesData.files.map((file: any) => (
-                      <div
-                        key={file.sha}
-                        className={`flex items-center gap-2 p-2 hover:bg-muted rounded cursor-pointer transition-colors ${
-                          selectedFile?.sha === file.sha ? 'bg-primary/20 border border-primary/30' : ''
-                        }`}
-                        onClick={async () => {
-                          setSelectedFile(file);
-                          // Fetch file content
-                          try {
-                            const response = await fetch(`/api/github/pr-file-content/${selectedPR.prNumber}?path=${encodeURIComponent(file.path)}`);
-                            const data = await response.json();
-                            if (data.content) {
-                              setFileContent(data.content);
-                            }
-                          } catch (error) {
-                            console.error('Error fetching file:', error);
-                            setFileContent('Error loading file content');
-                          }
-                        }}
-                      >
-                        <FileCode className="h-4 w-4 text-accent flex-shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{file.name}</p>
-                          <p className="text-xs text-muted-foreground truncate">{file.path}</p>
-                        </div>
-                      </div>
-                    ))}
+                    {renderTree(fileTree)}
                   </div>
                 </div>
 
@@ -553,22 +629,33 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                           <h3 className="font-semibold text-sm truncate">{selectedFile.name}</h3>
                           <p className="text-xs text-muted-foreground font-mono truncate">{selectedFile.path}</p>
                         </div>
-                        {selectedFile.download_url && (
+                        <div className="flex items-center gap-2">
                           <Button
-                            variant="ghost"
+                            variant="secondary"
                             size="sm"
-                            asChild
+                            onClick={() => copyToClipboard(fileContent || '')}
+                            title="Copy file content"
                           >
-                            <a
-                              href={selectedFile.download_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex items-center gap-2"
-                            >
-                              <ExternalLink className="h-4 w-4" />
-                            </a>
+                            <FileCode className="h-4 w-4 mr-1" />
+                            Copy
                           </Button>
-                        )}
+                          {selectedFile.download_url && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              asChild
+                            >
+                              <a
+                                href={selectedFile.download_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-2"
+                              >
+                                <ExternalLink className="h-4 w-4" />
+                              </a>
+                            </Button>
+                          )}
+                        </div>
                       </div>
                       <div className="flex-1 overflow-auto bg-black p-4">
                         <pre className="text-xs font-mono text-green-400 whitespace-pre-wrap break-words">

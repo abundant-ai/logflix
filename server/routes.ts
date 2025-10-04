@@ -351,6 +351,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get commit details
+  app.get("/api/github/commit/:commitSha", async (req, res) => {
+    try {
+      const { commitSha } = req.params;
+      
+      if (!commitSha) {
+        return res.status(400).json({ error: "Commit SHA is required" });
+      }
+
+      const commitDetails = await githubService.getCommitDetails(commitSha);
+      
+      if (!commitDetails) {
+        return res.status(404).json({ error: "Commit not found" });
+      }
+
+      res.json(commitDetails);
+    } catch (error) {
+      console.error("Error fetching commit details:", error);
+      res.status(500).json({ error: "Failed to fetch commit details" });
+    }
+  });
+
   // Get review comments for a workflow run
   app.get("/api/github/review-comments-for-run/:runId", async (req, res) => {
     try {
