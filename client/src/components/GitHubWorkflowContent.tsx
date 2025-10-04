@@ -273,45 +273,19 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
           if (playerRef.current) {
             playerRef.current.innerHTML = '';
             
-            // Create asciinema player - pass raw string content
-            // The player handles parsing newline-delimited JSON format itself
+            // Create asciinema player with default controls
             playerInstanceRef.current = AsciinemaPlayer.create(
               { data: data.content },
               playerRef.current,
               {
                 autoPlay: false,
                 loop: false,
-                fit: 'both',
-                terminalFontSize: 'medium',
-                theme: 'asciinema',
+                fit: 'width',
+                terminalFontSize: '14px',
                 idleTimeLimit: 2,
+                // Keep default controls visible
               }
             );
-
-            // Parse cast content to extract duration and action markers
-            const lines = data.content.trim().split('\n');
-            const events = lines.slice(1).map((line: string) => JSON.parse(line));
-            
-            // Extract duration and action markers from events
-            if (events.length > 0) {
-              const totalDuration = events[events.length - 1]?.[0] || 0;
-              setPlayerDuration(totalDuration);
-              
-              // Extract action markers (timestamps where output changes significantly)
-              const markers: number[] = [];
-              events.forEach((event: any, idx: number) => {
-                if (idx > 0 && idx % Math.ceil(events.length / 15) === 0) {
-                  markers.push(event[0]);
-                }
-              });
-              setActionMarkers(markers);
-            }
-
-            // Hide default asciinema controls
-            const controlBar = playerRef.current?.querySelector('.asciinema-player-wrapper .control-bar');
-            if (controlBar) {
-              (controlBar as HTMLElement).style.display = 'none';
-            }
           }
         } catch (error) {
           console.error('Error loading cast file:', error);
@@ -335,20 +309,6 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
       }
     };
   }, [activeTab, selectedAgentData, selectedCastFile, castType]);
-
-  // Track player progress
-  useEffect(() => {
-    if (!playerInstanceRef.current) return;
-
-    const interval = setInterval(() => {
-      if (playerInstanceRef.current) {
-        setCurrentTime(playerInstanceRef.current.currentTime || 0);
-        setIsPlaying(!playerInstanceRef.current.isPaused);
-      }
-    }, 100);
-
-    return () => clearInterval(interval);
-  }, [playerInstanceRef.current]);
 
   const getWorkflowStatusColor = (status: string, conclusion?: string | null) => {
     if (status === 'completed') {
@@ -941,211 +901,86 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
             ) : null}
           </TabsContent>
 
-          <TabsContent value="terminal" className="p-0 m-0 h-full">
-            {availableAgents.length > 0 ? (
-              <div className="flex h-full">
-                {/* Terminal Player */}
-                <div className="flex-1 flex flex-col border-r border-border">
-                  <div className="bg-card border-b border-border p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <Select
-                        value={selectedAgent || ""}
-                        onValueChange={setSelectedAgent}
-                      >
-                        <SelectTrigger className="w-64">
-                          <SelectValue placeholder="Select Agent" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {availableAgents.map((agent) => (
-                            <SelectItem key={agent.artifact_name} value={agent.artifact_name}>
-                              {agent.displayName}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <div className="flex gap-2">
-                        <Button
-                          variant={castType === 'agent' ? 'default' : 'outline'}
-                          size="sm"
-                          onClick={() => setCastType('agent')}
-                        >
-                          Agent
-                        </Button>
-                        <Button
-                          variant={castType === 'tests' ? 'default' : 'outline'}
-                          size="sm"
-                          onClick={() => setCastType('tests')}
-                        >
-                          Tests
-                        </Button>
-                      </div>
-                    </div>
-                    {selectedAgentData && (
+          <TabsContent value="terminal" className="p-6 space-y-6 m-0">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle>Terminal Recording</CardTitle>
+                  {selectedAgentData && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => window.open(`/api/github/download-artifact/${selectedRunId}/${selectedAgentData.artifact_name}`, '_blank')}
+                    >
+                      <Download className="h-4 w-4 mr-1" />
+                      Download
+                    </Button>
+                  )}
+                </div>
+                {availableAgents.length > 0 && (
+                  <div className="flex items-center gap-3 mt-4">
+                    <Select
+                      value={selectedAgent || ""}
+                      onValueChange={setSelectedAgent}
+                    >
+                      <SelectTrigger className="w-64">
+                        <SelectValue placeholder="Select Agent" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableAgents.map((agent) => (
+                          <SelectItem key={agent.artifact_name} value={agent.artifact_name}>
+                            {agent.displayName}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <div className="flex gap-2">
                       <Button
-                        variant="secondary"
+                        variant={castType === 'agent' ? 'default' : 'outline'}
                         size="sm"
-                        onClick={() => window.open(`/api/github/download-artifact/${selectedRunId}/${selectedAgentData.artifact_name}`, '_blank')}
+                        onClick={() => setCastType('agent')}
                       >
-                        <Download className="h-4 w-4 mr-1" />
-                        Download
+                        Agent
                       </Button>
-                    )}
-                  </div>
-                  <div className="flex-1 flex flex-col bg-black overflow-hidden">
-                    {castError ? (
-                      <div className="h-full flex items-center justify-center p-8">
-                        <div className="text-center">
-                          <XCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
-                          <p className="text-gray-400">Error loading cast file</p>
-                          <p className="text-sm text-gray-500 mt-2">{castError}</p>
-                        </div>
-                      </div>
-                    ) : !selectedCastFile ? (
-                      <div className="h-full flex items-center justify-center p-8">
-                        <div className="text-center">
-                          <Terminal className="h-12 w-12 text-gray-600 mx-auto mb-4" />
-                          <p className="text-gray-400">No {castType} recording found for this agent</p>
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        {/* Custom Control Bar */}
-                        <div className="bg-gray-900 border-b border-gray-800 px-4 py-3">
-                          <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center gap-3">
-                              <ChevronRight className="h-4 w-4 text-gray-400" />
-                              <span className="text-sm font-semibold text-gray-200">Agent Terminal Session</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 text-gray-400 hover:text-gray-200 hover:bg-gray-800"
-                                onClick={() => {
-                                  if (playerInstanceRef.current) {
-                                    playerInstanceRef.current.seek(0);
-                                  }
-                                }}
-                                title="Restart"
-                              >
-                                <RotateCcw className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 text-gray-400 hover:text-gray-200 hover:bg-gray-800"
-                                onClick={() => {
-                                  if (playerInstanceRef.current) {
-                                    if (isPlaying) {
-                                      playerInstanceRef.current.pause();
-                                      setIsPlaying(false);
-                                    } else {
-                                      playerInstanceRef.current.play();
-                                      setIsPlaying(true);
-                                    }
-                                  }
-                                }}
-                                title={isPlaying ? "Pause" : "Play"}
-                              >
-                                {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                              </Button>
-                              <Select
-                                value={playbackSpeed.toString()}
-                                onValueChange={(value) => {
-                                  const speed = parseFloat(value);
-                                  setPlaybackSpeed(speed);
-                                  if (playerInstanceRef.current) {
-                                    playerInstanceRef.current.speed = speed;
-                                  }
-                                }}
-                              >
-                                <SelectTrigger className="w-16 h-8 bg-gray-800 border-gray-700 text-gray-200">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="0.5">0.5x</SelectItem>
-                                  <SelectItem value="1">1x</SelectItem>
-                                  <SelectItem value="1.5">1.5x</SelectItem>
-                                  <SelectItem value="2">2x</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          </div>
-                          
-                          {/* Timeline with Action Markers */}
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between text-xs text-gray-400">
-                              <span>{Math.floor(currentTime / 60)}:{String(Math.floor(currentTime % 60)).padStart(2, '0')}</span>
-                              <span>Action {actionMarkers.findIndex(m => m > currentTime) > 0 ? actionMarkers.findIndex(m => m > currentTime) : actionMarkers.length} of {actionMarkers.length}</span>
-                              <span>{Math.floor(playerDuration / 60)}:{String(Math.floor(playerDuration % 60)).padStart(2, '0')}</span>
-                            </div>
-                            <div className="relative h-2 bg-gray-800 rounded-full cursor-pointer"
-                              onClick={(e) => {
-                                if (playerInstanceRef.current) {
-                                  const rect = e.currentTarget.getBoundingClientRect();
-                                  const percent = (e.clientX - rect.left) / rect.width;
-                                  playerInstanceRef.current.seek(percent * playerDuration);
-                                }
-                              }}
-                            >
-                              {/* Progress bar */}
-                              <div 
-                                className="absolute left-0 top-0 h-full bg-blue-500 rounded-full transition-all"
-                                style={{ width: `${playerDuration > 0 ? (currentTime / playerDuration) * 100 : 0}%` }}
-                              />
-                              {/* Action markers */}
-                              {actionMarkers.map((marker, idx) => (
-                                <div
-                                  key={idx}
-                                  className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-yellow-500 rounded-full cursor-pointer hover:scale-125 transition-transform"
-                                  style={{ left: `${playerDuration > 0 ? (marker / playerDuration) * 100 : 0}%` }}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (playerInstanceRef.current) {
-                                      playerInstanceRef.current.seek(marker);
-                                    }
-                                  }}
-                                  title={`Action ${idx + 1}`}
-                                />
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                        
-                        {/* Player Container */}
-                        <div ref={playerRef} className="flex-1 w-full overflow-hidden"></div>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                {/* Agent Thinking Panel */}
-                <div className="w-96 flex flex-col bg-card">
-                  <div className="p-4 border-b border-border">
-                    <h3 className="text-sm font-semibold flex items-center gap-2">
-                      <User className="h-4 w-4" />
-                      Agent Thinking
-                    </h3>
-                  </div>
-                  <div className="flex-1 overflow-auto p-4">
-                    <div className="flex flex-col items-center justify-center h-full text-center">
-                      <User className="h-12 w-12 text-muted-foreground mb-4 opacity-50" />
-                      <p className="text-sm font-medium text-foreground mb-2">No agent thinking data yet</p>
-                      <p className="text-xs text-muted-foreground">
-                        Play the session to see the agent's reasoning
-                      </p>
+                      <Button
+                        variant={castType === 'tests' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => setCastType('tests')}
+                      >
+                        Tests
+                      </Button>
                     </div>
                   </div>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center justify-center h-full p-8">
-                <div className="text-center">
-                  <Terminal className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
-                  <p className="text-muted-foreground">No terminal recordings available</p>
-                </div>
-              </div>
-            )}
+                )}
+              </CardHeader>
+              <CardContent>
+                {availableAgents.length > 0 ? (
+                  castError ? (
+                    <div className="bg-muted rounded-lg p-8 text-center">
+                      <XCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
+                      <p className="text-muted-foreground">Error loading cast file</p>
+                      <p className="text-sm text-muted-foreground mt-2">{castError}</p>
+                    </div>
+                  ) : !selectedCastFile ? (
+                    <div className="bg-muted rounded-lg p-8 text-center">
+                      <Terminal className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                      <p className="text-muted-foreground">No {castType} recording found for this agent</p>
+                    </div>
+                  ) : (
+                    <div className="bg-black rounded-lg overflow-hidden">
+                      <div ref={playerRef} className="w-full" style={{ minHeight: '400px' }}>
+                        {/* Asciinema player will render here with default controls */}
+                      </div>
+                    </div>
+                  )
+                ) : (
+                  <div className="bg-muted rounded-lg p-8 text-center">
+                    <Terminal className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                    <p className="text-muted-foreground">No terminal recordings available</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="files" className="p-0 m-0 h-full">
