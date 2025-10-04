@@ -390,6 +390,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error fetching PR commits:", error);
       res.status(500).json({ error: "Failed to fetch PR commits" });
     }
+  });
 
   // Get jobs for a workflow run
   app.get("/api/github/workflow-jobs/:runId", async (req, res) => {
@@ -408,7 +409,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error fetching workflow jobs:", error);
       res.status(500).json({ error: "Failed to fetch workflow jobs" });
     }
-  });
   });
 
   // Get review comments for a workflow run

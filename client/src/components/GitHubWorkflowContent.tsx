@@ -527,29 +527,117 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                     </CardHeader>
                     <CardContent>
                       {jobsData && jobsData.jobs.length > 0 ? (
-                        <div className="space-y-2">
-                          {jobsData.jobs.map((job, index) => (
-                            <div key={index} className="flex items-center justify-between p-2 bg-muted/50 rounded">
-                              <span className="text-sm">{job.name}</span>
-                              <div className="flex items-center gap-2">
-                                {job.conclusion === 'success' ? (
-                                  <>
-                                    <CheckCircle className="h-4 w-4 text-success" />
-                                    <span className="text-sm text-success font-medium">PASS</span>
-                                  </>
-                                ) : job.conclusion === 'failure' ? (
-                                  <>
-                                    <XCircle className="h-4 w-4 text-destructive" />
-                                    <span className="text-sm text-destructive font-medium">FAIL</span>
-                                  </>
-                                ) : (
-                                  <span className="text-sm text-muted-foreground">
-                                    {job.status?.toUpperCase() || 'PENDING'}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          ))}
+                        <div className="space-y-3">
+                          {(() => {
+                            // Filter jobs that start with "Test with"
+                            const testJobs = jobsData.jobs.filter(job => job.name.startsWith('Test with '));
+                            
+                            if (testJobs.length === 0) {
+                              return <p className="text-sm text-muted-foreground">No agent test results available</p>;
+                            }
+                            
+                            // Parse and group by agent
+                            const agentGroups: Record<string, Array<{ model: string | null; conclusion: string | null; status: string }>> = {};
+                            
+                            testJobs.forEach(job => {
+                              // Parse "Test with {Display}" where display can be:
+                              // - "Oracle Solution" -> agent: "Oracle"
+                              // - "NOP Agent (Should Fail)" -> agent: "NOP Agent", note: "Should Fail"
+                              // - "Terminus (GPT-4.1)" -> agent: "Terminus", model: "GPT-4.1"
+                              const match = job.name.match(/^Test with (.+?)(?:\s*\((.+)\))?$/);
+                              if (match) {
+                                let agentName = match[1].trim();
+                                const parenthesesContent = match[2]?.trim();
+                                
+                                // Clean up agent names
+                                if (agentName === 'Oracle Solution') {
+                                  agentName = 'Oracle';
+                                } else if (agentName === 'NOP Agent') {
+                                  // Keep as "NOP Agent", ignore "Should Fail" note
+                                }
+                                
+                                // Determine if content in parentheses is a model (not a note like "Should Fail")
+                                const isModel = parenthesesContent && /(?:claude|gpt|gemini|o|llama|sonnet|pro|-|\d)/i.test(parenthesesContent) && !parenthesesContent.toLowerCase().includes('should fail');
+                                const modelName = isModel ? parenthesesContent : null;
+                                
+                                if (!agentGroups[agentName]) {
+                                  agentGroups[agentName] = [];
+                                }
+                                
+                                agentGroups[agentName].push({
+                                  model: modelName,
+                                  conclusion: job.conclusion,
+                                  status: job.status,
+                                });
+                              }
+                            });
+                            
+                            return Object.entries(agentGroups).map(([agentName, tests]) => {
+                              // If all tests have models, show as grouped
+                              const hasModels = tests.some(t => t.model);
+                              
+                              if (hasModels) {
+                                return (
+                                  <div key={agentName} className="space-y-1">
+                                    <div className="font-semibold text-sm text-foreground py-1.5 px-3">
+                                      {agentName}
+                                    </div>
+                                    {tests.map((test, idx) => (
+                                      <div key={idx} className="flex items-center justify-between pl-4 py-1.5 bg-muted/30 rounded px-3">
+                                        <span className="text-sm text-muted-foreground">
+                                          {test.model || 'Default'}
+                                        </span>
+                                        <div className="flex items-center gap-2 flex-shrink-0">
+                                          {test.conclusion === 'success' ? (
+                                            <>
+                                              <CheckCircle className="h-4 w-4 text-success" />
+                                              <span className="text-sm text-success font-medium">PASS</span>
+                                            </>
+                                          ) : test.conclusion === 'failure' ? (
+                                            <>
+                                              <XCircle className="h-4 w-4 text-destructive" />
+                                              <span className="text-sm text-destructive font-medium">FAIL</span>
+                                            </>
+                                          ) : (
+                                            <span className="text-sm text-muted-foreground">
+                                              {test.status?.toUpperCase() || 'PENDING'}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                );
+                              } else {
+                                // Agent without models - show result inline
+                                const test = tests[0];
+                                return (
+                                  <div key={agentName} className="flex items-center justify-between py-1.5 bg-muted/30 rounded px-3">
+                                    <span className="text-sm font-semibold text-foreground">
+                                      {agentName}
+                                    </span>
+                                    <div className="flex items-center gap-2">
+                                      {test.conclusion === 'success' ? (
+                                        <>
+                                          <CheckCircle className="h-4 w-4 text-success" />
+                                          <span className="text-sm text-success font-medium">PASS</span>
+                                        </>
+                                      ) : test.conclusion === 'failure' ? (
+                                        <>
+                                          <XCircle className="h-4 w-4 text-destructive" />
+                                          <span className="text-sm text-destructive font-medium">FAIL</span>
+                                        </>
+                                      ) : (
+                                        <span className="text-sm text-muted-foreground">
+                                          {test.status?.toUpperCase() || 'PENDING'}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              }
+                            });
+                          })()}
                         </div>
                       ) : (
                         <p className="text-sm text-muted-foreground">No agent results available</p>
