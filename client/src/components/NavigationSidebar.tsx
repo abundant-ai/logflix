@@ -109,7 +109,7 @@ export default function NavigationSidebar({ onSelectPR, selectedPR }: Navigation
         <div className="flex items-center justify-between">
           <h1 className="text-lg font-semibold text-foreground flex items-center gap-2">
             <GitPullRequest className="h-5 w-5" />
-            Logflix
+            LogFlix
           </h1>
           <div className="flex items-center gap-2">
             <Button
