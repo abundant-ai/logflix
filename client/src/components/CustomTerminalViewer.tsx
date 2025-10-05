@@ -109,10 +109,36 @@ export default function CustomTerminalViewer({ castContent, showAgentThinking = 
     return relevantThoughts[relevantThoughts.length - 1];
   }, [agentThoughts, currentTime]);
 
-  // Extract thinking events for timeline markers
+  // Calculate max time first
+  const maxTime = Math.max(...events.map(e => e.timestamp), 0);
+
+  // Extract thinking events for timeline markers, with fallback interval markers
   const thinkingEvents = useMemo(() => {
-    return events.filter(event => event.type === 'm');
-  }, [events]);
+    const agentThinkingEvents = events.filter(event => event.type === 'm');
+    
+    // If we have agent thinking events, use those
+    if (agentThinkingEvents.length > 0) {
+      return agentThinkingEvents;
+    }
+    
+    // Otherwise, create fallback markers at regular intervals for navigation
+    if (maxTime > 0 && events.length > 0) {
+      const intervalMarkers: CastEvent[] = [];
+      const markerCount = Math.min(8, Math.max(3, Math.floor(maxTime / 30))); // One marker every ~30 seconds, max 8 markers
+      
+      for (let i = 1; i < markerCount; i++) {
+        const timestamp = (i * maxTime) / markerCount;
+        intervalMarkers.push({
+          timestamp,
+          type: 'o', // Use output type as fallback
+          content: `Navigation marker ${i}`
+        });
+      }
+      return intervalMarkers;
+    }
+    
+    return [];
+  }, [events, maxTime]);
 
   // Terminal content with progressive display and better ANSI handling
   const terminalContent = useMemo(() => {
@@ -147,7 +173,6 @@ export default function CustomTerminalViewer({ castContent, showAgentThinking = 
     return content;
   }, [visibleEvents]);
 
-  const maxTime = Math.max(...events.map(e => e.timestamp), 0);
 
   // Auto-scroll terminal during playback
   useEffect(() => {
@@ -260,9 +285,10 @@ export default function CustomTerminalViewer({ castContent, showAgentThinking = 
                   style={{ width: `${maxTime > 0 ? (currentTime / maxTime) * 100 : 0}%` }}
                 />
                 
-                {/* Action Markers - Fully visible */}
+                {/* Timeline Markers - Agent thinking or navigation intervals */}
                 {thinkingEvents.map((event, index) => {
-                  const position = maxTime > 0 ? (event.timestamp / maxTime) * 100 : 0;
+                  const position = maxTime > 0 ? Math.max(0, Math.min(100, (event.timestamp / maxTime) * 100)) : 0;
+                  const isAgentThinking = event.type === 'm';
                   return (
                     <button
                       key={index}
@@ -270,9 +296,16 @@ export default function CustomTerminalViewer({ castContent, showAgentThinking = 
                         e.stopPropagation();
                         setCurrentTime(event.timestamp);
                       }}
-                      className="absolute top-1/2 w-2.5 h-2.5 -translate-y-1/2 bg-amber-400 rounded-full border-2 border-white hover:bg-amber-300 hover:scale-125 transition-all duration-150 shadow-md z-30"
-                      style={{ left: `${position}%`, transform: 'translateX(-50%) translateY(-50%)' }}
-                      title={`Action ${index + 1} • ${formatTime(event.timestamp)}`}
+                      className={`absolute top-1/2 w-3 h-3 -translate-y-1/2 rounded-full border-2 border-white hover:scale-125 transition-all duration-150 shadow-md z-30 cursor-pointer ${
+                        isAgentThinking
+                          ? 'bg-amber-400 hover:bg-amber-300'
+                          : 'bg-blue-400 hover:bg-blue-300'
+                      }`}
+                      style={{ left: `${position}%`, transform: 'translateX(-50%) translateY(-50%)', marginLeft: '0' }}
+                      title={isAgentThinking
+                        ? `Agent Thinking ${index + 1} • ${formatTime(event.timestamp)}`
+                        : `Navigate to ${formatTime(event.timestamp)}`
+                      }
                     />
                   );
                 })}
@@ -289,10 +322,10 @@ export default function CustomTerminalViewer({ castContent, showAgentThinking = 
                 <span>{formatTime(maxTime)}</span>
               </div>
               
-              {/* Action Counter */}
+              {/* Timeline Navigation Counter */}
               {thinkingEvents.length > 0 && (
                 <div className="text-xs text-muted-foreground text-center">
-                  Action {Math.max(1, thinkingEvents.findIndex(e => e.timestamp <= currentTime) + 1)} of {thinkingEvents.length}
+                  {thinkingEvents.some(e => e.type === 'm') ? 'Action' : 'Position'} {Math.max(1, thinkingEvents.findIndex(e => e.timestamp <= currentTime) + 1)} of {thinkingEvents.length}
                 </div>
               )}
             </div>

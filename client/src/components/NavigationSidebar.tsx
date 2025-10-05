@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search, Filter, GitPullRequest, CheckCircle, XCircle, Clock, User, Settings } from "lucide-react";
+import { Search, Filter, GitPullRequest, CheckCircle, XCircle, Clock, User, Settings, RefreshCw } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -56,7 +56,7 @@ export default function NavigationSidebar({ onSelectPR, selectedPR }: Navigation
     window.location.reload();
   };
 
-  const { data: prData, isLoading, error } = useQuery<{ pullRequests: GitHubPullRequest[]; total_count: number }>({
+  const { data: prData, isLoading, error, refetch } = useQuery<{ pullRequests: GitHubPullRequest[]; total_count: number }>({
     queryKey: ["/api/github/pull-requests", {
       state: stateFilter,
       limit: 50,
@@ -66,10 +66,13 @@ export default function NavigationSidebar({ onSelectPR, selectedPR }: Navigation
       repo: repoName,
       workflow: workflowFile
     }],
-    // Remove automatic refetching to prevent flickering
-    refetchInterval: false,
-    refetchOnWindowFocus: false,
-    staleTime: 5 * 60 * 1000, // Consider data fresh for 5 minutes
+    // Enable background refetching for latest PRs
+    refetchInterval: 2 * 60 * 1000, // Refetch every 2 minutes in background
+    refetchOnWindowFocus: false, // Prevent flickering on window focus
+    refetchIntervalInBackground: true, // Continue refetching even when tab is not active
+    staleTime: 30 * 1000, // Consider data stale after 30 seconds
+    gcTime: 10 * 60 * 1000, // Keep in cache for 10 minutes
+    retry: 1, // Only retry once on failure
   });
 
   const getPRStatusColor = (state: string, merged: boolean) => {
@@ -109,6 +112,16 @@ export default function NavigationSidebar({ onSelectPR, selectedPR }: Navigation
             Logflix
           </h1>
           <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0"
+              onClick={() => refetch()}
+              disabled={isLoading}
+              title="Refresh PRs"
+            >
+              <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+            </Button>
             <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
               <DialogTrigger asChild>
                 <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
@@ -163,10 +176,10 @@ export default function NavigationSidebar({ onSelectPR, selectedPR }: Navigation
             </Dialog>
             <div className="flex items-center gap-1.5">
               <div className={`w-2 h-2 rounded-full ${
-                error ? 'bg-destructive' : isLoading ? 'bg-warning' : 'bg-success'
+                error ? 'bg-destructive' : isLoading ? 'bg-warning animate-pulse' : 'bg-success'
               }`}></div>
               <span className="text-xs text-muted-foreground">
-                {error ? 'Error' : isLoading ? 'Loading' : 'Connected'}
+                {error ? 'Error' : isLoading ? 'Syncing...' : 'Live'}
               </span>
             </div>
           </div>

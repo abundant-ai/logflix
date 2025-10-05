@@ -360,7 +360,12 @@ export class GitHubCliService {
       });
       
       return castFiles;
-    } catch (error) {
+    } catch (error: any) {
+      // Check if artifact has expired
+      if (error.message?.includes('Artifact has expired') || error.stderr?.includes('HTTP 410')) {
+        console.warn(`Artifact ${artifactId} has expired`);
+        return [];
+      }
       console.error(`Error listing cast files from artifact ${artifactId}:`, error);
       return [];
     }
@@ -395,7 +400,12 @@ export class GitHubCliService {
       }
       
       return content;
-    } catch (error) {
+    } catch (error: any) {
+      // Check if artifact has expired
+      if (error.message?.includes('Artifact has expired') || error.stderr?.includes('HTTP 410')) {
+        console.warn(`Artifact ${artifactId} has expired, cannot read cast file ${filePath}`);
+        return null;
+      }
       console.error(`Error reading cast file ${filePath} from artifact ${artifactId}:`, error);
       return null;
     }
@@ -653,7 +663,7 @@ export class GitHubCliService {
   }
 
   /**
-   * Get workflow bot comments on a pull request (comments from github-actions bot)
+   * Get workflow bot comments on a pull request (comments from github-actions bot and Claude bot)
    */
   async getWorkflowBotComments(prNumber: number): Promise<GitHubReviewComment[]> {
     try {
@@ -665,26 +675,39 @@ export class GitHubCliService {
       
       const botComments: GitHubReviewComment[] = [];
       
-      // Filter for bot comments
+      // Filter for bot comments (expanded to include Claude and other automation)
       for (const comment of result.comments) {
-        // Check if the author is a bot (github-actions, etc.)
-        if (comment.author?.login?.includes('bot') || comment.author?.login === 'github-actions') {
+        const authorLogin = comment.author?.login?.toLowerCase() || '';
+        
+        // Check if the author is a bot or automation system
+        const isBotComment =
+          authorLogin.includes('bot') ||
+          authorLogin === 'github-actions' ||
+          authorLogin.includes('claude') ||
+          authorLogin.includes('automated') ||
+          // Check for agent analysis content patterns
+          comment.body?.includes('Agent Test Results Overview') ||
+          comment.body?.includes('Detailed Failure Analysis') ||
+          comment.body?.includes('## Agent Test Results Overview');
+        
+        if (isBotComment) {
           botComments.push({
-            id: comment.databaseId || Date.now(),
+            id: comment.databaseId || comment.id || Date.now(),
             pull_request_number: prNumber,
             user: {
               login: comment.author?.login || 'bot',
               avatar_url: comment.author?.avatarUrl,
             },
-            body: comment.body,
+            body: comment.body || '',
             created_at: comment.createdAt,
             updated_at: comment.updatedAt || comment.createdAt,
-            html_url: comment.url,
+            html_url: comment.url || `https://github.com/${this.repositoryOwner}/${this.repositoryName}/pull/${prNumber}`,
             in_reply_to_id: null,
           });
         }
       }
       
+      console.log(`Found ${botComments.length} bot comments for PR ${prNumber}`);
       return botComments;
     } catch (error) {
       console.error(`Error fetching workflow bot comments for PR ${prNumber}:`, error);
@@ -916,7 +939,12 @@ export class GitHubCliService {
       });
       
       return logFiles;
-    } catch (error) {
+    } catch (error: any) {
+      // Check if artifact has expired
+      if (error.message?.includes('Artifact has expired') || error.stderr?.includes('HTTP 410')) {
+        console.warn(`Artifact ${artifactId} has expired`);
+        return [];
+      }
       console.error(`Error extracting log files from artifact ${artifactId}:`, error);
       return [];
     }
@@ -944,7 +972,12 @@ export class GitHubCliService {
       }
       
       return zip.readAsText(entry);
-    } catch (error) {
+    } catch (error: any) {
+      // Check if artifact has expired
+      if (error.message?.includes('Artifact has expired') || error.stderr?.includes('HTTP 410')) {
+        console.warn(`Artifact ${artifactId} has expired, cannot read log file ${filePath}`);
+        return null;
+      }
       console.error(`Error reading log file ${filePath} from artifact ${artifactId}:`, error);
       return null;
     }

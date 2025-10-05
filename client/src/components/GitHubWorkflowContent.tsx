@@ -14,7 +14,8 @@ import {
   MessageSquare,
   User,
   BarChart3,
-  Bug
+  Bug,
+  Brain
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -929,6 +930,13 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                       <p className="text-sm text-muted-foreground mt-2">
                         {(castFileQuery.error as Error)?.message || 'Failed to load cast file'}
                       </p>
+                      {selectedAgentData?.expired && (
+                        <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                          <p className="text-sm text-amber-700 dark:text-amber-300">
+                            📦 This artifact has expired and is no longer available for download
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ) : !selectedCastFile ? (
@@ -941,6 +949,13 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                           'No terminal recordings available'
                         }
                       </p>
+                      {selectedAgentData?.expired && (
+                        <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                          <p className="text-sm text-amber-700 dark:text-amber-300">
+                            📦 This artifact has expired and is no longer available for download
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ) : castFileQuery.isLoading ? (
@@ -962,6 +977,13 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                     <div className="text-center">
                       <Terminal className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                       <p className="text-muted-foreground">No cast content available</p>
+                      {selectedAgentData?.expired && (
+                        <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                          <p className="text-sm text-amber-700 dark:text-amber-300">
+                            📦 This artifact has expired and is no longer available for download
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -1127,54 +1149,167 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
             )}
           </TabsContent>
 
-          <TabsContent value="comments" className="p-6 space-y-6 m-0">
+          <TabsContent value="comments" className="p-6 space-y-4 m-0">
             {botCommentsData && botCommentsData.comments.length > 0 ? (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Workflow Bot Comments</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {botCommentsData.comments.map((comment) => (
-                      <div 
-                        key={comment.id}
-                        className="border border-border rounded-lg p-4 bg-muted/30"
-                      >
-                        <div className="flex items-center gap-2 mb-3">
-                          <Badge variant="secondary">{comment.user.login}</Badge>
-                          <span className="text-xs text-muted-foreground">
-                            {formatDate(comment.created_at)}
-                          </span>
-                        </div>
-                        <div className="text-sm text-foreground whitespace-pre-wrap bg-background p-3 rounded border border-border">
-                          {comment.body}
-                        </div>
-                        <Button 
-                          variant="ghost" 
-                          size="sm"
-                          asChild
-                          className="h-7 text-xs mt-2"
-                        >
-                          <a 
-                            href={comment.html_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-1"
-                          >
-                            <ExternalLink className="h-3 w-3" />
-                            View on GitHub
-                          </a>
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-semibold">Workflow Comments</h2>
+                  <Badge variant="outline" className="text-sm">
+                    {botCommentsData.comments.length} comment{botCommentsData.comments.length !== 1 ? 's' : ''}
+                  </Badge>
+                </div>
+                
+                {/* Sort comments by date (latest first) and render each in its own card */}
+                {botCommentsData.comments
+                  .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                  .map((comment) => {
+                    const commentDate = new Date(comment.created_at);
+                    const isAgentAnalysis = comment.body.includes('Agent Test Results Overview') ||
+                                          comment.body.includes('Detailed Failure Analysis') ||
+                                          comment.user.login.includes('claude');
+                    
+                    // Format date and time nicely
+                    const dateStr = commentDate.toLocaleDateString('en-US', {
+                      year: 'numeric',
+                      month: 'short',
+                      day: 'numeric'
+                    });
+                    const timeStr = commentDate.toLocaleTimeString('en-US', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      hour12: true
+                    });
+                    
+                    return (
+                      <Card key={comment.id} className={`${isAgentAnalysis ? 'border-amber-200 bg-amber-50/50 dark:border-amber-800 dark:bg-amber-950/20' : ''}`}>
+                        <CardHeader className="pb-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <Badge
+                                variant={isAgentAnalysis ? "default" : "secondary"}
+                                className={isAgentAnalysis ? "bg-amber-600 hover:bg-amber-700" : ""}
+                              >
+                                {isAgentAnalysis ? (
+                                  <div className="flex items-center gap-1">
+                                    <Brain className="h-3 w-3" />
+                                    Agent Analysis
+                                  </div>
+                                ) : (
+                                  comment.user.login
+                                )}
+                              </Badge>
+                              {isAgentAnalysis && (
+                                <Badge variant="outline" className="text-xs">
+                                  Automated Analysis
+                                </Badge>
+                              )}
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              asChild
+                              className="h-7 text-xs"
+                            >
+                              <a
+                                href={comment.html_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-1"
+                              >
+                                <ExternalLink className="h-3 w-3" />
+                                GitHub
+                              </a>
+                            </Button>
+                          </div>
+                          
+                          {/* Date and time prominently displayed */}
+                          <div className="text-sm text-muted-foreground font-medium">
+                            {dateStr} at {timeStr}
+                          </div>
+                        </CardHeader>
+                        
+                        <CardContent>
+                          <div className="bg-background/50 p-4 rounded-lg border border-border/50">
+                            {/* Simple but effective markdown-like formatting */}
+                            <div className="text-sm leading-relaxed">
+                              {comment.body.split('\n').map((line, index) => {
+                                // Headers
+                                if (line.startsWith('### ')) {
+                                  return (
+                                    <h3 key={index} className="text-base font-semibold mt-3 mb-2 text-amber-600">
+                                      {line.replace('### ', '')}
+                                    </h3>
+                                  );
+                                }
+                                if (line.startsWith('## ')) {
+                                  return (
+                                    <h2 key={index} className="text-lg font-semibold mt-4 mb-3 text-foreground border-b border-border/50 pb-1">
+                                      {line.replace('## ', '')}
+                                    </h2>
+                                  );
+                                }
+                                if (line.startsWith('# ')) {
+                                  return (
+                                    <h1 key={index} className="text-xl font-bold mt-4 mb-3 text-foreground border-b border-border pb-2">
+                                      {line.replace('# ', '')}
+                                    </h1>
+                                  );
+                                }
+                                
+                                // Bullet points
+                                if (line.startsWith('- ')) {
+                                  return (
+                                    <div key={index} className="flex items-start gap-2 my-1">
+                                      <span className="text-amber-600 mt-1 flex-shrink-0">•</span>
+                                      <span className="text-foreground">{line.replace('- ', '')}</span>
+                                    </div>
+                                  );
+                                }
+                                
+                                // Numbered lists
+                                const numberedMatch = line.match(/^(\d+)\. (.*)$/);
+                                if (numberedMatch) {
+                                  return (
+                                    <div key={index} className="flex items-start gap-2 my-1">
+                                      <span className="text-amber-600 font-medium min-w-4 flex-shrink-0">{numberedMatch[1]}.</span>
+                                      <span className="text-foreground">{numberedMatch[2]}</span>
+                                    </div>
+                                  );
+                                }
+                                
+                                // Empty lines
+                                if (line.trim() === '') {
+                                  return <div key={index} className="h-2" />;
+                                }
+                                
+                                // Regular paragraphs with bold text
+                                const formattedLine = line
+                                  .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-foreground">$1</strong>')
+                                  .replace(/`([^`]+)`/g, '<code class="bg-muted px-1.5 py-0.5 rounded text-xs font-mono text-foreground">$1</code>');
+                                
+                                return (
+                                  <p
+                                    key={index}
+                                    className="text-foreground leading-relaxed my-2"
+                                    dangerouslySetInnerHTML={{ __html: formattedLine }}
+                                  />
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+              </div>
             ) : (
               <Card>
                 <CardContent className="p-8 text-center">
                   <MessageSquare className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
-                  <p className="text-muted-foreground">No bot comments found</p>
+                  <p className="text-muted-foreground">No workflow comments found</p>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Agent analysis comments will appear here when tests fail
+                  </p>
                 </CardContent>
               </Card>
             )}
