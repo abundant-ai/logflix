@@ -1229,13 +1229,6 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
           <TabsContent value="comments" className="p-6 space-y-4 m-0">
             {botCommentsData && botCommentsData.comments.length > 0 ? (
               <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-semibold">Workflow Comments</h2>
-                  <Badge variant="outline" className="text-sm">
-                    {botCommentsData.comments.length} comment{botCommentsData.comments.length !== 1 ? 's' : ''}
-                  </Badge>
-                </div>
-                
                 {/* Sort comments by date (latest first) and render each in its own card */}
                 {botCommentsData.comments
                   .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
