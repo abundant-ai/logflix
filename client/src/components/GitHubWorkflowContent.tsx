@@ -835,31 +835,37 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                         </div>
                         <div>
                           <label className="text-sm text-muted-foreground block mb-1">Commit</label>
-                          <Button
-                            variant="link"
-                            className="p-0 h-auto text-sm justify-start font-normal hover:underline"
-                            asChild
-                          >
-                            <a
-                              href={`https://github.com/abundant-ai/tbench-hammer/commit/${selectedCommitSha || selectedRun?.head_sha}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              title={commitData?.message || selectedCommit?.message}
-                            >
-                              <div className="flex items-center gap-2">
-                                <code className="text-xs font-mono">{(selectedCommitSha || selectedRun?.head_sha || '').substring(0, 7)}</code>
-                                <ChevronRight className="h-3 w-3" />
-                                <span className="text-sm truncate max-w-md">
-                                  {commitData?.message?.split('\n')[0] || selectedCommit?.message?.split('\n')[0] || 'View commit'}
-                                </span>
-                              </div>
-                            </a>
-                          </Button>
-                          {selectedCommit && (
-                            <p className="text-xs text-muted-foreground mt-1">
-                              {new Date(selectedCommit.date).toLocaleString()}
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2">
+                              <code className="text-xs font-mono bg-muted px-1.5 py-0.5 rounded">
+                                {(selectedCommitSha || selectedRun?.head_sha || '').substring(0, 7)}
+                              </code>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                asChild
+                                className="h-6 px-2"
+                              >
+                                <a
+                                  href={`https://github.com/abundant-ai/tbench-hammer/commit/${selectedCommitSha || selectedRun?.head_sha}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-1"
+                                >
+                                  <ExternalLink className="h-3 w-3" />
+                                  <span className="text-xs">View</span>
+                                </a>
+                              </Button>
+                            </div>
+                            <p className="text-sm text-foreground break-words whitespace-normal leading-relaxed">
+                              {commitData?.message?.split('\n')[0] || selectedCommit?.message?.split('\n')[0] || 'No commit message'}
                             </p>
-                          )}
+                            {selectedCommit && (
+                              <p className="text-xs text-muted-foreground">
+                                {new Date(selectedCommit.date).toLocaleString()}
+                              </p>
+                            )}
+                          </div>
                         </div>
                         <div>
                           <label className="text-sm text-muted-foreground block mb-1">Created At</label>
