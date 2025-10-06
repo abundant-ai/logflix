@@ -412,14 +412,6 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
     );
   }
 
-  // Copy file content to clipboard
-  const copyToClipboard = async (content: string) => {
-    try {
-      await navigator.clipboard.writeText(content);
-    } catch (error) {
-      console.error('Failed to copy:', error);
-    }
-  };
 
   // Build file tree from flat list
   const buildFileTree = (files: any[]) => {
@@ -920,18 +912,7 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                 {taskData?.taskYaml?.instruction && (
                   <Card>
                     <CardHeader>
-                      <div className="flex items-center justify-between">
-                        <CardTitle>Task Instruction</CardTitle>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => copyToClipboard(taskData.taskYaml.instruction)}
-                          title="Copy instruction"
-                        >
-                          <FileCode className="h-4 w-4 mr-1" />
-                          Copy
-                        </Button>
-                      </div>
+                      <CardTitle>Task Instruction</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <div className="bg-muted rounded-lg p-4">
@@ -1108,15 +1089,6 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                           <p className="text-xs text-muted-foreground font-mono truncate">{selectedFile.path}</p>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => copyToClipboard(fileContent || '')}
-                            title="Copy file content"
-                          >
-                            <FileCode className="h-4 w-4 mr-1" />
-                            Copy
-                          </Button>
                           {selectedFile.download_url && (
                             <Button
                               variant="ghost"
@@ -1196,17 +1168,6 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                       </span>
                     )}
                   </div>
-                  {logContent && (
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => copyToClipboard(logContent)}
-                      title="Copy log content"
-                    >
-                      <FileCode className="h-4 w-4 mr-1" />
-                      Copy
-                    </Button>
-                  )}
                 </div>
                 <div className="flex-1 overflow-auto bg-black p-4">
                   {logContentQuery.error ? (
