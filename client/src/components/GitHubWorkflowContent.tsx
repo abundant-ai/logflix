@@ -56,16 +56,50 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
   // Fetch PR details - only when PR is selected (lazy loading)
   const { data: prData, isLoading: isPRLoading } = useQuery<GitHubPullRequest>({
     queryKey: selectedPR ? ["/api/github/pull-request", selectedPR.prNumber] : [],
+    queryFn: async () => {
+      if (!selectedPR) throw new Error('No PR selected');
+      
+      // Get current repo info from URL
+      const currentPath = window.location.pathname;
+      const repoName = currentPath.split('/')[2]; // /repo/{repoName}
+      
+      const params = new URLSearchParams({
+        owner: 'abundant-ai',
+        repo: repoName || 'tbench-hammer',
+        workflow: 'test-tasks.yaml'
+      });
+      
+      const response = await fetch(`/api/github/pull-request/${selectedPR.prNumber}?${params}`);
+      if (!response.ok) throw new Error(`Failed to fetch PR: ${response.statusText}`);
+      return response.json();
+    },
     enabled: !!selectedPR,
-    staleTime: 5 * 60 * 1000, // 5 minute cache
-    gcTime: 30 * 60 * 1000, // 30 minute garbage collection
+    staleTime: 0, // Always fresh
+    gcTime: 30 * 60 * 1000,
   });
 
   // Fetch commits for this PR - only when PR is selected (lazy loading)
   const { data: commitsData } = useQuery<{ commits: Array<{ sha: string; message: string; author: string; date: string }> }>({
     queryKey: selectedPR ? ["/api/github/pr-commits", selectedPR.prNumber] : [],
+    queryFn: async () => {
+      if (!selectedPR) throw new Error('No PR selected');
+      
+      // Get current repo info from URL
+      const currentPath = window.location.pathname;
+      const repoName = currentPath.split('/')[2]; // /repo/{repoName}
+      
+      const params = new URLSearchParams({
+        owner: 'abundant-ai',
+        repo: repoName || 'tbench-hammer',
+        workflow: 'test-tasks.yaml'
+      });
+      
+      const response = await fetch(`/api/github/pr-commits/${selectedPR.prNumber}?${params}`);
+      if (!response.ok) throw new Error(`Failed to fetch commits: ${response.statusText}`);
+      return response.json();
+    },
     enabled: !!selectedPR,
-    staleTime: 10 * 60 * 1000, // 10 minute cache for commits
+    staleTime: 0, // Always fresh
     gcTime: 30 * 60 * 1000,
   });
 
@@ -79,23 +113,44 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
 
   // Auto-select the latest commit (first in sorted array) - reset when PR changes
   useEffect(() => {
-    if (sortedCommits.length > 0) {
+    if (sortedCommits.length > 0 && !selectedCommitSha) {
       setSelectedCommitSha(sortedCommits[0].sha);
     }
-  }, [sortedCommits, selectedPR?.prNumber]); // Reset when PR changes
+  }, [sortedCommits, selectedPR?.prNumber, selectedCommitSha]); // Reset when PR changes
 
   // Fetch workflow runs for this PR
   const { data: runsData, isLoading: isRunsLoading } = useQuery<{ runs: GitHubWorkflowRun[]; total_count: number }>({
     queryKey: selectedPR ? ["/api/github/pr-workflow-runs", selectedPR.prNumber] : [],
+    queryFn: async () => {
+      if (!selectedPR) throw new Error('No PR selected');
+      
+      // Get current repo info from URL
+      const currentPath = window.location.pathname;
+      const repoName = currentPath.split('/')[2]; // /repo/{repoName}
+      
+      const params = new URLSearchParams({
+        owner: 'abundant-ai',
+        repo: repoName || 'tbench-hammer',
+        workflow: 'test-tasks.yaml'
+      });
+      
+      const response = await fetch(`/api/github/pr-workflow-runs/${selectedPR.prNumber}?${params}`);
+      if (!response.ok) throw new Error(`Failed to fetch workflow runs: ${response.statusText}`);
+      return response.json();
+    },
     enabled: !!selectedPR,
+    staleTime: 0,
   });
 
   // Filter runs by selected commit
   const filteredRuns = runsData?.runs.filter(run => run.head_sha === selectedCommitSha) || [];
 
-  // Auto-select the latest run for the selected commit
+  // Auto-select the latest run for the selected commit only if no run is selected
   useEffect(() => {
-    if (filteredRuns.length > 0 && (!selectedRunId || !filteredRuns.find(r => r.id === selectedRunId))) {
+    if (filteredRuns.length > 0 && !selectedRunId) {
+      setSelectedRunId(filteredRuns[0].id);
+    } else if (filteredRuns.length > 0 && selectedRunId && !filteredRuns.find(r => r.id === selectedRunId)) {
+      // If selected run is not in filtered runs, select the first available
       setSelectedRunId(filteredRuns[0].id);
     }
   }, [selectedCommitSha, filteredRuns, selectedRunId]);

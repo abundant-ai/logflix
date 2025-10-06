@@ -31,8 +31,32 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, on
   const [showMultipleCommits, setShowMultipleCommits] = useState(false);
   const [timeRange, setTimeRange] = useState<'all' | 'week' | 'month'>('all');
 
-  // Get current repository config from prop
-  const currentRepo = REPOSITORIES.find(r => r.name === repoName) || REPOSITORIES[0];
+  // Get current repository config from prop - if not found, show error instead of fallback
+  const currentRepo = REPOSITORIES.find(r => r.name === repoName);
+  
+  if (!currentRepo) {
+    return (
+      <div className="w-80 bg-card border-r border-border flex flex-col">
+        <div className="p-4 border-b border-border">
+          <h1 className="text-lg font-semibold text-foreground flex items-center gap-2">
+            <GitPullRequest className="h-5 w-5" />
+            LogFlix
+          </h1>
+          <div className="mt-2 text-xs text-destructive">
+            Repository '{repoName}' not found in configuration
+          </div>
+        </div>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <div className="text-destructive text-sm">Invalid Repository</div>
+            <div className="text-xs text-muted-foreground mt-2">
+              Check repository configuration
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Get sort display text
   const getSortText = () => {
@@ -54,7 +78,7 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, on
   };
 
   const { data: prData, isLoading, error } = useQuery<{ pullRequests: GitHubPullRequest[]; total_count: number }>({
-    queryKey: ["/api/github/pull-requests", sortBy, repoName, ORGANIZATION, currentRepo.workflow],
+    queryKey: ["/api/github/pull-requests", ORGANIZATION, repoName, currentRepo.workflow, sortBy],
     queryFn: async () => {
       const params = new URLSearchParams({
         state: 'open',
@@ -66,20 +90,26 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, on
         workflow: currentRepo.workflow
       });
       
-      const response = await fetch(`/api/github/pull-requests?${params}`);
+      const url = `/api/github/pull-requests?${params}`;
+      console.log(`[NavigationSidebar] Fetching PRs for repo: ${repoName}, URL: ${url}`);
+      
+      const response = await fetch(url);
       
       if (!response.ok) {
         throw new Error(`Failed to fetch PRs: ${response.statusText}`);
       }
       
-      return response.json();
+      const result = await response.json();
+      console.log(`[NavigationSidebar] Received ${result.pullRequests?.length || 0} PRs for repo: ${repoName}`);
+      
+      return result;
     },
     // Aggressive background refetching for real-time updates
     refetchInterval: 45 * 1000, // Slightly longer interval for larger dataset
     refetchOnWindowFocus: true, // Refetch when user returns to tab
     refetchIntervalInBackground: true, // Continue refetching even when tab is not active
-    staleTime: 10 * 1000, // 10 seconds for larger dataset
-    gcTime: 30 * 60 * 1000, // Keep in cache for 30 minutes
+    staleTime: 0, // Always consider data stale to force refetch on repo change
+    gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes only
     retry: 3, // More retries for reliability with larger data
   });
 
@@ -144,6 +174,30 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, on
           const oneMonthAgo = new Date();
           oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
           if (new Date(pr.created_at) < oneMonthAgo) return false;
+        }
+        
+        // Draft filter - skip drafts unless explicitly included
+        if (!showDrafts && pr.title.toLowerCase().includes('draft')) {
+          return false;
+        }
+        
+        // Failed tests filter - this would require workflow run data,
+        // for now we'll implement a placeholder that filters based on PR title patterns
+        if (showFailedTests) {
+          const hasFailureIndicators = pr.title.toLowerCase().includes('fix') ||
+                                     pr.title.toLowerCase().includes('fail') ||
+                                     pr.title.toLowerCase().includes('error') ||
+                                     pr.title.toLowerCase().includes('bug');
+          if (!hasFailureIndicators) return false;
+        }
+        
+        // Multiple commits filter - this would require commit data,
+        // for now we'll implement a placeholder based on PR age (older PRs likely have more commits)
+        if (showMultipleCommits) {
+          const createdDate = new Date(pr.created_at);
+          const daysSinceCreated = (Date.now() - createdDate.getTime()) / (1000 * 60 * 60 * 24);
+          // Assume PRs older than 2 days likely have multiple commits
+          if (daysSinceCreated < 2) return false;
         }
         
         return true;
