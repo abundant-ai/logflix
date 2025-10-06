@@ -222,27 +222,67 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
   });
 
   // Parse available agents from cast list - filter out artifacts with no .cast files
-  const availableAgents = castListData?.castFiles
-    .filter(cf => cf.files.length > 0) // Only include artifacts that have .cast files
-    .map(cf => {
-      // Parse agent name from artifact name: recordings-nop → NOP, recordings-terminus-gpt4 → Terminus (GPT-4)
-      const name = cf.artifact_name.replace(/^recordings-/i, '');
-      const displayName = name.split('-').map((part, idx) => {
-        if (idx === 0) {
-          return part.charAt(0).toUpperCase() + part.slice(1);
+  const availableAgents = useMemo(() => {
+    if (!castListData?.castFiles) return [];
+    
+    const agents = castListData.castFiles
+      .filter(cf => cf.files.length > 0) // Only include artifacts that have .cast files
+      .map(cf => {
+        // Parse agent name: recordings-nop → NOP, recordings-terminus-gpt4 → Terminus (GPT-4)
+        const name = cf.artifact_name.replace(/^recordings-/i, '');
+        
+        // Parse agent and model from artifact name
+        let baseName = '';
+        let model = '';
+        
+        if (name === 'nop') {
+          baseName = 'NOP';
+        } else if (name === 'oracle') {
+          baseName = 'Oracle';
+        } else if (name.startsWith('terminus')) {
+          baseName = 'Terminus';
+          // Extract model from name: terminus-gpt4 → GPT-4.1
+          const modelPart = name.replace('terminus-', '').replace('terminus', '');
+          if (modelPart) {
+            if (modelPart.includes('gpt')) {
+              model = 'GPT-4.1';
+            } else if (modelPart.includes('claude')) {
+              model = 'Claude 4 Sonnet';
+            } else if (modelPart.includes('gemini')) {
+              model = 'Gemini 2.5 Pro';
+            } else {
+              model = modelPart.toUpperCase();
+            }
+          }
+        } else {
+          baseName = name.charAt(0).toUpperCase() + name.slice(1);
         }
-        return part.toUpperCase();
-      }).join(' ');
-      
-      return {
-        id: cf.artifact_id,
-        name: name,
-        displayName: displayName,
-        artifact_name: cf.artifact_name,
-        files: cf.files,
-        expired: cf.expired
-      };
-    }) || [];
+        
+        const displayName = model ? `${baseName} (${model})` : baseName;
+        
+        return {
+          id: cf.artifact_id,
+          name: name,
+          baseName: baseName,
+          model: model,
+          displayName: displayName,
+          artifact_name: cf.artifact_name,
+          files: cf.files,
+          expired: cf.expired,
+          sortOrder: baseName === 'NOP' ? 0 : baseName === 'Oracle' ? 1 : baseName === 'Terminus' ? 2 : 999
+        };
+      })
+      .sort((a, b) => {
+        // Sort by defined order: NOP first, Oracle second, then Terminus, then others
+        if (a.sortOrder !== b.sortOrder) {
+          return a.sortOrder - b.sortOrder;
+        }
+        // Within same agent type (like multiple Terminus), sort alphabetically by model
+        return a.displayName.localeCompare(b.displayName);
+      });
+    
+    return agents;
+  }, [castListData]);
 
   // Auto-select first agent
   useEffect(() => {
@@ -692,7 +732,7 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                             testJobs.forEach(job => {
                               // Parse "Test with {Display}" where display can be:
                               // - "Oracle Solution" -> agent: "Oracle"
-                              // - "NOP Agent (Should Fail)" -> agent: "NOP Agent", note: "Should Fail"
+                              // - "NOP (Should Fail)" -> agent: "NOP", note: "Should Fail"
                               // - "Terminus (GPT-4.1)" -> agent: "Terminus", model: "GPT-4.1"
                               const match = job.name.match(/^Test with (.+?)(?:\s*\((.+)\))?$/);
                               if (match) {
@@ -702,8 +742,8 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                                 // Clean up agent names
                                 if (agentName === 'Oracle Solution') {
                                   agentName = 'Oracle';
-                                } else if (agentName === 'NOP Agent') {
-                                  // Keep as "NOP Agent", ignore "Should Fail" note
+                                } else if (agentName === 'NOP') {
+                                  // Keep as "NOP", ignore "Should Fail" note
                                 }
                                 
                                 // Determine if content in parentheses is a model (not a note like "Should Fail")
@@ -723,7 +763,7 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                             });
                             
                             // Sort agents in specific order: NOP first, Oracle second, then Terminus
-                            const agentOrder = ['NOP Agent', 'Oracle', 'Terminus'];
+                            const agentOrder = ['NOP', 'Oracle', 'Terminus'];
                             const sortedAgentEntries = Object.entries(agentGroups).sort(([a], [b]) => {
                               const aIndex = agentOrder.indexOf(a);
                               const bIndex = agentOrder.indexOf(b);
