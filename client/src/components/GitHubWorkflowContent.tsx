@@ -870,7 +870,7 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                           </p>
                         </div>
                         <div>
-                          <label className="text-sm text-muted-foreground block mb-1">Author Github Handle</label>
+                          <label className="text-sm text-muted-foreground block mb-1">Github Username</label>
                           <p className="text-sm">{prData.user.login}</p>
                         </div>
                         <div>
