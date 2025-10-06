@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search, GitPullRequest, User, Clock, Tag, Calendar, TrendingUp, SortAsc, Filter, ChevronDown, CheckCircle, XCircle, AlertCircle, GitCommit, FileText } from "lucide-react";
+import { Search, GitPullRequest, User, Clock, Tag, Calendar, TrendingUp, SortAsc, Filter, ChevronDown, CheckCircle, XCircle, AlertCircle, GitCommit, FileText, ArrowLeft } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,27 +11,19 @@ import {
   DropdownMenuSeparator,
   DropdownMenuCheckboxItem,
 } from "@/components/ui/dropdown-menu";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { GitHubPullRequest, GitHubPRSelection } from "@shared/schema";
+import { ORGANIZATION, REPOSITORIES } from "@shared/config";
 
 interface NavigationSidebarProps {
   onSelectPR: (selection: GitHubPRSelection) => void;
   selectedPR: GitHubPRSelection | null;
+  repoName: string;
+  onBack: () => void;
 }
 
-// Hardcoded configuration - no more env setup needed
-const ORGANIZATION = 'abundant-ai';
-const REPOSITORIES = [
-  { name: 'tbench-hammer', workflow: 'test-tasks.yaml' },
-  // Add more repositories here as needed
-];
-
-export default function NavigationSidebar({ onSelectPR, selectedPR }: NavigationSidebarProps) {
+export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, onBack }: NavigationSidebarProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState<'created' | 'updated' | 'popularity' | 'long-running'>('updated');
-  const [selectedRepo, setSelectedRepo] = useState(() =>
-    localStorage.getItem('selected_repo') || REPOSITORIES[0].name
-  );
   const [authorFilter, setAuthorFilter] = useState("");
   const [showDrafts, setShowDrafts] = useState(false);
   const [showFailedTests, setShowFailedTests] = useState(false);
@@ -39,8 +31,8 @@ export default function NavigationSidebar({ onSelectPR, selectedPR }: Navigation
   const [showMultipleCommits, setShowMultipleCommits] = useState(false);
   const [timeRange, setTimeRange] = useState<'all' | 'week' | 'month'>('all');
 
-  // Get current repository config
-  const currentRepo = REPOSITORIES.find(r => r.name === selectedRepo) || REPOSITORIES[0];
+  // Get current repository config from prop
+  const currentRepo = REPOSITORIES.find(r => r.name === repoName) || REPOSITORIES[0];
 
   // Get sort display text
   const getSortText = () => {
@@ -62,7 +54,7 @@ export default function NavigationSidebar({ onSelectPR, selectedPR }: Navigation
   };
 
   const { data: prData, isLoading, error } = useQuery<{ pullRequests: GitHubPullRequest[]; total_count: number }>({
-    queryKey: ["/api/github/pull-requests", sortBy, selectedRepo, ORGANIZATION, currentRepo.workflow],
+    queryKey: ["/api/github/pull-requests", sortBy, repoName, ORGANIZATION, currentRepo.workflow],
     queryFn: async () => {
       const params = new URLSearchParams({
         state: 'open',
@@ -70,7 +62,7 @@ export default function NavigationSidebar({ onSelectPR, selectedPR }: Navigation
         sort: sortBy,
         direction: 'desc',
         owner: ORGANIZATION,
-        repo: selectedRepo,
+        repo: repoName,
         workflow: currentRepo.workflow
       });
       
@@ -176,10 +168,21 @@ export default function NavigationSidebar({ onSelectPR, selectedPR }: Navigation
       {/* Header */}
       <div className="p-4 border-b border-border">
         <div className="flex items-center justify-between">
-          <h1 className="text-lg font-semibold text-foreground flex items-center gap-2">
-            <GitPullRequest className="h-5 w-5" />
-            LogFlix
-          </h1>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0"
+              onClick={onBack}
+              title="Back to repositories"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <h1 className="text-lg font-semibold text-foreground flex items-center gap-2">
+              <GitPullRequest className="h-5 w-5" />
+              LogFlix
+            </h1>
+          </div>
           <div className="flex items-center gap-1.5">
             <div className={`w-2 h-2 rounded-full ${
               error ? 'bg-destructive' : isLoading ? 'bg-warning animate-pulse' : 'bg-success'
@@ -190,28 +193,8 @@ export default function NavigationSidebar({ onSelectPR, selectedPR }: Navigation
           </div>
         </div>
         <div className="mt-2 text-xs text-muted-foreground truncate">
-          {ORGANIZATION}/{selectedRepo}
+          {ORGANIZATION}/{repoName}
         </div>
-        {/* Repository Selector */}
-        {REPOSITORIES.length > 1 && (
-          <div className="mt-2">
-            <Select value={selectedRepo} onValueChange={(value) => {
-              setSelectedRepo(value);
-              localStorage.setItem('selected_repo', value);
-            }}>
-              <SelectTrigger className="text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {REPOSITORIES.map((repo) => (
-                  <SelectItem key={repo.name} value={repo.name}>
-                    {repo.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
       </div>
 
       {/* Search and Advanced Controls */}

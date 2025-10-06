@@ -13,6 +13,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ============= GITHUB API ROUTES =============
 
+  // Get repository statistics (PR counts by state)
+  app.get("/api/github/repo-stats/:owner/:repo", async (req, res) => {
+    try {
+      const { owner, repo } = req.params;
+      const githubService = new GitHubCliService(owner, repo);
+      
+      const stats = await githubService.getRepositoryStats();
+      res.json(stats);
+    } catch (error) {
+      console.error("Error fetching repository stats:", error);
+      res.status(500).json({ error: "Failed to fetch repository stats" });
+    }
+  });
+
   // List pull requests with filters
   app.get("/api/github/pull-requests", async (req, res) => {
     try {

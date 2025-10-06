@@ -1,14 +1,32 @@
 import { useState, useEffect } from "react";
 import { useSearch, useLocation } from "wouter";
+import { ArrowLeft } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import NavigationSidebar from "@/components/NavigationSidebar";
 import GitHubWorkflowContent from "@/components/GitHubWorkflowContent";
 import { GitHubPRSelection } from "@shared/schema";
+import { REPOSITORIES } from "@shared/config";
 
-export default function Home() {
+interface HomeProps {
+  repoName: string;
+}
+
+export default function Home({ repoName }: HomeProps) {
   const [, setLocation] = useLocation();
   const searchString = useSearch();
   
   const [selectedPR, setSelectedPR] = useState<GitHubPRSelection | null>(null);
+
+  // Validate repository
+  const repo = REPOSITORIES.find(r => r.name === repoName);
+  
+  if (!repo) {
+    // Invalid repo, redirect to selector
+    useEffect(() => {
+      setLocation('/');
+    }, [setLocation]);
+    return null;
+  }
 
   // Initialize from URL parameters
   useEffect(() => {
@@ -36,14 +54,16 @@ export default function Home() {
       params.set('title', selection.prTitle);
     }
     
-    setLocation(`/?${params.toString()}`);
+    setLocation(`/repo/${repoName}?${params.toString()}`);
   };
 
   return (
     <div className="flex h-screen bg-background text-foreground">
-      <NavigationSidebar 
-        onSelectPR={handleSelectPR} 
+      <NavigationSidebar
+        onSelectPR={handleSelectPR}
         selectedPR={selectedPR}
+        repoName={repoName}
+        onBack={() => setLocation('/')}
       />
       <GitHubWorkflowContent selectedPR={selectedPR} />
     </div>

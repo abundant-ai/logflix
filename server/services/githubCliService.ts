@@ -1039,4 +1039,38 @@ export class GitHubCliService {
       return null;
     }
   }
+
+  /**
+   * Get repository statistics (PR counts by state) using GitHub Search API
+   */
+  async getRepositoryStats(): Promise<{ open: number; closed: number; merged: number }> {
+    try {
+      console.log(`Getting repository stats for ${this.repositoryOwner}/${this.repositoryName}`);
+      
+      // Use the working GitHub Search API format
+      const openCommand = `api 'search/issues?q=repo:${this.repositoryOwner}/${this.repositoryName}+is:pr+is:open' --jq '.total_count'`;
+      const closedCommand = `api 'search/issues?q=repo:${this.repositoryOwner}/${this.repositoryName}+is:pr+is:closed' --jq '.total_count'`;
+      const mergedCommand = `api 'search/issues?q=repo:${this.repositoryOwner}/${this.repositoryName}+is:pr+is:merged' --jq '.total_count'`;
+      
+      console.log(`Executing GitHub Search API commands...`);
+      
+      const [openResult, closedResult, mergedResult] = await Promise.all([
+        execAsync(`gh ${openCommand}`, { maxBuffer: 10 * 1024 * 1024 }),
+        execAsync(`gh ${closedCommand}`, { maxBuffer: 10 * 1024 * 1024 }),
+        execAsync(`gh ${mergedCommand}`, { maxBuffer: 10 * 1024 * 1024 })
+      ]);
+      
+      const open = parseInt(openResult.stdout.trim()) || 0;
+      const merged = parseInt(mergedResult.stdout.trim()) || 0;
+      const totalClosed = parseInt(closedResult.stdout.trim()) || 0;
+      const closed = Math.max(0, totalClosed - merged); // Closed but not merged
+      
+      console.log(`Repository stats: open=${open}, totalClosed=${totalClosed}, merged=${merged}, closed=${closed}`);
+      
+      return { open, closed, merged };
+    } catch (error) {
+      console.error(`Error fetching repository stats:`, error);
+      return { open: 0, closed: 0, merged: 0 };
+    }
+  }
 }
