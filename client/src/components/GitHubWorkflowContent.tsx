@@ -1073,8 +1073,25 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
               <div className="flex h-full">
                 {/* File Tree Sidebar */}
                 <div className="w-80 border-r border-border bg-card overflow-y-auto scrollbar-thin">
-                  <div className="p-4 border-b border-border">
-                    <h3 className="font-semibold text-sm">Files ({prFilesData.files.length})</h3>
+                  <div className="p-4 border-b border-border space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-muted-foreground">Changed Files</span>
+                      <Badge variant="secondary" className="text-xs">{prFilesData.files.length}</Badge>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="flex items-center gap-1">
+                        <span className="text-green-600 font-medium">+</span>
+                        <span className="text-muted-foreground">
+                          {prFilesData.files.reduce((sum, f) => sum + (f.additions || 0), 0)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-red-600 font-medium">−</span>
+                        <span className="text-muted-foreground">
+                          {prFilesData.files.reduce((sum, f) => sum + (f.deletions || 0), 0)}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                   <div className="p-2">
                     {renderTree(fileTree)}

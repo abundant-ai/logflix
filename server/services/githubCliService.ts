@@ -813,8 +813,8 @@ export class GitHubCliService {
    */
   async getPRFiles(prNumber: number): Promise<any[]> {
     try {
-      // Use GitHub API to get PR files
-      const filesCommand = `api repos/${this.repositoryOwner}/${this.repositoryName}/pulls/${prNumber}/files --jq '.[] | {name: .filename, path: .filename, sha: .sha, size: (.additions + .deletions), type: "file", download_url: .raw_url}'`;
+      // Use GitHub API to get PR files with additions and deletions
+      const filesCommand = `api repos/${this.repositoryOwner}/${this.repositoryName}/pulls/${prNumber}/files --jq '.[] | {name: .filename, path: .filename, sha: .sha, size: (.additions + .deletions), additions: .additions, deletions: .deletions, type: "file", download_url: .raw_url}'`;
       const { stdout } = await execAsync(`gh ${filesCommand}`);
       
       // Parse newline-delimited JSON
