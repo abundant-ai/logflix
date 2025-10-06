@@ -53,24 +53,36 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [castType, setCastType] = useState<'agent' | 'tests'>('agent');
 
-  // Fetch PR details
+  // Fetch PR details - only when PR is selected (lazy loading)
   const { data: prData, isLoading: isPRLoading } = useQuery<GitHubPullRequest>({
     queryKey: selectedPR ? ["/api/github/pull-request", selectedPR.prNumber] : [],
     enabled: !!selectedPR,
+    staleTime: 5 * 60 * 1000, // 5 minute cache
+    gcTime: 30 * 60 * 1000, // 30 minute garbage collection
   });
 
-  // Fetch commits for this PR
+  // Fetch commits for this PR - only when PR is selected (lazy loading)
   const { data: commitsData } = useQuery<{ commits: Array<{ sha: string; message: string; author: string; date: string }> }>({
     queryKey: selectedPR ? ["/api/github/pr-commits", selectedPR.prNumber] : [],
     enabled: !!selectedPR,
+    staleTime: 10 * 60 * 1000, // 10 minute cache for commits
+    gcTime: 30 * 60 * 1000,
   });
 
-  // Auto-select the latest commit
+  // Sort commits by date (latest first) and auto-select the latest commit
+  const sortedCommits = useMemo(() => {
+    if (!commitsData?.commits) return [];
+    return [...commitsData.commits].sort((a, b) =>
+      new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
+  }, [commitsData]);
+
+  // Auto-select the latest commit (first in sorted array) - reset when PR changes
   useEffect(() => {
-    if (commitsData && commitsData.commits.length > 0 && !selectedCommitSha) {
-      setSelectedCommitSha(commitsData.commits[commitsData.commits.length - 1].sha);
+    if (sortedCommits.length > 0) {
+      setSelectedCommitSha(sortedCommits[0].sha);
     }
-  }, [commitsData, selectedCommitSha]);
+  }, [sortedCommits, selectedPR?.prNumber]); // Reset when PR changes
 
   // Fetch workflow runs for this PR
   const { data: runsData, isLoading: isRunsLoading } = useQuery<{ runs: GitHubWorkflowRun[]; total_count: number }>({
@@ -114,7 +126,7 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
 
   // Get selected run from filtered runs
   const selectedRun = filteredRuns.find(r => r.id === selectedRunId);
-  const selectedCommit = commitsData?.commits.find(c => c.sha === selectedCommitSha);
+  const selectedCommit = sortedCommits.find(c => c.sha === selectedCommitSha);
 
   // Fetch commit details for display
   const { data: commitData } = useQuery<{ message: string; author: string; email: string }>({
@@ -474,8 +486,8 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
           </nav>
 
           <div className="flex items-center gap-3 flex-shrink-0">
-            {/* Commit Selector */}
-            {commitsData && commitsData.commits.length > 1 && (
+            {/* Commit Selector - Sorted by date (latest first) */}
+            {sortedCommits.length > 1 && (
               <Select
                 value={selectedCommitSha || ""}
                 onValueChange={(value) => setSelectedCommitSha(value)}
@@ -484,11 +496,11 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="w-96">
-                  {commitsData.commits.map((commit, index) => (
+                  {sortedCommits.map((commit, index) => (
                     <SelectItem key={commit.sha} value={commit.sha}>
                       <div className="flex items-center gap-2" title={commit.message}>
                         <code className="text-xs font-mono flex-shrink-0">{commit.sha.substring(0, 7)}</code>
-                        {index === commitsData.commits.length - 1 && <Badge variant="outline" className="text-xs">Latest</Badge>}
+                        {index === 0 && <Badge variant="outline" className="text-xs">Latest</Badge>}
                         <span className="text-xs text-muted-foreground truncate">
                           {commit.message.split('\n')[0]}
                         </span>
@@ -710,7 +722,26 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                               }
                             });
                             
-                            return Object.entries(agentGroups).map(([agentName, tests]) => {
+                            // Sort agents in specific order: NOP first, Oracle second, then Terminus
+                            const agentOrder = ['NOP Agent', 'Oracle', 'Terminus'];
+                            const sortedAgentEntries = Object.entries(agentGroups).sort(([a], [b]) => {
+                              const aIndex = agentOrder.indexOf(a);
+                              const bIndex = agentOrder.indexOf(b);
+                              
+                              // If both agents are in the order list, sort by their position
+                              if (aIndex !== -1 && bIndex !== -1) {
+                                return aIndex - bIndex;
+                              }
+                              
+                              // If only one agent is in the order list, prioritize it
+                              if (aIndex !== -1) return -1;
+                              if (bIndex !== -1) return 1;
+                              
+                              // If neither agent is in the order list, sort alphabetically
+                              return a.localeCompare(b);
+                            });
+                            
+                            return sortedAgentEntries.map(([agentName, tests]) => {
                               // If all tests have models, show as grouped
                               const hasModels = tests.some(t => t.model);
                               

@@ -444,7 +444,7 @@ export class GitHubCliService {
   }
 
   /**
-   * List all pull requests with optional filtering and sorting
+   * List all pull requests using direct GitHub REST API with pagination to bypass gh pr list limitations
    */
   async listPullRequests(
     state: 'open' | 'closed' | 'all' = 'all',
@@ -453,35 +453,83 @@ export class GitHubCliService {
     sortDirection: 'asc' | 'desc' = 'desc'
   ): Promise<GitHubPullRequest[]> {
     try {
-      const repoContext = this.getRepoContext();
+      console.log(`Fetching PRs using GitHub REST API for ${this.repositoryOwner}/${this.repositoryName}`);
+      console.log(`Requested: ${limit} PRs, state: ${state}, sort: ${sortBy}`);
       
-      const stateFlag = state === 'all' ? '' : `--state ${state}`;
-      const prCommand = `pr list ${repoContext} ${stateFlag} --limit ${limit} --json number,title,state,author,createdAt,updatedAt,mergedAt,url,headRefName,headRefOid,baseRefName,baseRefOid`;
+      const allPRs: any[] = [];
+      let page = 1;
+      const perPage = 100; // GitHub API max per page
       
-      const prs = await this.executeGhCommand<GHPullRequestJSON[]>(prCommand);
+      // Keep fetching pages until we get less than perPage PRs (indicates end of data)
+      while (true) {
+        const stateParam = state === 'all' ? '' : `&state=${state}`;
+        const sortParam = sortBy === 'long-running' ? '&sort=created&direction=asc' : `&sort=${sortBy}&direction=${sortDirection}`;
+        
+        const apiCommand = `api repos/${this.repositoryOwner}/${this.repositoryName}/pulls?per_page=${perPage}&page=${page}${stateParam}${sortParam}`;
+        
+        console.log(`Fetching page ${page} with command: gh ${apiCommand}`);
+        
+        const { stdout } = await execAsync(`gh ${apiCommand}`, {
+          maxBuffer: 50 * 1024 * 1024 // 50MB buffer for large PR responses
+        });
+        const pagePRs = JSON.parse(stdout);
+        
+        console.log(`Page ${page} returned ${pagePRs.length} PRs`);
+        
+        // Stop if we get no results or less than perPage (end of data)
+        if (pagePRs.length === 0) {
+          console.log(`No more PRs found at page ${page}, stopping pagination`);
+          break;
+        }
+        
+        allPRs.push(...pagePRs);
+        
+        // If we got fewer than perPage PRs, we've reached the end
+        if (pagePRs.length < perPage) {
+          console.log(`Got ${pagePRs.length} PRs (less than ${perPage}), reached end of data`);
+          break;
+        }
+        
+        // Stop if we have enough PRs for the request
+        if (allPRs.length >= limit) {
+          console.log(`Collected ${allPRs.length} PRs, reached requested limit of ${limit}`);
+          break;
+        }
+        
+        page++;
+        
+        // Safety limit to prevent infinite loops
+        if (page > 20) {
+          console.log(`Reached maximum pages (20), stopping`);
+          break;
+        }
+      }
       
-      const mappedPRs = prs.map(pr => ({
+      console.log(`GitHub REST API returned total ${allPRs.length} unique PRs (no duplicates fetched)`);
+      
+      // Map to our schema format (all PRs are already unique from smart pagination)
+      const mappedPRs = allPRs.map(pr => ({
         number: pr.number,
         title: pr.title,
         state: pr.state as 'open' | 'closed',
         user: {
-          login: pr.author.login,
+          login: pr.user.login,
         },
-        created_at: pr.createdAt,
-        updated_at: pr.updatedAt,
-        merged_at: pr.mergedAt,
-        html_url: pr.url,
+        created_at: pr.created_at,
+        updated_at: pr.updated_at,
+        merged_at: pr.merged_at,
+        html_url: pr.html_url,
         head: {
-          ref: pr.headRefName,
-          sha: pr.headRefOid,
+          ref: pr.head.ref,
+          sha: pr.head.sha,
         },
         base: {
-          ref: pr.baseRefName,
-          sha: pr.baseRefOid,
+          ref: pr.base.ref,
+          sha: pr.base.sha,
         },
       }));
 
-      // Apply sorting
+      // Apply client-requested sorting (GitHub API sorting might not be exactly what we want)
       mappedPRs.sort((a, b) => {
         let comparison = 0;
         if (sortBy === 'created') {
@@ -492,9 +540,18 @@ export class GitHubCliService {
         return sortDirection === 'desc' ? -comparison : comparison;
       });
 
-      return mappedPRs;
-    } catch (error) {
-      console.error('Error fetching pull requests:', error);
+      // Return up to the requested limit
+      const finalPRs = mappedPRs.slice(0, limit);
+      console.log(`Returning ${finalPRs.length} PRs to client`);
+      return finalPRs;
+    } catch (error: any) {
+      console.error('Error fetching pull requests with GitHub REST API:', error);
+      
+      // Check for authentication issues
+      if (error.message?.includes('authentication') || error.stderr?.includes('authentication')) {
+        console.error('GitHub authentication failed. Please run: gh auth login');
+      }
+      
       return [];
     }
   }

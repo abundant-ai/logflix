@@ -20,12 +20,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const githubService = getGitHubService(req.query);
       
       const stateValue = (state === 'open' || state === 'closed' || state === 'all') ? state : 'all';
-      const limitNumber = limit && typeof limit === 'string' ? parseInt(limit, 10) : 30;
+      const limitNumber = limit && typeof limit === 'string' ? parseInt(limit, 10) : 200;
       const sortValue = (sort === 'created' || sort === 'updated' || sort === 'popularity' || sort === 'long-running') ? sort : 'updated';
       const directionValue = (direction === 'asc' || direction === 'desc') ? direction : 'desc';
       
-      if (isNaN(limitNumber) || limitNumber < 1 || limitNumber > 100) {
-        return res.status(400).json({ error: "Invalid limit parameter (must be 1-100)" });
+      if (isNaN(limitNumber) || limitNumber < 1 || limitNumber > 1000) {
+        return res.status(400).json({ error: "Invalid limit parameter (must be 1-1000)" });
       }
 
       const pullRequests = await githubService.listPullRequests(stateValue, limitNumber, sortValue, directionValue);
