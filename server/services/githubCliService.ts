@@ -2,6 +2,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as yaml from 'js-yaml';
 import AdmZip from 'adm-zip';
+import type { Logger } from 'pino';
 import {
   GitHubWorkflowRun,
   GitHubWorkflowLog,
@@ -84,12 +85,18 @@ export class GitHubCliService {
   private repositoryOwner: string;
   private repositoryName: string;
   private workflowFileName: string;
+  private logger: Logger;
 
-  constructor(owner?: string, repo?: string, workflow?: string) {
+  constructor(owner?: string, repo?: string, workflow?: string, logger?: Logger) {
     // Hardcoded for now - will be parameterized for multi-repo support in the future
     this.repositoryOwner = owner || 'abundant-ai';
     this.repositoryName = repo || 'tbench-hammer';
     this.workflowFileName = workflow || 'test-tasks.yaml';
+    this.logger = logger?.child({
+      component: 'GitHubCliService',
+      repo: `${this.repositoryOwner}/${this.repositoryName}`,
+      workflow: this.workflowFileName
+    }) || console as any; // Fallback to console if no logger provided
   }
 
   /**
@@ -97,17 +104,21 @@ export class GitHubCliService {
    */
   private async executeGhCommand<T = any>(command: string): Promise<T> {
     try {
+      this.logger.debug({ command: `gh ${command}` }, 'Executing gh CLI command');
       const { stdout, stderr } = await execAsync(`gh ${command}`);
       
       if (stderr && !stderr.includes('Validation')) {
-        console.warn('gh CLI warning:', stderr);
+        this.logger.warn({ stderr, command }, 'gh CLI warning');
       }
       
       return JSON.parse(stdout) as T;
     } catch (error: any) {
-      console.error('Error executing gh command:', error.message);
-      if (error.stdout) console.error('stdout:', error.stdout);
-      if (error.stderr) console.error('stderr:', error.stderr);
+      this.logger.error({
+        error: error.message,
+        command: `gh ${command}`,
+        stdout: error.stdout,
+        stderr: error.stderr
+      }, 'Failed to execute gh command');
       throw new Error(`Failed to execute gh command: ${error.message}`);
     }
   }
@@ -165,7 +176,7 @@ export class GitHubCliService {
               hasData: logs.status === 'fulfilled' || artifacts.status === 'fulfilled',
             };
           } catch (error) {
-            console.error(`Error fetching data for workflow run ${run.databaseId}:`, error);
+            this.logger.error({ runId: run.databaseId, error }, 'Error fetching data for workflow run');
             return {
               run: {
                 id: run.databaseId,
@@ -198,7 +209,7 @@ export class GitHubCliService {
         },
       };
     } catch (error) {
-      console.error('Error fetching GitHub workflow hierarchy:', error);
+      this.logger.error({ error, limit }, 'Error fetching GitHub workflow hierarchy');
       return {
         workflow_runs: [],
         total_count: 0,
@@ -235,7 +246,7 @@ export class GitHubCliService {
 
       return logs;
     } catch (error) {
-      console.error(`Error fetching workflow run logs for run ${runId}:`, error);
+      this.logger.error({ runId, error }, 'Error fetching workflow run logs');
       return [];
     }
   }
@@ -269,7 +280,7 @@ export class GitHubCliService {
         workflow_run_id: runId,
       }));
     } catch (error) {
-      console.error(`Error fetching workflow run artifacts for run ${runId}:`, error);
+      this.logger.error({ runId, error }, 'Error fetching workflow run artifacts');
       return [];
     }
   }
@@ -287,50 +298,12 @@ export class GitHubCliService {
       
       return `Downloaded artifact: ${artifactName}`;
     } catch (error) {
-      console.error(`Error downloading artifact ${artifactName}:`, error);
+      this.logger.error({ artifactName, runId, error }, 'Error downloading artifact');
       return null;
     }
   }
 
-  /**
-   * Download and extract cast file content from artifact
-   */
-  async getCastFileContent(artifactId: number): Promise<string | null> {
-    try {
-      // Download artifact using GitHub API
-      const downloadCommand = `api repos/${this.repositoryOwner}/${this.repositoryName}/actions/artifacts/${artifactId}/zip`;
-      const { stdout } = await execAsync(`gh ${downloadCommand}`, {
-        encoding: 'buffer',
-        maxBuffer: 50 * 1024 * 1024 // 50MB buffer
-      });
-      
-      // Extract zip and find .cast file
-      const zip = new AdmZip(stdout);
-      const zipEntries = zip.getEntries();
-      
-      // Find first .cast file
-      const castEntry = zipEntries.find((entry: any) =>
-        !entry.isDirectory && entry.entryName.endsWith('.cast')
-      );
-      
-      if (!castEntry) {
-        console.error(`No .cast file found in artifact ${artifactId}`);
-        return null;
-      }
-      
-      // Read as text and validate size (max 10MB for cast files)
-      const content = zip.readAsText(castEntry);
-      if (content.length > 10 * 1024 * 1024) {
-        console.error(`Cast file ${castEntry.entryName} exceeds 10MB size limit`);
-        return null;
-      }
-      
-      return content;
-    } catch (error) {
-      console.error(`Error downloading cast file for artifact ${artifactId}:`, error);
-      return null;
-    }
-  }
+  
 
   /**
    * List all .cast files in an artifact
@@ -363,10 +336,10 @@ export class GitHubCliService {
     } catch (error: any) {
       // Check if artifact has expired
       if (error.message?.includes('Artifact has expired') || error.stderr?.includes('HTTP 410')) {
-        console.warn(`Artifact ${artifactId} has expired`);
+        this.logger.warn({ artifactId }, 'Artifact has expired');
         return [];
       }
-      console.error(`Error listing cast files from artifact ${artifactId}:`, error);
+      this.logger.error({ artifactId, error }, 'Error listing cast files from artifact');
       return [];
     }
   }
@@ -376,6 +349,27 @@ export class GitHubCliService {
    */
   async getCastFileByPath(artifactId: number, filePath: string): Promise<string | null> {
     try {
+      // Decode URL-encoded path safely (handle double-encoding)
+      let decodedPath = filePath;
+      try {
+        // Decode until no more changes (handles multiple encoding layers)
+        let previousPath = '';
+        while (previousPath !== decodedPath) {
+          previousPath = decodedPath;
+          decodedPath = decodeURIComponent(decodedPath);
+        }
+      } catch (decodeError) {
+        console.warn(`Failed to decode path ${filePath}, using as-is:`, decodeError);
+        decodedPath = filePath;
+      }
+
+      // Validate path to prevent directory traversal
+      const normalizedPath = decodedPath.replace(/\\/g, '/').replace(/\/+/g, '/');
+      if (normalizedPath.includes('../') || normalizedPath.includes('..\\') || normalizedPath.startsWith('/')) {
+        console.error(`Invalid file path (directory traversal detected): ${filePath} -> ${normalizedPath}`);
+        return null;
+      }
+
       // Download artifact zip
       const downloadCommand = `api repos/${this.repositoryOwner}/${this.repositoryName}/actions/artifacts/${artifactId}/zip`;
       const { stdout } = await execAsync(`gh ${downloadCommand}`, {
@@ -383,19 +377,19 @@ export class GitHubCliService {
         maxBuffer: 50 * 1024 * 1024
       });
       
-      // Extract specific file
+      // Extract specific file using normalized path
       const zip = new AdmZip(stdout);
-      const entry = zip.getEntry(filePath);
+      const entry = zip.getEntry(normalizedPath);
       
       if (!entry) {
-        console.error(`Cast file ${filePath} not found in artifact`);
+        this.logger.error({ artifactId, normalizedPath, originalPath: filePath }, 'Cast file not found in artifact');
         return null;
       }
       
       // Read as text and validate size
       const content = zip.readAsText(entry);
       if (content.length > 10 * 1024 * 1024) {
-        console.error(`Cast file ${filePath} exceeds 10MB size limit`);
+        this.logger.error({ artifactId, normalizedPath, size: content.length }, 'Cast file exceeds 10MB size limit');
         return null;
       }
       
@@ -403,10 +397,10 @@ export class GitHubCliService {
     } catch (error: any) {
       // Check if artifact has expired
       if (error.message?.includes('Artifact has expired') || error.stderr?.includes('HTTP 410')) {
-        console.warn(`Artifact ${artifactId} has expired, cannot read cast file ${filePath}`);
+        this.logger.warn({ artifactId, filePath }, 'Artifact has expired, cannot read cast file');
         return null;
       }
-      console.error(`Error reading cast file ${filePath} from artifact ${artifactId}:`, error);
+      this.logger.error({ artifactId, filePath, error }, 'Error reading cast file from artifact');
       return null;
     }
   }
@@ -438,7 +432,7 @@ export class GitHubCliService {
         run_attempt: run.attempt,
       };
     } catch (error) {
-      console.error(`Error fetching workflow run ${runId}:`, error);
+      this.logger.error({ runId, error }, 'Error fetching workflow run');
       return null;
     }
   }
@@ -477,7 +471,7 @@ export class GitHubCliService {
         },
       }));
     } catch (error) {
-      console.error(`Error fetching PRs for commit ${commitSha}:`, error);
+      this.logger.error({ commitSha, error }, 'Error fetching PRs for commit');
       return [];
     }
   }
@@ -516,7 +510,7 @@ export class GitHubCliService {
       
       return comments;
     } catch (error) {
-      console.error(`Error fetching review comments for PR ${prNumber}:`, error);
+      this.logger.error({ prNumber, error }, 'Error fetching review comments for PR');
       return [];
     }
   }
@@ -548,7 +542,7 @@ export class GitHubCliService {
 
       return allComments;
     } catch (error) {
-      console.error(`Error fetching review comments for run ${runId}:`, error);
+      this.logger.error({ runId, error }, 'Error fetching review comments for run');
       return [];
     }
   }
@@ -594,7 +588,7 @@ export class GitHubCliService {
           
           allRuns.push(...mappedRuns);
         } catch (error) {
-          console.error(`Error fetching runs for commit ${commit.sha}:`, error);
+          this.logger.error({ commitSha: commit.sha, prNumber, error }, 'Error fetching runs for commit');
           // Continue with other commits
         }
       }
@@ -603,7 +597,7 @@ export class GitHubCliService {
       allRuns.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       return allRuns.slice(0, limit);
     } catch (error) {
-      console.error(`Error fetching workflow runs for PR ${prNumber}:`, error);
+      this.logger.error({ prNumber, limit, error }, 'Error fetching workflow runs for PR');
       return [];
     }
   }
@@ -653,10 +647,10 @@ export class GitHubCliService {
         }
       }
       
-      console.log(`Found ${botComments.length} bot comments for PR ${prNumber}`);
+      this.logger.info({ prNumber, count: botComments.length }, 'Found bot comments for PR');
       return botComments;
     } catch (error) {
-      console.error(`Error fetching workflow bot comments for PR ${prNumber}:`, error);
+      this.logger.error({ prNumber, error }, 'Error fetching workflow bot comments for PR');
       return [];
     }
   }
@@ -692,7 +686,7 @@ export class GitHubCliService {
         },
       };
     } catch (error) {
-      console.error(`Error fetching PR ${prNumber}:`, error);
+      this.logger.error({ prNumber, error }, 'Error fetching PR');
       return null;
     }
   }
@@ -715,7 +709,7 @@ export class GitHubCliService {
       
       return files;
     } catch (error) {
-      console.error(`Error fetching PR files for ${prNumber}:`, error);
+      this.logger.error({ prNumber, error }, 'Error fetching PR files');
       return [];
     }
   }
@@ -737,70 +731,14 @@ export class GitHubCliService {
       const base64Content = stdout.trim().replace(/"/g, '');
       return Buffer.from(base64Content, 'base64').toString('utf-8');
     } catch (error) {
-      console.error(`Error fetching file content ${filePath}:`, error);
+      this.logger.error({ prNumber, filePath, error }, 'Error fetching file content');
       return null;
     }
   }
 
-  /**
-   * Get task.yaml content and parse it
-   * @deprecated Use listPRTasks() for multi-task support
-   */
-  async getTaskYaml(prNumber: number): Promise<any | null> {
-    try {
-      console.warn('[DEPRECATED] getTaskYaml() returns only the first task. Use listPRTasks() for complete task enumeration.');
-      const files = await this.getPRFiles(prNumber);
-      
-      // Find task.yaml file in the PR files
-      const taskYamlFile = files.find(f =>
-        f.name.endsWith('task.yaml') || f.name.endsWith('task.yml')
-      );
-      
-      if (!taskYamlFile) {
-        console.log(`No task.yaml found in PR ${prNumber}`);
-        return null;
-      }
+  
 
-      // Fetch and parse task.yaml content
-      const content = await this.getPRFileContent(prNumber, taskYamlFile.path);
-      if (!content) return null;
-
-      // Parse YAML
-      return yaml.load(content);
-    } catch (error) {
-      console.error(`Error fetching task.yaml for PR ${prNumber}:`, error);
-      return null;
-    }
-  }
-
-  /**
-   * Extract task ID from PR files (directory name)
-   * @deprecated Use listPRTasks() for multi-task support
-   */
-  async getTaskId(prNumber: number): Promise<string | null> {
-    try {
-      console.warn('[DEPRECATED] getTaskId() returns only the first task. Use listPRTasks() for complete task enumeration.');
-      const files = await this.getPRFiles(prNumber);
-      
-      // Find the common directory prefix (task ID)
-      if (files.length === 0) return null;
-      
-      // Extract directory from first file path
-      const firstPath = files[0].path;
-      const parts = firstPath.split('/');
-      
-      // If in tasks/ directory, return the task folder name
-      if (parts[0] === 'tasks' && parts.length > 1) {
-        return parts[1];
-      }
-      
-      // Otherwise return the first directory
-      return parts.length > 1 ? parts[0] : null;
-    } catch (error) {
-      console.error(`Error extracting task ID for PR ${prNumber}:`, error);
-      return null;
-    }
-  }
+  
 
   /**
    * List all tasks in a PR by discovering task subdirectories (not just task.yaml files)
@@ -822,11 +760,11 @@ export class GitHubCliService {
       });
       
       if (taskSubdirs.size === 0) {
-        console.log(`No task subdirectories found in PR ${prNumber}`);
+        this.logger.info({ prNumber }, 'No task subdirectories found in PR');
         return [];
       }
 
-      console.log(`Found ${taskSubdirs.size} task subdirectories in PR ${prNumber}: ${Array.from(taskSubdirs).join(', ')}`);
+      this.logger.info({ prNumber, taskCount: taskSubdirs.size, tasks: Array.from(taskSubdirs) }, 'Found task subdirectories in PR');
 
       // For each task subdirectory, try to find and parse task.yaml
       const tasks = await Promise.all(
@@ -850,21 +788,21 @@ export class GitHubCliService {
                 taskYaml = yaml.load(content);
               }
             } catch (error) {
-              console.warn(`task.yaml not found for task ${taskId}, including task without yaml`);
+              this.logger.warn({ taskId, prNumber }, 'task.yaml not found for task, including task without yaml');
             }
 
             return { taskId, pathPrefix, taskYaml };
           } catch (error) {
-            console.error(`Error processing task ${taskId}:`, error);
+            this.logger.error({ taskId, prNumber, error }, 'Error processing task');
             return { taskId, pathPrefix: `tasks/${taskId}`, taskYaml: null };
           }
         })
       );
 
-      console.log(`Returning ${tasks.length} tasks from ${taskSubdirs.size} subdirectories`);
+      this.logger.info({ prNumber, taskCount: tasks.length, subdirCount: taskSubdirs.size }, 'Returning tasks from subdirectories');
       return tasks;
     } catch (error) {
-      console.error(`Error listing tasks for PR ${prNumber}:`, error);
+      this.logger.error({ prNumber, error }, 'Error listing tasks for PR');
       return [];
     }
   }
@@ -879,7 +817,7 @@ export class GitHubCliService {
       
       return JSON.parse(stdout.trim());
     } catch (error) {
-      console.error(`Error fetching commit details for ${commitSha}:`, error);
+      this.logger.error({ commitSha, error }, 'Error fetching commit details');
       return null;
     }
   }
@@ -902,7 +840,7 @@ export class GitHubCliService {
       
       return commits;
     } catch (error) {
-      console.error(`Error fetching commits for PR ${prNumber}:`, error);
+      this.logger.error({ prNumber, error }, 'Error fetching commits for PR');
       return [];
     }
   }
@@ -924,7 +862,7 @@ export class GitHubCliService {
       
       return jobs;
     } catch (error) {
-      console.error(`Error fetching jobs for run ${runId}:`, error);
+      this.logger.error({ runId, error }, 'Error fetching jobs for run');
       return [];
     }
   }
@@ -959,10 +897,10 @@ export class GitHubCliService {
     } catch (error: any) {
       // Check if artifact has expired
       if (error.message?.includes('Artifact has expired') || error.stderr?.includes('HTTP 410')) {
-        console.warn(`Artifact ${artifactId} has expired`);
+        this.logger.warn({ artifactId }, 'Artifact has expired');
         return [];
       }
-      console.error(`Error extracting log files from artifact ${artifactId}:`, error);
+      this.logger.error({ artifactId, error }, 'Error extracting log files from artifact');
       return [];
     }
   }
@@ -972,6 +910,27 @@ export class GitHubCliService {
    */
   async getArtifactLogContent(artifactId: number, filePath: string): Promise<string | null> {
     try {
+      // Decode URL-encoded path safely (handle double-encoding)
+      let decodedPath = filePath;
+      try {
+        // Decode until no more changes (handles multiple encoding layers)
+        let previousPath = '';
+        while (previousPath !== decodedPath) {
+          previousPath = decodedPath;
+          decodedPath = decodeURIComponent(decodedPath);
+        }
+      } catch (decodeError) {
+        console.warn(`Failed to decode path ${filePath}, using as-is:`, decodeError);
+        decodedPath = filePath;
+      }
+
+      // Validate path to prevent directory traversal
+      const normalizedPath = decodedPath.replace(/\\/g, '/').replace(/\/+/g, '/');
+      if (normalizedPath.includes('../') || normalizedPath.includes('..\\') || normalizedPath.startsWith('/')) {
+        console.error(`Invalid file path (directory traversal detected): ${filePath} -> ${normalizedPath}`);
+        return null;
+      }
+
       // Download artifact zip
       const downloadCommand = `api repos/${this.repositoryOwner}/${this.repositoryName}/actions/artifacts/${artifactId}/zip`;
       const { stdout } = await execAsync(`gh ${downloadCommand}`, {
@@ -979,12 +938,12 @@ export class GitHubCliService {
         maxBuffer: 50 * 1024 * 1024
       });
       
-      // Extract specific file
+      // Extract specific file using normalized path
       const zip = new AdmZip(stdout);
-      const entry = zip.getEntry(filePath);
+      const entry = zip.getEntry(normalizedPath);
       
       if (!entry) {
-        console.error(`File ${filePath} not found in artifact`);
+        this.logger.error({ artifactId, normalizedPath, originalPath: filePath }, 'File not found in artifact');
         return null;
       }
       
@@ -992,10 +951,10 @@ export class GitHubCliService {
     } catch (error: any) {
       // Check if artifact has expired
       if (error.message?.includes('Artifact has expired') || error.stderr?.includes('HTTP 410')) {
-        console.warn(`Artifact ${artifactId} has expired, cannot read log file ${filePath}`);
+        this.logger.warn({ artifactId, filePath }, 'Artifact has expired, cannot read log file');
         return null;
       }
-      console.error(`Error reading log file ${filePath} from artifact ${artifactId}:`, error);
+      this.logger.error({ artifactId, filePath, error }, 'Error reading log file from artifact');
       return null;
     }
   }
@@ -1005,14 +964,14 @@ export class GitHubCliService {
    */
   async getRepositoryStats(): Promise<{ open: number; closed: number; merged: number }> {
     try {
-      console.log(`Getting repository stats for ${this.repositoryOwner}/${this.repositoryName}`);
+      this.logger.info({ repo: `${this.repositoryOwner}/${this.repositoryName}` }, 'Getting repository stats');
       
       // Use the working GitHub Search API format
       const openCommand = `api 'search/issues?q=repo:${this.repositoryOwner}/${this.repositoryName}+is:pr+is:open' --jq '.total_count'`;
       const closedCommand = `api 'search/issues?q=repo:${this.repositoryOwner}/${this.repositoryName}+is:pr+is:closed' --jq '.total_count'`;
       const mergedCommand = `api 'search/issues?q=repo:${this.repositoryOwner}/${this.repositoryName}+is:pr+is:merged' --jq '.total_count'`;
       
-      console.log(`Executing GitHub Search API commands...`);
+      this.logger.debug('Executing GitHub Search API commands for repository stats');
       
       const [openResult, closedResult, mergedResult] = await Promise.all([
         execAsync(`gh ${openCommand}`, { maxBuffer: 10 * 1024 * 1024 }),
@@ -1025,11 +984,11 @@ export class GitHubCliService {
       const totalClosed = parseInt(closedResult.stdout.trim()) || 0;
       const closed = Math.max(0, totalClosed - merged); // Closed but not merged
       
-      console.log(`Repository stats: open=${open}, totalClosed=${totalClosed}, merged=${merged}, closed=${closed}`);
+      this.logger.info({ open, totalClosed, merged, closed }, 'Repository stats computed');
       
       return { open, closed, merged };
     } catch (error) {
-      console.error(`Error fetching repository stats:`, error);
+      this.logger.error({ error }, 'Error fetching repository stats');
       return { open: 0, closed: 0, merged: 0 };
     }
   }
@@ -1045,8 +1004,12 @@ export class GitHubCliService {
     sortDirection: 'asc' | 'desc' = 'desc'
   ): Promise<GitHubPullRequest[]> {
     try {
-      console.log(`Fetching PRs using GitHub GraphQL API for ${this.repositoryOwner}/${this.repositoryName}`);
-      console.log(`Requested: ${limit} PRs, state: ${state}, sort: ${sortBy}`);
+      this.logger.info({
+        repo: `${this.repositoryOwner}/${this.repositoryName}`,
+        limit,
+        state,
+        sortBy
+      }, 'Fetching PRs using GitHub GraphQL API');
       
       // Map states to GraphQL format
       let states = 'OPEN, CLOSED, MERGED';
@@ -1065,7 +1028,7 @@ export class GitHubCliService {
       let callCount = 0;
       let totalAvailable = 0;
       
-      console.log(`Starting GraphQL cursor pagination for up to ${limit} PRs...`);
+      this.logger.debug({ limit }, 'Starting GraphQL cursor pagination');
       
       // Official GitHub GraphQL pagination pattern: loop while hasNextPage
       while (hasNextPage && allPRs.length < limit && callCount < 10) { // Safety limit
@@ -1099,7 +1062,12 @@ export class GitHubCliService {
           }
         }`;
         
-        console.log(`GraphQL call ${callCount}: requesting ${pageSize} PRs${currentCursor ? ` (cursor: ${currentCursor.substring(0, 10)}...)` : ' (first page)'}`);
+        this.logger.debug({
+          callCount,
+          pageSize,
+          cursor: currentCursor?.substring(0, 10),
+          isFirstPage: !currentCursor
+        }, 'GraphQL pagination call');
         
         try {
           const { stdout } = await execAsync(`gh api graphql -f query='${graphqlQuery}'`, {
@@ -1109,14 +1077,20 @@ export class GitHubCliService {
           const result = JSON.parse(stdout);
           
           if (result.errors) {
-            console.error(`GraphQL errors in call ${callCount}:`, result.errors);
+            this.logger.error({ callCount, errors: result.errors }, 'GraphQL errors in pagination call');
             break;
           }
           
           const pullRequestsData = result.data.repository.pullRequests;
           totalAvailable = pullRequestsData.totalCount;
           
-          console.log(`Call ${callCount}: got ${pullRequestsData.nodes.length} PRs, hasNext: ${pullRequestsData.pageInfo.hasNextPage} (${allPRs.length + pullRequestsData.nodes.length}/${totalAvailable} total)`);
+          this.logger.debug({
+            callCount,
+            received: pullRequestsData.nodes.length,
+            hasNext: pullRequestsData.pageInfo.hasNextPage,
+            totalFetched: allPRs.length + pullRequestsData.nodes.length,
+            totalAvailable
+          }, 'GraphQL pagination call result');
           
           // Add PRs to our collection
           allPRs.push(...pullRequestsData.nodes);
@@ -1127,17 +1101,22 @@ export class GitHubCliService {
           
           // Safety checks
           if (pullRequestsData.nodes.length === 0) {
-            console.log(`No PRs returned on call ${callCount}, stopping`);
+            this.logger.warn({ callCount }, 'No PRs returned on pagination call, stopping');
             break;
           }
           
         } catch (error: any) {
-          console.error(`GraphQL call ${callCount} failed:`, error.message);
+          this.logger.error({ callCount, error: error.message }, 'GraphQL pagination call failed');
           break;
         }
       }
       
-      console.log(`GraphQL pagination complete: ${allPRs.length}/${totalAvailable} PRs fetched in ${callCount} calls using hasNextPage pattern`);
+      this.logger.info({ 
+  fetched: allPRs.length, 
+  totalAvailable, 
+  callCount, 
+  method: 'GraphQL hasNextPage pattern' 
+}, 'GraphQL pagination complete');
       
       // Map to our schema format
       const mappedPRs: GitHubPullRequest[] = allPRs.map((pr: any) => ({
@@ -1162,14 +1141,14 @@ export class GitHubCliService {
         },
       }));
       
-      console.log(`Returning ${mappedPRs.length} PRs to client (GraphQL cursor pagination, all PRs)`);
+      this.logger.info({ count: mappedPRs.length, method: 'GraphQL cursor pagination' }, 'Returning PRs to client');
       return mappedPRs;
     } catch (error: any) {
-      console.error('Error fetching pull requests with GitHub GraphQL API:', error);
+      this.logger.error({ error }, 'Error fetching pull requests with GitHub GraphQL API');
       
       // Check for authentication issues
       if (error.message?.includes('authentication') || error.stderr?.includes('authentication')) {
-        console.error('GitHub authentication failed. Please run: gh auth login');
+        this.logger.error('GitHub authentication failed. Please run: gh auth login');
       }
       
       return [];

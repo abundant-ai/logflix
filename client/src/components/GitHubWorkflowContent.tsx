@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import CustomTerminalViewer from "./CustomTerminalViewer";
 import {
@@ -373,7 +373,7 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
         owner: 'abundant-ai',
         repo: repoName || 'tbench-hammer',
         workflow: 'test-tasks.yaml',
-        path: encodeURIComponent(selectedLogFile)
+        path: selectedLogFile
       });
       
       const response = await fetch(`/api/github/artifact-log-content/${logArtifact.id}?${params}`);
@@ -397,11 +397,13 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
 
   const duration = selectedRun ?
     Math.floor((new Date(selectedRun.updated_at).getTime() - new Date(selectedRun.created_at).getTime()) / 1000) : 0;
+  
   const formatDuration = (secs: number) => {
     const mins = Math.floor(secs / 60);
     const remainingSecs = secs % 60;
     return `${mins}m ${remainingSecs}s`;
   };
+
 
   // Fetch cast list to get all available agents and cast files - PRELOAD for performance
   const { data: castListData } = useQuery<{
@@ -559,7 +561,7 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
         owner: 'abundant-ai',
         repo: repoName || 'tbench-hammer',
         workflow: 'test-tasks.yaml',
-        path: encodeURIComponent(selectedCastFile.path)
+        path: selectedCastFile.path
       });
       
       const response = await fetch(`/api/github/cast-file-by-path/${selectedAgentData.id}?${params}`);
@@ -724,7 +726,7 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                   owner: 'abundant-ai',
                   repo: repoName || 'tbench-hammer',
                   workflow: 'test-tasks.yaml',
-                  path: encodeURIComponent(file.path)
+                  path: file.path
                 });
                 
                 const response = await fetch(`/api/github/pr-file-content/${selectedPR.prNumber}?${params}`);
@@ -1035,8 +1037,8 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                                 // Clean up agent names
                                 if (agentName === 'Oracle Solution') {
                                   agentName = 'Oracle';
-                                } else if (agentName === 'NOP') {
-                                  // Keep as "NOP", ignore "Should Fail" note
+                                } else if (agentName === 'NOP Agent') {
+                                  agentName = 'NOP';
                                 }
                                 
                                 // Determine if content in parentheses is a model (not a note like "Should Fail")

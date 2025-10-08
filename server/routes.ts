@@ -1,14 +1,15 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import type { Logger } from "pino";
 import { GitHubCliService } from "./services/githubCliService";
 
-export async function registerRoutes(app: Express): Promise<Server> {
+export async function registerRoutes(app: Express, logger: Logger): Promise<Server> {
   // Helper to create service instance with query params
-  const getGitHubService = (query: any) => {
+  const getGitHubService = (query: any, requestLogger?: Logger) => {
     const owner = typeof query.owner === 'string' ? query.owner : undefined;
     const repo = typeof query.repo === 'string' ? query.repo : undefined;
     const workflow = typeof query.workflow === 'string' ? query.workflow : undefined;
-    return new GitHubCliService(owner, repo, workflow);
+    return new GitHubCliService(owner, repo, workflow, requestLogger || logger);
   };
 
   // ============= GITHUB API ROUTES =============
@@ -17,12 +18,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/github/repo-stats/:owner/:repo", async (req, res) => {
     try {
       const { owner, repo } = req.params;
-      const githubService = new GitHubCliService(owner, repo);
+      const requestLogger = res.locals.logger || logger;
+      const githubService = new GitHubCliService(owner, repo, undefined, requestLogger);
       
       const stats = await githubService.getRepositoryStats();
       res.json(stats);
     } catch (error) {
-      console.error("Error fetching repository stats:", error);
+      const requestLogger = res.locals.logger || logger;
+      requestLogger.error({ owner: req.params.owner, repo: req.params.repo, error }, "Error fetching repository stats");
       res.status(500).json({ error: "Failed to fetch repository stats" });
     }
   });
@@ -31,7 +34,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/github/pull-requests", async (req, res) => {
     try {
       const { state, limit, sort, direction } = req.query;
-      const githubService = getGitHubService(req.query);
+      const requestLogger = res.locals.logger || logger;
+      const githubService = getGitHubService(req.query, requestLogger);
       
       const stateValue = (state === 'open' || state === 'closed' || state === 'all') ? state : 'all';
       const limitNumber = limit && typeof limit === 'string' ? parseInt(limit, 10) : 100;
@@ -45,7 +49,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const pullRequests = await githubService.listPullRequests(stateValue, limitNumber, sortValue, directionValue);
       res.json({ pullRequests, total_count: pullRequests.length });
     } catch (error) {
-      console.error("Error fetching pull requests:", error);
+      const requestLogger = res.locals.logger || logger;
+      requestLogger.error({ query: req.query, error }, "Error fetching pull requests");
       res.status(500).json({ error: "Failed to fetch pull requests" });
     }
   });
@@ -69,7 +74,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json(pullRequest);
     } catch (error) {
-      console.error("Error fetching pull request:", error);
+      const requestLogger = res.locals.logger || logger;
+      requestLogger.error({ prNumber: req.params.prNumber, error }, "Error fetching pull request");
       res.status(500).json({ error: "Failed to fetch pull request" });
     }
   });
@@ -91,7 +97,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const runs = await githubService.getWorkflowRunsForPR(prNumberInt, limitNumber);
       res.json({ runs, total_count: runs.length });
     } catch (error) {
-      console.error("Error fetching workflow runs for PR:", error);
+      const requestLogger = res.locals.logger || logger;
+      requestLogger.error({ prNumber: req.params.prNumber, error }, "Error fetching workflow runs for PR");
       res.status(500).json({ error: "Failed to fetch workflow runs for PR" });
     }
   });
@@ -288,55 +295,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get cast file content from artifact (deprecated - use cast-playback instead)
+  // Get cast file content from artifact (DEPRECATED - use cast-file-by-path instead)
   app.get("/api/github/cast-file/:artifactId", async (req, res) => {
-    try {
-      const { artifactId } = req.params;
-      const githubService = getGitHubService(req.query);
-      
-      if (!artifactId || isNaN(parseInt(artifactId, 10))) {
-        return res.status(400).json({ error: "Invalid artifact ID parameter" });
-      }
-
-      const artifactIdNumber = parseInt(artifactId, 10);
-      const castContent = await githubService.getCastFileContent(artifactIdNumber);
-      
-      if (!castContent) {
-        return res.status(404).json({ error: "Cast file not found or expired" });
-      }
-
-      // Return the unzipped cast content (JSON format)
-      res.json({ content: castContent });
-    } catch (error) {
-      console.error("Error fetching cast file:", error);
-      res.status(500).json({ error: "Failed to fetch cast file" });
-    }
+    const requestLogger = res.locals.logger || logger;
+    requestLogger.warn({ artifactId: req.params.artifactId }, 'Deprecated endpoint accessed: /api/github/cast-file/:artifactId');
+    
+    res.setHeader('X-Deprecation-Warning', 'This endpoint is deprecated. Use /api/github/cast-file-by-path/:artifactId with ?path= query parameter.');
+    res.setHeader('Sunset', new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString()); // 90 days from now
+    
+    res.status(410).json({ 
+      error: "This endpoint has been deprecated",
+      deprecatedEndpoint: "/api/github/cast-file/:artifactId",
+      replacementEndpoint: "/api/github/cast-file-by-path/:artifactId",
+      replacementParams: "Add ?path= query parameter to specify the cast file path",
+      sunsetDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString()
+    });
   });
 
-  // Get first cast file content from artifact (for in-browser playback)
-  app.get("/api/github/cast-playback/:artifactId", async (req, res) => {
-    try {
-      const { artifactId } = req.params;
-      const githubService = getGitHubService(req.query);
-      
-      if (!artifactId || isNaN(parseInt(artifactId, 10))) {
-        return res.status(400).json({ error: "Invalid artifact ID parameter" });
-      }
-
-      const artifactIdNumber = parseInt(artifactId, 10);
-      const castContent = await githubService.getCastFileContent(artifactIdNumber);
-      
-      if (!castContent) {
-        return res.status(404).json({ error: "Cast file not found or expired" });
-      }
-
-      // Return as JSON for asciinema-player
-      res.json({ content: castContent });
-    } catch (error) {
-      console.error("Error fetching cast playback:", error);
-      res.status(500).json({ error: "Failed to fetch cast playback" });
-    }
-  });
+  
 
   // List all cast files in artifacts for a workflow run
   app.get("/api/github/cast-list/:runId", async (req, res) => {
@@ -402,7 +378,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json({ content });
     } catch (error) {
-      console.error("Error fetching cast file by path:", error);
+      const requestLogger = res.locals.logger || logger;
+      requestLogger.error({ artifactId: req.params.artifactId, path: req.query.path, error }, "Error fetching cast file by path");
       res.status(500).json({ error: "Failed to fetch cast file" });
     }
   });
@@ -447,30 +424,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get task.yaml content for a pull request (DEPRECATED - use /api/github/pr-tasks/:prNumber)
-  app.get("/api/github/pr-task-yaml/:prNumber", async (req, res) => {
-    try {
-      const { prNumber } = req.params;
-      const githubService = getGitHubService(req.query);
-      
-      if (!prNumber || isNaN(parseInt(prNumber, 10))) {
-        return res.status(400).json({ error: "Invalid PR number parameter" });
-      }
-
-      const prNumberInt = parseInt(prNumber, 10);
-      const [taskYaml, taskId] = await Promise.all([
-        githubService.getTaskYaml(prNumberInt),
-        githubService.getTaskId(prNumberInt)
-      ]);
-      
-      // Add deprecation warning header
-      res.setHeader('X-Deprecation-Warning', 'This endpoint is deprecated. Use /api/github/pr-tasks/:prNumber for multi-task support.');
-      res.json({ taskYaml, taskId });
-    } catch (error) {
-      console.error("Error fetching task.yaml:", error);
-      res.status(500).json({ error: "Failed to fetch task.yaml" });
-    }
-  });
+  
 
   // Get specific file content from PR
   app.get("/api/github/pr-file-content/:prNumber", async (req, res) => {

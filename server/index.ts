@@ -1,50 +1,95 @@
 import express, { type Request, Response, NextFunction } from "express";
+import pino from "pino";
+import pinoHttp from "pino-http";
+import { nanoid } from "nanoid";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+
+// Configure Pino logger
+const logger = pino({
+  name: 'logflix-server',
+  level: process.env.LOG_LEVEL || 'info',
+  ...(process.env.NODE_ENV === 'development' && {
+    transport: {
+      target: 'pino-pretty',
+      options: {
+        colorize: true,
+        translateTime: 'SYS:standard',
+        ignore: 'pid,hostname',
+        singleLine: false
+      }
+    }
+  })
+});
 
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-app.use((req, res, next) => {
-  const start = Date.now();
-  const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
-
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
-
-  res.on("finish", () => {
-    const duration = Date.now() - start;
-    if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
-
-      if (logLine.length > 80) {
-        logLine = logLine.slice(0, 79) + "…";
-      }
-
-      log(logLine);
+// Add Pino HTTP middleware with request ID and response time
+app.use(pinoHttp({
+  logger,
+  genReqId: () => nanoid(),
+  customLogLevel: function (req, res, err) {
+    if (res.statusCode >= 400 && res.statusCode < 500) {
+      return 'warn'
+    } else if (res.statusCode >= 500 || err) {
+      return 'error'
+    } else if (res.statusCode >= 300 && res.statusCode < 400) {
+      return 'silent'
     }
-  });
+    return 'info'
+  },
+  customSuccessMessage: function (req, res) {
+    if (req.url?.startsWith('/api')) {
+      return `${req.method} ${req.url} completed`
+    }
+    return 'request completed'
+  },
+  customErrorMessage: function (req, res, err) {
+    return `${req.method} ${req.url} errored: ${err.message}`
+  },
+  customAttributeKeys: {
+    req: 'request',
+    res: 'response',
+    err: 'error',
+    responseTime: 'duration'
+  },
+  serializers: {
+    req: pino.stdSerializers.req,
+    res: pino.stdSerializers.res,
+    err: pino.stdSerializers.err
+  }
+}));
 
+// Make logger available to routes via locals
+app.use((req, res, next) => {
+  res.locals.logger = res.log || logger;
   next();
 });
 
 (async () => {
-  const server = await registerRoutes(app);
+  const server = await registerRoutes(app, logger);
 
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+  app.use((err: any, req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
+    
+    // Log error with context
+    const requestLogger = res.locals.logger || logger;
+    requestLogger.error({
+      err,
+      req: {
+        method: req.method,
+        url: req.url,
+        headers: req.headers,
+      },
+      res: {
+        statusCode: status
+      }
+    }, message);
 
     res.status(status).json({ message });
-    throw err;
   });
 
   // importantly only setup vite in development and after
@@ -62,6 +107,6 @@ app.use((req, res, next) => {
   // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || '5001', 10);
   server.listen(port, "0.0.0.0", () => {
-    log(`serving on port ${port}`);
+    logger.info({ port, env: process.env.NODE_ENV || 'development' }, `Server started on port ${port}`);
   });
 })();
