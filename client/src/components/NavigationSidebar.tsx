@@ -262,7 +262,7 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, on
           </div>
         </div>
         <div className="mt-2 flex items-center justify-between">
-          <div className="text-xs text-muted-foreground truncate">
+          <div className="text-sm text-muted-foreground truncate">
             {ORGANIZATION}/{repoName}
           </div>
           {statsData && (
