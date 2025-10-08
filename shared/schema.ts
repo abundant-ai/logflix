@@ -31,7 +31,7 @@ export type PRFile = z.infer<typeof prFileSchema>;
 export const githubWorkflowRunSchema = z.object({
   id: z.number(),
   name: z.string().nullable(),
-  status: z.enum(['queued', 'in_progress', 'completed']),
+  status: z.enum(['queued', 'in_progress', 'completed', 'requested', 'waiting', 'pending']),
   conclusion: z.enum(['success', 'failure', 'neutral', 'cancelled', 'skipped', 'timed_out', 'action_required']).nullable(),
   created_at: z.string(),
   updated_at: z.string(),

@@ -668,7 +668,7 @@ export class GitHubCliService {
               allRuns.push({
                 id: run.databaseId,
                 name: run.displayTitle || null,
-                status: run.status as 'queued' | 'in_progress' | 'completed',
+                status: run.status as 'queued' | 'in_progress' | 'completed' | 'requested' | 'waiting' | 'pending',
                 conclusion: run.conclusion as 'success' | 'failure' | 'neutral' | 'cancelled' | 'skipped' | 'timed_out' | 'action_required' | null,
                 created_at: run.createdAt,
                 updated_at: run.updatedAt,

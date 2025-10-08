@@ -731,21 +731,47 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
   };
 
   const getStatusColor = (status: string, conclusion?: string | null) => {
-    if (status === 'completed') {
-      return conclusion === 'success' ? 'text-success' : 'text-destructive';
-    } else if (status === 'in_progress') {
-      return 'text-warning';
+    if (status === 'completed' && conclusion) {
+      switch (conclusion) {
+        case 'success': return 'text-green-600';
+        case 'failure': return 'text-red-600';
+        case 'cancelled': return 'text-gray-600';
+        case 'timed_out': return 'text-orange-600';
+        case 'skipped': return 'text-blue-600';
+        case 'neutral': return 'text-gray-600';
+        case 'action_required': return 'text-yellow-600';
+        default: return 'text-gray-600';
+      }
     }
-    return 'text-muted-foreground';
+    
+    switch (status) {
+      case 'in_progress': return 'text-orange-600';
+      case 'queued': return 'text-blue-600';
+      case 'requested': case 'waiting': case 'pending': return 'text-gray-600';
+      default: return 'text-gray-600';
+    }
   };
 
   const getStatusIcon = (status: string, conclusion?: string | null) => {
-    if (status === 'completed') {
-      return conclusion === 'success' ? <CheckCircle className="h-5 w-5 text-green-600" /> : <XCircle className="h-5 w-5 text-red-600" />;
-    } else if (status === 'in_progress') {
-      return <Clock className="h-5 w-5 animate-pulse text-orange-600" />;
+    if (status === 'completed' && conclusion) {
+      switch (conclusion) {
+        case 'success': return <CheckCircle className="h-5 w-5 text-green-600" />;
+        case 'failure': return <XCircle className="h-5 w-5 text-red-600" />;
+        case 'cancelled': return <XCircle className="h-5 w-5 text-gray-600" />;
+        case 'timed_out': return <Clock className="h-5 w-5 text-orange-600" />;
+        case 'skipped': return <Clock className="h-5 w-5 text-blue-600" />;
+        case 'neutral': return <Clock className="h-5 w-5 text-gray-600" />;
+        case 'action_required': return <Clock className="h-5 w-5 text-yellow-600" />;
+        default: return <Clock className="h-5 w-5 text-gray-600" />;
+      }
     }
-    return <Clock className="h-5 w-5 text-gray-600" />;
+    
+    switch (status) {
+      case 'in_progress': return <Clock className="h-5 w-5 animate-pulse text-orange-600" />;
+      case 'queued': return <Clock className="h-5 w-5 text-blue-600" />;
+      case 'requested': case 'waiting': case 'pending': return <Clock className="h-5 w-5 text-gray-600" />;
+      default: return <Clock className="h-5 w-5 text-gray-600" />;
+    }
   };
 
   if (!selectedPR) {
@@ -1343,12 +1369,21 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                             <p className="text-base flex items-center gap-2">
                               {getStatusIcon(selectedRun.status, selectedRun.conclusion)}
                               <span className={`font-medium ${getStatusColor(selectedRun.status, selectedRun.conclusion)}`}>
-                                {selectedRun.status === 'completed' ?
+                                {selectedRun.status === 'completed' && selectedRun.conclusion ?
                                   (selectedRun.conclusion === 'success' ? 'COMPLETED' :
                                    selectedRun.conclusion === 'failure' ? 'FAILED' :
-                                   selectedRun.conclusion === 'cancelled' ? 'CANCELLED' : 'COMPLETED') :
+                                   selectedRun.conclusion === 'cancelled' ? 'CANCELLED' :
+                                   selectedRun.conclusion === 'timed_out' ? 'TIMED OUT' :
+                                   selectedRun.conclusion === 'skipped' ? 'SKIPPED' :
+                                   selectedRun.conclusion === 'neutral' ? 'NEUTRAL' :
+                                   selectedRun.conclusion === 'action_required' ? 'ACTION REQUIRED' :
+                                   selectedRun.conclusion.toUpperCase()) :
                                  selectedRun.status === 'in_progress' ? 'IN PROGRESS' :
-                                 selectedRun.status?.toUpperCase() || 'PENDING'}
+                                 selectedRun.status === 'queued' ? 'QUEUED' :
+                                 selectedRun.status === 'requested' ? 'REQUESTED' :
+                                 selectedRun.status === 'waiting' ? 'WAITING' :
+                                 selectedRun.status === 'pending' ? 'PENDING' :
+                                 selectedRun.status?.toUpperCase() || 'UNKNOWN'}
                               </span>
                             </p>
                           </div>
@@ -1631,7 +1666,7 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                       </p>
                     </div>
                   ) : logContent ? (
-                    <pre className="text-xs font-mono text-green-400 whitespace-pre-wrap">
+                    <pre className="text-sm font-mono text-green-400 whitespace-pre-wrap">
                       {logContent}
                     </pre>
                   ) : (
