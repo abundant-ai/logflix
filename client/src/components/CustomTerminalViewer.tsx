@@ -224,7 +224,7 @@ export default function CustomTerminalViewer({ castContent, showAgentThinking = 
   };
 
   return (
-    <div className={`grid ${showAgentThinking ? 'grid-cols-1 lg:grid-cols-3' : 'grid-cols-1'} gap-4 h-[600px]`}>
+    <div className={`grid ${showAgentThinking ? 'grid-cols-1 lg:grid-cols-3' : 'grid-cols-1'} gap-4 h-[800px]`}>
       {/* Terminal Display */}
       <div className={showAgentThinking ? "lg:col-span-2" : "col-span-1"}>
         <Card className="h-full">
@@ -332,7 +332,7 @@ export default function CustomTerminalViewer({ castContent, showAgentThinking = 
           </CardHeader>
           
           <CardContent className="p-0">
-            <div className="h-[500px] bg-black text-green-400 font-mono text-sm overflow-hidden">
+            <div className="h-[700px] bg-black text-green-400 font-mono text-sm overflow-hidden">
               <div 
                 ref={terminalRef}
                 className="h-full p-4 overflow-y-auto scrollbar-thin scrollbar-track-gray-800 scrollbar-thumb-gray-600"
@@ -362,7 +362,7 @@ export default function CustomTerminalViewer({ castContent, showAgentThinking = 
             </CardHeader>
             
             <CardContent className="space-y-4">
-              <ScrollArea className="h-[500px]">
+              <ScrollArea className="h-[700px]">
                 {currentThinking ? (
                   <div className="space-y-4">
                     {/* Task Completion Status */}

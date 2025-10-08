@@ -1508,8 +1508,8 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                 </div>
               )}
 
-              {/* Stable Content Area */}
-              <div className="flex-1 min-h-0">
+              {/* Stable Content Area - Increased height for better visibility */}
+              <div className="flex-1 min-h-[600px] h-full">
                 {castFileQuery.error ? (
                   <div className="h-full flex items-center justify-center p-8">
                     <div className="text-center">
@@ -1742,13 +1742,13 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                       }
                       
                       return (
-                        <Card key={comment.id || Math.random()} className={`${isAgentAnalysis ? 'border-amber-200 bg-amber-50/50 dark:border-amber-800 dark:bg-amber-950/20' : ''}`}>
+                        <Card key={comment.id || Math.random()} className={`${isAgentAnalysis ? 'border-blue-200 dark:border-blue-800 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-slate-900 dark:to-blue-950' : 'border-gray-200 dark:border-gray-700'}`}>
                           <CardHeader className="pb-3">
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-3">
                                 <Badge
                                   variant={isAgentAnalysis ? "default" : "secondary"}
-                                  className={isAgentAnalysis ? "bg-amber-600 hover:bg-amber-700" : ""}
+                                  className={isAgentAnalysis ? "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white border-none" : ""}
                                 >
                                   {isAgentAnalysis ? (
                                     <div className="flex items-center gap-1">
@@ -1760,7 +1760,7 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                                   )}
                                 </Badge>
                                 {isAgentAnalysis && (
-                                  <Badge variant="outline" className="text-xs">
+                                  <Badge variant="outline" className="text-xs border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300">
                                     Automated Analysis
                                   </Badge>
                                 )}
@@ -1790,30 +1790,48 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                           </CardHeader>
                           
                           <CardContent>
-                            <div className="bg-background/50 p-4 rounded-lg border border-border/50">
-                              {/* Professional markdown rendering with GitHub Flavored Markdown and error boundary */}
+                            <div className="bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-900 p-4 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
+                              {/* Modern gradient background with high contrast text */}
                               {comment.body ? (
-                                <div className="prose prose-sm max-w-none prose-headings:text-foreground prose-p:text-foreground prose-strong:text-foreground prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-code:font-mono prose-ul:text-foreground prose-ol:text-foreground prose-li:text-foreground">
+                                <div className="prose prose-sm max-w-none break-words overflow-wrap-anywhere">
                                   <ReactMarkdown
                                     remarkPlugins={[remarkGfm]}
                                     components={{
-                                      h1: ({ children }) => <h1 className="text-xl font-bold mt-4 mb-3 text-foreground border-b border-border pb-2">{children}</h1>,
-                                      h2: ({ children }) => <h2 className="text-lg font-semibold mt-4 mb-3 text-foreground border-b border-border/50 pb-1">{children}</h2>,
-                                      h3: ({ children }) => <h3 className="text-base font-semibold mt-3 mb-2 text-amber-600">{children}</h3>,
-                                      ul: ({ children }) => <ul className="my-2 ml-4 list-disc">{children}</ul>,
-                                      ol: ({ children }) => <ol className="my-2 ml-4 list-decimal">{children}</ol>,
-                                      li: ({ children }) => <li className="text-foreground my-1">{children}</li>,
-                                      code: ({ children }) => <code className="bg-muted px-1.5 py-0.5 rounded text-xs font-mono text-foreground">{children}</code>,
-                                      pre: ({ children }) => <pre className="bg-muted p-3 rounded-lg overflow-x-auto my-3 text-sm font-mono">{children}</pre>,
-                                      strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
-                                      p: ({ children }) => <p className="text-foreground leading-relaxed my-2">{children}</p>
+                                      h1: ({ children }) => <h1 className="text-xl font-bold mt-4 mb-3 text-gray-900 dark:text-white border-b border-gray-300 dark:border-gray-600 pb-2 break-words">{children}</h1>,
+                                      h2: ({ children }) => <h2 className="text-lg font-semibold mt-4 mb-3 text-gray-900 dark:text-white border-b border-gray-200 dark:border-gray-700 pb-1 break-words">{children}</h2>,
+                                      h3: ({ children }) => <h3 className="text-base font-semibold mt-3 mb-2 text-blue-700 dark:text-blue-300 break-words">{children}</h3>,
+                                      h4: ({ children }) => <h4 className="text-sm font-semibold mt-3 mb-2 text-gray-800 dark:text-gray-200 break-words">{children}</h4>,
+                                      h5: ({ children }) => <h5 className="text-sm font-medium mt-2 mb-1 text-gray-800 dark:text-gray-200 break-words">{children}</h5>,
+                                      h6: ({ children }) => <h6 className="text-sm font-medium mt-2 mb-1 text-gray-600 dark:text-gray-400 break-words">{children}</h6>,
+                                      ul: ({ children }) => <ul className="my-2 ml-4 list-disc text-gray-800 dark:text-gray-200">{children}</ul>,
+                                      ol: ({ children }) => <ol className="my-2 ml-4 list-decimal text-gray-800 dark:text-gray-200">{children}</ol>,
+                                      li: ({ children }) => <li className="text-gray-800 dark:text-gray-200 my-1 break-words">{children}</li>,
+                                      code: ({ children }) => <code className="bg-gray-100 dark:bg-gray-700 text-purple-700 dark:text-purple-300 px-1.5 py-0.5 rounded text-xs font-mono break-all">{children}</code>,
+                                      pre: ({ children }) => <pre className="bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 p-3 rounded-lg overflow-x-auto my-3 text-sm font-mono whitespace-pre-wrap break-words">{children}</pre>,
+                                      strong: ({ children }) => <strong className="font-semibold text-gray-900 dark:text-white break-words">{children}</strong>,
+                                      em: ({ children }) => <em className="italic text-gray-800 dark:text-gray-200">{children}</em>,
+                                      p: ({ children }) => <p className="text-gray-800 dark:text-gray-200 leading-relaxed my-2 break-words">{children}</p>,
+                                      blockquote: ({ children }) => <blockquote className="border-l-4 border-gradient-to-b from-blue-400 to-indigo-500 dark:from-blue-500 dark:to-indigo-600 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 pl-4 my-3 text-gray-700 dark:text-gray-300 italic py-2 rounded-r">{children}</blockquote>,
+                                      a: ({ children, href }) => (
+                                        <a
+                                          href={href}
+                                          className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 underline break-words font-medium"
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                        >
+                                          {children}
+                                        </a>
+                                      ),
+                                      table: ({ children }) => <table className="min-w-full border-collapse border border-gray-300 dark:border-gray-600 my-4 bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-900">{children}</table>,
+                                      th: ({ children }) => <th className="border border-gray-300 dark:border-gray-600 bg-gradient-to-r from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-600 px-3 py-2 text-left text-gray-900 dark:text-white font-semibold">{children}</th>,
+                                      td: ({ children }) => <td className="border border-gray-300 dark:border-gray-600 px-3 py-2 text-gray-800 dark:text-gray-200">{children}</td>
                                     }}
                                   >
                                     {comment.body}
                                   </ReactMarkdown>
                                 </div>
                               ) : (
-                                <p className="text-muted-foreground italic">No content available</p>
+                                <p className="text-gray-500 dark:text-gray-400 italic">No content available</p>
                               )}
                             </div>
                           </CardContent>
