@@ -443,118 +443,7 @@ export class GitHubCliService {
     }
   }
 
-  /**
-   * List all pull requests using direct GitHub REST API with pagination to bypass gh pr list limitations
-   */
-  async listPullRequests(
-    state: 'open' | 'closed' | 'all' = 'all',
-    limit: number = 30,
-    sortBy: 'created' | 'updated' | 'popularity' | 'long-running' = 'updated',
-    sortDirection: 'asc' | 'desc' = 'desc'
-  ): Promise<GitHubPullRequest[]> {
-    try {
-      console.log(`Fetching PRs using GitHub REST API for ${this.repositoryOwner}/${this.repositoryName}`);
-      console.log(`Requested: ${limit} PRs, state: ${state}, sort: ${sortBy}`);
-      
-      const allPRs: any[] = [];
-      let page = 1;
-      const perPage = 100; // GitHub API max per page
-      
-      // Keep fetching pages until we get less than perPage PRs (indicates end of data)
-      while (true) {
-        const stateParam = state === 'all' ? '' : `&state=${state}`;
-        const sortParam = sortBy === 'long-running' ? '&sort=created&direction=asc' : `&sort=${sortBy}&direction=${sortDirection}`;
-        
-        const apiCommand = `api repos/${this.repositoryOwner}/${this.repositoryName}/pulls?per_page=${perPage}&page=${page}${stateParam}${sortParam}`;
-        
-        console.log(`Fetching page ${page} with command: gh ${apiCommand}`);
-        
-        const { stdout } = await execAsync(`gh ${apiCommand}`, {
-          maxBuffer: 50 * 1024 * 1024 // 50MB buffer for large PR responses
-        });
-        const pagePRs = JSON.parse(stdout);
-        
-        console.log(`Page ${page} returned ${pagePRs.length} PRs`);
-        
-        // Stop if we get no results or less than perPage (end of data)
-        if (pagePRs.length === 0) {
-          console.log(`No more PRs found at page ${page}, stopping pagination`);
-          break;
-        }
-        
-        allPRs.push(...pagePRs);
-        
-        // If we got fewer than perPage PRs, we've reached the end
-        if (pagePRs.length < perPage) {
-          console.log(`Got ${pagePRs.length} PRs (less than ${perPage}), reached end of data`);
-          break;
-        }
-        
-        // Stop if we have enough PRs for the request
-        if (allPRs.length >= limit) {
-          console.log(`Collected ${allPRs.length} PRs, reached requested limit of ${limit}`);
-          break;
-        }
-        
-        page++;
-        
-        // Safety limit to prevent infinite loops
-        if (page > 20) {
-          console.log(`Reached maximum pages (20), stopping`);
-          break;
-        }
-      }
-      
-      console.log(`GitHub REST API returned total ${allPRs.length} unique PRs (no duplicates fetched)`);
-      
-      // Map to our schema format (all PRs are already unique from smart pagination)
-      const mappedPRs = allPRs.map(pr => ({
-        number: pr.number,
-        title: pr.title,
-        state: pr.state as 'open' | 'closed',
-        user: {
-          login: pr.user.login,
-        },
-        created_at: pr.created_at,
-        updated_at: pr.updated_at,
-        merged_at: pr.merged_at,
-        html_url: pr.html_url,
-        head: {
-          ref: pr.head.ref,
-          sha: pr.head.sha,
-        },
-        base: {
-          ref: pr.base.ref,
-          sha: pr.base.sha,
-        },
-      }));
-
-      // Apply client-requested sorting (GitHub API sorting might not be exactly what we want)
-      mappedPRs.sort((a, b) => {
-        let comparison = 0;
-        if (sortBy === 'created') {
-          comparison = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-        } else if (sortBy === 'updated') {
-          comparison = new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime();
-        }
-        return sortDirection === 'desc' ? -comparison : comparison;
-      });
-
-      // Return up to the requested limit
-      const finalPRs = mappedPRs.slice(0, limit);
-      console.log(`Returning ${finalPRs.length} PRs to client`);
-      return finalPRs;
-    } catch (error: any) {
-      console.error('Error fetching pull requests with GitHub REST API:', error);
-      
-      // Check for authentication issues
-      if (error.message?.includes('authentication') || error.stderr?.includes('authentication')) {
-        console.error('GitHub authentication failed. Please run: gh auth login');
-      }
-      
-      return [];
-    }
-  }
+  
 
   /**
    * Get pull requests associated with a commit SHA
@@ -855,9 +744,11 @@ export class GitHubCliService {
 
   /**
    * Get task.yaml content and parse it
+   * @deprecated Use listPRTasks() for multi-task support
    */
   async getTaskYaml(prNumber: number): Promise<any | null> {
     try {
+      console.warn('[DEPRECATED] getTaskYaml() returns only the first task. Use listPRTasks() for complete task enumeration.');
       const files = await this.getPRFiles(prNumber);
       
       // Find task.yaml file in the PR files
@@ -884,9 +775,11 @@ export class GitHubCliService {
 
   /**
    * Extract task ID from PR files (directory name)
+   * @deprecated Use listPRTasks() for multi-task support
    */
   async getTaskId(prNumber: number): Promise<string | null> {
     try {
+      console.warn('[DEPRECATED] getTaskId() returns only the first task. Use listPRTasks() for complete task enumeration.');
       const files = await this.getPRFiles(prNumber);
       
       // Find the common directory prefix (task ID)
@@ -906,6 +799,67 @@ export class GitHubCliService {
     } catch (error) {
       console.error(`Error extracting task ID for PR ${prNumber}:`, error);
       return null;
+    }
+  }
+
+  /**
+   * List all tasks in a PR by discovering task.yaml files
+   * Returns array of {taskId, pathPrefix, taskYaml}
+   */
+  async listPRTasks(prNumber: number): Promise<Array<{ taskId: string; pathPrefix: string; taskYaml: any }>> {
+    try {
+      const files = await this.getPRFiles(prNumber);
+      
+      // Find all task.yaml files
+      const taskFiles = files.filter(f =>
+        f.name.endsWith('task.yaml') || f.name.endsWith('task.yml')
+      );
+      
+      if (taskFiles.length === 0) {
+        console.log(`No task.yaml files found in PR ${prNumber}`);
+        return [];
+      }
+
+      // For each task.yaml, extract taskId and parse content
+      const tasks = await Promise.all(
+        taskFiles.map(async (taskFile) => {
+          try {
+            // Extract taskId from path: tasks/{taskId}/task.yaml -> taskId
+            const parts = taskFile.path.split('/');
+            let taskId = 'unknown';
+            let pathPrefix = '';
+            
+            // Find tasks/ directory and extract task folder name
+            const tasksIndex = parts.indexOf('tasks');
+            if (tasksIndex >= 0 && parts.length > tasksIndex + 1) {
+              taskId = parts[tasksIndex + 1];
+              pathPrefix = parts.slice(0, tasksIndex + 2).join('/'); // e.g., "tasks/task-123"
+            } else if (parts.length > 1) {
+              // Fallback: use parent directory name
+              taskId = parts[parts.length - 2];
+              pathPrefix = parts.slice(0, -1).join('/');
+            }
+
+            // Fetch and parse task.yaml content
+            const content = await this.getPRFileContent(prNumber, taskFile.path);
+            if (!content) {
+              return { taskId, pathPrefix, taskYaml: null };
+            }
+
+            const taskYaml = yaml.load(content);
+            return { taskId, pathPrefix, taskYaml };
+          } catch (error) {
+            console.error(`Error parsing task file ${taskFile.path}:`, error);
+            return null;
+          }
+        })
+      );
+
+      // Filter out nulls and return valid tasks
+      return tasks.filter((t): t is { taskId: string; pathPrefix: string; taskYaml: any } => t !== null);
+    } catch (error) {
+      console.error(`Error listing tasks for PR ${prNumber}:`, error);
+      return [];
     }
   }
 
@@ -1071,6 +1025,148 @@ export class GitHubCliService {
     } catch (error) {
       console.error(`Error fetching repository stats:`, error);
       return { open: 0, closed: 0, merged: 0 };
+    }
+  }
+
+  /**
+   * List all pull requests using GitHub GraphQL API (single call, no pagination complexity)
+   * Optimized for sidebar with minimal fields only
+   */
+  async listPullRequests(
+    state: 'open' | 'closed' | 'all' = 'all',
+    limit: number = 1000,
+    sortBy: 'created' | 'updated' = 'created',
+    sortDirection: 'asc' | 'desc' = 'desc'
+  ): Promise<GitHubPullRequest[]> {
+    try {
+      console.log(`Fetching PRs using GitHub GraphQL API for ${this.repositoryOwner}/${this.repositoryName}`);
+      console.log(`Requested: ${limit} PRs, state: ${state}, sort: ${sortBy}`);
+      
+      // Map states to GraphQL format
+      let states = 'OPEN, CLOSED, MERGED';
+      if (state === 'open') states = 'OPEN';
+      if (state === 'closed') states = 'CLOSED, MERGED';
+      
+      // Map sort field
+      const sortField = sortBy === 'created' ? 'CREATED_AT' : 'UPDATED_AT';
+      const direction = sortDirection.toUpperCase();
+      
+      // Use official GraphQL hasNextPage pattern (GitHub best practice)
+      // More robust than pre-calculating calls - handles dynamic data changes
+      const allPRs: any[] = [];
+      let hasNextPage = true;
+      let currentCursor: string | null = null;
+      let callCount = 0;
+      let totalAvailable = 0;
+      
+      console.log(`Starting GraphQL cursor pagination for up to ${limit} PRs...`);
+      
+      // Official GitHub GraphQL pagination pattern: loop while hasNextPage
+      while (hasNextPage && allPRs.length < limit && callCount < 10) { // Safety limit
+        callCount++;
+        
+        // Build GraphQL query with cursor for next page
+        const afterClause = currentCursor ? `, after: "${currentCursor}"` : '';
+        const pageSize = Math.min(limit - allPRs.length, 100); // GitHub limit: 100 per call
+        
+        const graphqlQuery = `query {
+          repository(owner: "${this.repositoryOwner}", name: "${this.repositoryName}") {
+            pullRequests(first: ${pageSize}, orderBy: {field: ${sortField}, direction: ${direction}}, states: [${states}]${afterClause}) {
+              totalCount
+              pageInfo {
+                hasNextPage
+                endCursor
+              }
+              nodes {
+                number
+                title
+                state
+                isDraft
+                createdAt
+                updatedAt
+                mergedAt
+                author {
+                  login
+                }
+              }
+            }
+          }
+        }`;
+        
+        console.log(`GraphQL call ${callCount}: requesting ${pageSize} PRs${currentCursor ? ` (cursor: ${currentCursor.substring(0, 10)}...)` : ' (first page)'}`);
+        
+        try {
+          const { stdout } = await execAsync(`gh api graphql -f query='${graphqlQuery}'`, {
+            maxBuffer: 50 * 1024 * 1024
+          });
+          
+          const result = JSON.parse(stdout);
+          
+          if (result.errors) {
+            console.error(`GraphQL errors in call ${callCount}:`, result.errors);
+            break;
+          }
+          
+          const pullRequestsData = result.data.repository.pullRequests;
+          totalAvailable = pullRequestsData.totalCount;
+          
+          console.log(`Call ${callCount}: got ${pullRequestsData.nodes.length} PRs, hasNext: ${pullRequestsData.pageInfo.hasNextPage} (${allPRs.length + pullRequestsData.nodes.length}/${totalAvailable} total)`);
+          
+          // Add PRs to our collection
+          allPRs.push(...pullRequestsData.nodes);
+          
+          // Use GitHub's hasNextPage to decide if we continue (official pattern)
+          hasNextPage = pullRequestsData.pageInfo.hasNextPage;
+          currentCursor = pullRequestsData.pageInfo.endCursor;
+          
+          // Safety checks
+          if (pullRequestsData.nodes.length === 0) {
+            console.log(`No PRs returned on call ${callCount}, stopping`);
+            break;
+          }
+          
+        } catch (error: any) {
+          console.error(`GraphQL call ${callCount} failed:`, error.message);
+          break;
+        }
+      }
+      
+      console.log(`GraphQL pagination complete: ${allPRs.length}/${totalAvailable} PRs fetched in ${callCount} calls using hasNextPage pattern`);
+      
+      // Map to our schema format
+      const mappedPRs: GitHubPullRequest[] = allPRs.map((pr: any) => ({
+        number: pr.number,
+        title: pr.title,
+        state: pr.state === 'MERGED' ? 'closed' as const : pr.state.toLowerCase() as 'open' | 'closed',
+        draft: pr.isDraft || false,
+        user: {
+          login: pr.author?.login || 'unknown',
+        },
+        created_at: pr.createdAt,
+        updated_at: pr.updatedAt,
+        merged_at: pr.mergedAt,
+        html_url: `https://github.com/${this.repositoryOwner}/${this.repositoryName}/pull/${pr.number}`,
+        head: {
+          ref: '', // Not needed for sidebar, filled by detailed fetch
+          sha: '',
+        },
+        base: {
+          ref: '',
+          sha: '',
+        },
+      }));
+      
+      console.log(`Returning ${mappedPRs.length} PRs to client (GraphQL cursor pagination, all PRs)`);
+      return mappedPRs;
+    } catch (error: any) {
+      console.error('Error fetching pull requests with GitHub GraphQL API:', error);
+      
+      // Check for authentication issues
+      if (error.message?.includes('authentication') || error.stderr?.includes('authentication')) {
+        console.error('GitHub authentication failed. Please run: gh auth login');
+      }
+      
+      return [];
     }
   }
 }

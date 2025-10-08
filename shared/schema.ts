@@ -89,6 +89,7 @@ export const githubPullRequestSchema = z.object({
   number: z.number(),
   title: z.string(),
   state: z.enum(['open', 'closed']),
+  draft: z.boolean().optional(),
   user: z.object({
     login: z.string(),
     avatar_url: z.string().optional(),

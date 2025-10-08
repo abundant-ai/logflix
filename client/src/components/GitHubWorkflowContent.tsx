@@ -52,6 +52,18 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
   const [logType, setLogType] = useState<'agent' | 'tests'>('agent');
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [castType, setCastType] = useState<'agent' | 'tests'>('agent');
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+
+  // Reset all selections when PR changes
+  useEffect(() => {
+    setSelectedCommitSha(null);
+    setSelectedRunId(null);
+    setSelectedAgent(null);
+    setSelectedLogFile(null);
+    setSelectedTaskId(null);
+    setSelectedFile(null);
+    setFileContent(null);
+  }, [selectedPR?.prNumber]);
 
   // Fetch PR details - only when PR is selected (lazy loading)
   const { data: prData, isLoading: isPRLoading } = useQuery<GitHubPullRequest>({
@@ -158,24 +170,101 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
   // Fetch details for selected workflow run
   const { data: runDetails, isLoading: isRunDetailsLoading } = useQuery<WorkflowRunDetails>({
     queryKey: selectedRunId ? ["/api/github/workflow-run", selectedRunId] : [],
+    queryFn: async () => {
+      if (!selectedRunId) throw new Error('No run selected');
+      
+      const currentPath = window.location.pathname;
+      const repoName = currentPath.split('/')[2];
+      
+      const params = new URLSearchParams({
+        owner: 'abundant-ai',
+        repo: repoName || 'tbench-hammer',
+        workflow: 'test-tasks.yaml'
+      });
+      
+      const response = await fetch(`/api/github/workflow-run/${selectedRunId}?${params}`);
+      if (!response.ok) throw new Error(`Failed to fetch run details: ${response.statusText}`);
+      return response.json();
+    },
     enabled: !!selectedRunId,
   });
 
   // Fetch bot comments for this PR
   const { data: botCommentsData } = useQuery<{ comments: GitHubReviewComment[] }>({
     queryKey: selectedPR ? ["/api/github/pr-bot-comments", selectedPR.prNumber] : [],
+    queryFn: async () => {
+      if (!selectedPR) throw new Error('No PR selected');
+      
+      const currentPath = window.location.pathname;
+      const repoName = currentPath.split('/')[2];
+      
+      const params = new URLSearchParams({
+        owner: 'abundant-ai',
+        repo: repoName || 'tbench-hammer',
+        workflow: 'test-tasks.yaml'
+      });
+      
+      const response = await fetch(`/api/github/pr-bot-comments/${selectedPR.prNumber}?${params}`);
+      if (!response.ok) throw new Error(`Failed to fetch bot comments: ${response.statusText}`);
+      return response.json();
+    },
     enabled: !!selectedPR,
   });
 
-  // Fetch task.yaml data for this PR
-  const { data: taskData } = useQuery<{ taskYaml: any; taskId: string | null }>({
-    queryKey: selectedPR ? ["/api/github/pr-task-yaml", selectedPR.prNumber] : [],
+  // Fetch all tasks for this PR
+  const { data: tasksData } = useQuery<{ tasks: Array<{ taskId: string; pathPrefix: string; taskYaml: any }>; total_count: number }>({
+    queryKey: selectedPR ? ["/api/github/pr-tasks", selectedPR.prNumber] : [],
+    queryFn: async () => {
+      if (!selectedPR) throw new Error('No PR selected');
+      
+      const currentPath = window.location.pathname;
+      const repoName = currentPath.split('/')[2];
+      
+      const params = new URLSearchParams({
+        owner: 'abundant-ai',
+        repo: repoName || 'tbench-hammer',
+        workflow: 'test-tasks.yaml'
+      });
+      
+      const response = await fetch(`/api/github/pr-tasks/${selectedPR.prNumber}?${params}`);
+      if (!response.ok) throw new Error(`Failed to fetch tasks: ${response.statusText}`);
+      return response.json();
+    },
     enabled: !!selectedPR,
+    staleTime: 0,
+    gcTime: 30 * 60 * 1000,
   });
+
+  // Auto-select first task when tasks load
+  useEffect(() => {
+    if (tasksData?.tasks && tasksData.tasks.length > 0 && !selectedTaskId) {
+      setSelectedTaskId(tasksData.tasks[0].taskId);
+    }
+  }, [tasksData, selectedTaskId]);
+
+  // Get current task data for display
+  const currentTask = tasksData?.tasks.find(t => t.taskId === selectedTaskId);
+  const taskData = currentTask ? { taskYaml: currentTask.taskYaml, taskId: currentTask.taskId } : null;
 
   // Fetch PR files
   const { data: prFilesData } = useQuery<{ files: any[] }>({
     queryKey: selectedPR ? ["/api/github/pr-files", selectedPR.prNumber] : [],
+    queryFn: async () => {
+      if (!selectedPR) throw new Error('No PR selected');
+      
+      const currentPath = window.location.pathname;
+      const repoName = currentPath.split('/')[2];
+      
+      const params = new URLSearchParams({
+        owner: 'abundant-ai',
+        repo: repoName || 'tbench-hammer',
+        workflow: 'test-tasks.yaml'
+      });
+      
+      const response = await fetch(`/api/github/pr-files/${selectedPR.prNumber}?${params}`);
+      if (!response.ok) throw new Error(`Failed to fetch PR files: ${response.statusText}`);
+      return response.json();
+    },
     enabled: !!selectedPR,
   });
 
@@ -186,12 +275,44 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
   // Fetch commit details for display
   const { data: commitData } = useQuery<{ message: string; author: string; email: string }>({
     queryKey: selectedCommitSha ? ["/api/github/commit", selectedCommitSha] : [],
+    queryFn: async () => {
+      if (!selectedCommitSha) throw new Error('No commit selected');
+      
+      const currentPath = window.location.pathname;
+      const repoName = currentPath.split('/')[2];
+      
+      const params = new URLSearchParams({
+        owner: 'abundant-ai',
+        repo: repoName || 'tbench-hammer',
+        workflow: 'test-tasks.yaml'
+      });
+      
+      const response = await fetch(`/api/github/commit/${selectedCommitSha}?${params}`);
+      if (!response.ok) throw new Error(`Failed to fetch commit details: ${response.statusText}`);
+      return response.json();
+    },
     enabled: !!selectedCommitSha,
   });
 
   // Fetch jobs for selected run to show agent results
   const { data: jobsData } = useQuery<{ jobs: Array<{ name: string; conclusion: string | null; status: string }> }>({
     queryKey: selectedRunId ? ["/api/github/workflow-jobs", selectedRunId] : [],
+    queryFn: async () => {
+      if (!selectedRunId) throw new Error('No run selected');
+      
+      const currentPath = window.location.pathname;
+      const repoName = currentPath.split('/')[2];
+      
+      const params = new URLSearchParams({
+        owner: 'abundant-ai',
+        repo: repoName || 'tbench-hammer',
+        workflow: 'test-tasks.yaml'
+      });
+      
+      const response = await fetch(`/api/github/workflow-jobs/${selectedRunId}?${params}`);
+      if (!response.ok) throw new Error(`Failed to fetch workflow jobs: ${response.statusText}`);
+      return response.json();
+    },
     enabled: !!selectedRunId,
   });
 
@@ -208,17 +329,26 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
   // Fetch log files from artifact - PRELOAD for performance
   const { data: logFilesData } = useQuery<{ logFiles: Array<{ name: string; path: string }> }>({
     queryKey: logArtifact ? ["/api/github/artifact-logs", logArtifact.id] : [],
-    enabled: !!logArtifact, // Preload immediately when artifact is available
-    staleTime: 10 * 60 * 1000, // Cache for 10 minutes
-    gcTime: 15 * 60 * 1000, // Keep in memory for 15 minutes
+    queryFn: async () => {
+      if (!logArtifact) throw new Error('No log artifact selected');
+      
+      const currentPath = window.location.pathname;
+      const repoName = currentPath.split('/')[2];
+      
+      const params = new URLSearchParams({
+        owner: 'abundant-ai',
+        repo: repoName || 'tbench-hammer',
+        workflow: 'test-tasks.yaml'
+      });
+      
+      const response = await fetch(`/api/github/artifact-logs/${logArtifact.id}?${params}`);
+      if (!response.ok) throw new Error(`Failed to fetch artifact logs: ${response.statusText}`);
+      return response.json();
+    },
+    enabled: !!logArtifact,
+    staleTime: 10 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
   });
-
-  // Auto-select first log file
-  useEffect(() => {
-    if (logFilesData && logFilesData.logFiles.length > 0 && !selectedLogFile) {
-      setSelectedLogFile(logFilesData.logFiles[0].path);
-    }
-  }, [logFilesData, selectedLogFile]);
 
   // Use React Query for log content fetching - REPLACE useEffect for consistency and caching
   const logContentQuery = useQuery<{ content: string }>({
@@ -232,9 +362,17 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
         throw new Error('No log artifact or file selected');
       }
       
-      const response = await fetch(
-        `/api/github/artifact-log-content/${logArtifact.id}?path=${encodeURIComponent(selectedLogFile)}`
-      );
+      const currentPath = window.location.pathname;
+      const repoName = currentPath.split('/')[2];
+      
+      const params = new URLSearchParams({
+        owner: 'abundant-ai',
+        repo: repoName || 'tbench-hammer',
+        workflow: 'test-tasks.yaml',
+        path: encodeURIComponent(selectedLogFile)
+      });
+      
+      const response = await fetch(`/api/github/artifact-log-content/${logArtifact.id}?${params}`);
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: response.statusText }));
@@ -243,9 +381,9 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
       
       return await response.json();
     },
-    enabled: !!(logArtifact && selectedLogFile), // Preload immediately when log file selected
-    staleTime: 10 * 60 * 1000, // Cache for 10 minutes
-    gcTime: 15 * 60 * 1000, // Keep in memory for 15 minutes
+    enabled: !!(logArtifact && selectedLogFile),
+    staleTime: 10 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
     retry: 1,
     refetchOnWindowFocus: false,
   });
@@ -271,18 +409,54 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
     }>
   }>({
     queryKey: selectedRunId ? ["/api/github/cast-list", selectedRunId] : [],
-    enabled: !!selectedRunId, // Preload immediately when run is selected
-    staleTime: 10 * 60 * 1000, // Cache for 10 minutes
-    gcTime: 15 * 60 * 1000, // Keep in memory for 15 minutes
+    queryFn: async () => {
+      if (!selectedRunId) throw new Error('No run selected');
+      
+      const currentPath = window.location.pathname;
+      const repoName = currentPath.split('/')[2];
+      
+      const params = new URLSearchParams({
+        owner: 'abundant-ai',
+        repo: repoName || 'tbench-hammer',
+        workflow: 'test-tasks.yaml'
+      });
+      
+      const response = await fetch(`/api/github/cast-list/${selectedRunId}?${params}`);
+      if (!response.ok) throw new Error(`Failed to fetch cast list: ${response.statusText}`);
+      return response.json();
+    },
+    enabled: !!selectedRunId,
+    staleTime: 10 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
   });
 
-  // Parse available agents from cast list - filter out artifacts with no .cast files
-  const availableAgents = useMemo(() => {
-    if (!castListData?.castFiles) return [];
+  // Filter cast files by selected task (if task is selected) - MUST BE AFTER castListData
+  const taskFilteredCastFiles = useMemo(() => {
+    if (!castListData?.castFiles || !selectedTaskId) return castListData?.castFiles || [];
     
-    const agents = castListData.castFiles
-      .filter(cf => cf.files.length > 0) // Only include artifacts that have .cast files
-      .map(cf => {
+    // Filter files that belong to the selected task's directory
+    return castListData.castFiles.map((cf: any) => ({
+      ...cf,
+      files: cf.files.filter((f: any) => f.path.startsWith(`tasks/${selectedTaskId}/`) || f.path.includes(`/${selectedTaskId}/`))
+    })).filter((cf: any) => cf.files.length > 0);
+  }, [castListData, selectedTaskId]);
+
+  // Filter log files by selected task - MUST BE AFTER logFilesData
+  const taskFilteredLogFiles = useMemo(() => {
+    if (!logFilesData?.logFiles || !selectedTaskId) return logFilesData?.logFiles || [];
+    
+    return logFilesData.logFiles.filter((lf: any) =>
+      lf.path.startsWith(`tasks/${selectedTaskId}/`) || lf.path.includes(`/${selectedTaskId}/`)
+    );
+  }, [logFilesData, selectedTaskId]);
+
+  // Parse available agents from cast list - filter out artifacts with no .cast files and apply task filter
+  const availableAgents = useMemo(() => {
+    if (!taskFilteredCastFiles) return [];
+    
+    const agents = taskFilteredCastFiles
+      .filter((cf: any) => cf.files.length > 0) // Only include artifacts that have .cast files
+      .map((cf: any) => {
         // Parse agent name: recordings-nop → NOP, recordings-terminus-gpt4 → Terminus (GPT-4)
         const name = cf.artifact_name.replace(/^recordings-/i, '');
         
@@ -327,7 +501,7 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
           sortOrder: baseName === 'NOP' ? 0 : baseName === 'Oracle' ? 1 : baseName === 'Terminus' ? 2 : 999
         };
       })
-      .sort((a, b) => {
+      .sort((a: any, b: any) => {
         // Sort by defined order: NOP first, Oracle second, then Terminus, then others
         if (a.sortOrder !== b.sortOrder) {
           return a.sortOrder - b.sortOrder;
@@ -337,7 +511,14 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
       });
     
     return agents;
-  }, [castListData]);
+  }, [taskFilteredCastFiles]);
+
+  // Auto-select first log file from task-filtered list
+  useEffect(() => {
+    if (taskFilteredLogFiles && taskFilteredLogFiles.length > 0 && !selectedLogFile) {
+      setSelectedLogFile(taskFilteredLogFiles[0].path);
+    }
+  }, [taskFilteredLogFiles, selectedLogFile]);
 
   // Auto-select first agent
   useEffect(() => {
@@ -348,11 +529,11 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
 
   // Memoize selected agent data to prevent constant re-renders
   const selectedAgentData = useMemo(() => {
-    return availableAgents.find(a => a.artifact_name === selectedAgent);
+    return availableAgents.find((a: any) => a.artifact_name === selectedAgent);
   }, [availableAgents, selectedAgent]);
   
   const selectedCastFile = useMemo(() => {
-    return selectedAgentData?.files.find(f => f.name === `${castType}.cast`);
+    return selectedAgentData?.files.find((f: any) => f.name === `${castType}.cast`);
   }, [selectedAgentData, castType]);
 
   // Use React Query for cast file caching with custom queryFn - PRELOAD first agent
@@ -367,9 +548,17 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
         throw new Error('No agent or cast file selected');
       }
       
-      const response = await fetch(
-        `/api/github/cast-file-by-path/${selectedAgentData.id}?path=${encodeURIComponent(selectedCastFile.path)}`
-      );
+      const currentPath = window.location.pathname;
+      const repoName = currentPath.split('/')[2];
+      
+      const params = new URLSearchParams({
+        owner: 'abundant-ai',
+        repo: repoName || 'tbench-hammer',
+        workflow: 'test-tasks.yaml',
+        path: encodeURIComponent(selectedCastFile.path)
+      });
+      
+      const response = await fetch(`/api/github/cast-file-by-path/${selectedAgentData.id}?${params}`);
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: response.statusText }));
@@ -524,7 +713,17 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
               setSelectedFile(file);
               // Fetch file content
               try {
-                const response = await fetch(`/api/github/pr-file-content/${selectedPR.prNumber}?path=${encodeURIComponent(file.path)}`);
+                const currentPath = window.location.pathname;
+                const repoName = currentPath.split('/')[2];
+                
+                const params = new URLSearchParams({
+                  owner: 'abundant-ai',
+                  repo: repoName || 'tbench-hammer',
+                  workflow: 'test-tasks.yaml',
+                  path: encodeURIComponent(file.path)
+                });
+                
+                const response = await fetch(`/api/github/pr-file-content/${selectedPR.prNumber}?${params}`);
                 const data = await response.json();
                 if (data.content) {
                   setFileContent(data.content);
@@ -591,6 +790,28 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                         <span className="text-xs text-muted-foreground truncate">
                           {commit.message.split('\n')[0]}
                         </span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+
+            {/* Task Selector - Show when multiple tasks */}
+            {tasksData && tasksData.tasks.length > 1 && (
+              <Select
+                value={selectedTaskId || ""}
+                onValueChange={(value) => setSelectedTaskId(value)}
+              >
+                <SelectTrigger className="w-64 h-9">
+                  <SelectValue placeholder="Select Task" />
+                </SelectTrigger>
+                <SelectContent>
+                  {tasksData.tasks.map((task, index) => (
+                    <SelectItem key={task.taskId} value={task.taskId}>
+                      <div className="flex items-center gap-2">
+                        <code className="text-xs font-mono">{task.taskId}</code>
+                        {index === 0 && <Badge variant="outline" className="text-xs">First</Badge>}
                       </div>
                     </SelectItem>
                   ))}
@@ -934,7 +1155,7 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                                 className="h-6 px-2"
                               >
                                 <a
-                                  href={`https://github.com/abundant-ai/tbench-hammer/commit/${selectedCommitSha || selectedRun?.head_sha}`}
+                                  href={`https://github.com/abundant-ai/${window.location.pathname.split('/')[2] || 'tbench-hammer'}/commit/${selectedCommitSha || selectedRun?.head_sha}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="flex items-center gap-1"
@@ -996,7 +1217,7 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                         <SelectValue placeholder="Select Agent" />
                       </SelectTrigger>
                       <SelectContent>
-                        {availableAgents.map((agent) => (
+                        {availableAgents.map((agent: any) => (
                           <SelectItem key={agent.artifact_name} value={agent.artifact_name}>
                             {agent.displayName}
                           </SelectItem>

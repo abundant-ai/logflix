@@ -34,12 +34,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const githubService = getGitHubService(req.query);
       
       const stateValue = (state === 'open' || state === 'closed' || state === 'all') ? state : 'all';
-      const limitNumber = limit && typeof limit === 'string' ? parseInt(limit, 10) : 200;
-      const sortValue = (sort === 'created' || sort === 'updated' || sort === 'popularity' || sort === 'long-running') ? sort : 'updated';
+      const limitNumber = limit && typeof limit === 'string' ? parseInt(limit, 10) : 100;
+      const sortValue = (sort === 'created' || sort === 'updated') ? sort as 'created' | 'updated' : 'created';
       const directionValue = (direction === 'asc' || direction === 'desc') ? direction : 'desc';
       
-      if (isNaN(limitNumber) || limitNumber < 1 || limitNumber > 1000) {
-        return res.status(400).json({ error: "Invalid limit parameter (must be 1-1000)" });
+      if (isNaN(limitNumber) || limitNumber < 1 || limitNumber > 5000) {
+        return res.status(400).json({ error: "Invalid limit parameter (must be 1-5000)" });
       }
 
       const pullRequests = await githubService.listPullRequests(stateValue, limitNumber, sortValue, directionValue);
@@ -427,7 +427,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get task.yaml content for a pull request
+  // List all tasks in a pull request
+  app.get("/api/github/pr-tasks/:prNumber", async (req, res) => {
+    try {
+      const { prNumber } = req.params;
+      const githubService = getGitHubService(req.query);
+      
+      if (!prNumber || isNaN(parseInt(prNumber, 10))) {
+        return res.status(400).json({ error: "Invalid PR number parameter" });
+      }
+
+      const prNumberInt = parseInt(prNumber, 10);
+      const tasks = await githubService.listPRTasks(prNumberInt);
+      
+      res.json({ tasks, total_count: tasks.length });
+    } catch (error) {
+      console.error("Error fetching PR tasks:", error);
+      res.status(500).json({ error: "Failed to fetch PR tasks" });
+    }
+  });
+
+  // Get task.yaml content for a pull request (DEPRECATED - use /api/github/pr-tasks/:prNumber)
   app.get("/api/github/pr-task-yaml/:prNumber", async (req, res) => {
     try {
       const { prNumber } = req.params;
@@ -443,6 +463,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         githubService.getTaskId(prNumberInt)
       ]);
       
+      // Add deprecation warning header
+      res.setHeader('X-Deprecation-Warning', 'This endpoint is deprecated. Use /api/github/pr-tasks/:prNumber for multi-task support.');
       res.json({ taskYaml, taskId });
     } catch (error) {
       console.error("Error fetching task.yaml:", error);

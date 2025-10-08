@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search, GitPullRequest, User, Clock, Tag, Calendar, TrendingUp, SortAsc, Filter, ChevronDown, CheckCircle, XCircle, AlertCircle, GitCommit, FileText, ArrowLeft } from "lucide-react";
+import { Search, GitPullRequest, User, Clock, Tag, Calendar, TrendingUp, SortAsc, Filter, ChevronDown, CheckCircle, XCircle, AlertCircle, GitCommit, FileText, ArrowLeft, BarChart3 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,12 +23,9 @@ interface NavigationSidebarProps {
 
 export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, onBack }: NavigationSidebarProps) {
   const [searchQuery, setSearchQuery] = useState("");
-  const [sortBy, setSortBy] = useState<'created' | 'updated' | 'popularity' | 'long-running'>('updated');
+  const [sortBy, setSortBy] = useState<'created' | 'updated'>('created');
   const [authorFilter, setAuthorFilter] = useState("");
-  const [showDrafts, setShowDrafts] = useState(false);
-  const [showFailedTests, setShowFailedTests] = useState(false);
-  const [showRecentActivity, setShowRecentActivity] = useState(false);
-  const [showMultipleCommits, setShowMultipleCommits] = useState(false);
+  const [selectedStates, setSelectedStates] = useState<string[]>(['all']);
   const [timeRange, setTimeRange] = useState<'all' | 'week' | 'month'>('all');
 
   // Get current repository config from prop - if not found, show error instead of fallback
@@ -58,13 +55,24 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, on
     );
   }
 
+  // Fetch repository stats for counts and display
+  const { data: statsData } = useQuery<{ open: number; closed: number; merged: number }>({
+    queryKey: ["/api/github/repo-stats", ORGANIZATION, repoName],
+    queryFn: async () => {
+      const response = await fetch(`/api/github/repo-stats/${ORGANIZATION}/${repoName}`);
+      if (!response.ok) throw new Error(`Failed to fetch repo stats: ${response.statusText}`);
+      return response.json();
+    },
+    staleTime: 10 * 60 * 1000, // 10 minutes cache for counts
+    gcTime: 30 * 60 * 1000,
+  });
+
   // Get sort display text
   const getSortText = () => {
     switch (sortBy) {
-      case 'created': return 'Created';
-      case 'updated': return 'Updated';
-      case 'long-running': return 'Long Running';
-      default: return 'Updated';
+      case 'created': return 'Recently Created';
+      case 'updated': return 'Recently Updated';
+      default: return 'Recently Created';
     }
   };
 
@@ -72,18 +80,33 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, on
     switch (sortBy) {
       case 'created': return Calendar;
       case 'updated': return TrendingUp;
-      case 'long-running': return Clock;
-      default: return TrendingUp;
+      default: return Calendar;
     }
   };
 
+  // Helper functions for state filtering
+  const toggleState = (state: string) => {
+    setSelectedStates(prev => {
+      if (state === 'all') {
+        return ['all'];
+      }
+      
+      const filtered = prev.filter(s => s !== 'all');
+      if (filtered.includes(state)) {
+        return filtered.filter(s => s !== state);
+      } else {
+        return [...filtered, state];
+      }
+    });
+  };
+
   const { data: prData, isLoading, error } = useQuery<{ pullRequests: GitHubPullRequest[]; total_count: number }>({
-    queryKey: ["/api/github/pull-requests", ORGANIZATION, repoName, currentRepo.workflow, sortBy],
+    queryKey: ["/api/github/pull-requests", ORGANIZATION, repoName, currentRepo.workflow, "v2"], // Cache bust
     queryFn: async () => {
       const params = new URLSearchParams({
-        state: 'open',
-        limit: '500',
-        sort: sortBy,
+        state: 'all',
+        limit: '413', // Get all PRs using GraphQL cursor pagination
+        sort: 'created',
         direction: 'desc',
         owner: ORGANIZATION,
         repo: repoName,
@@ -108,14 +131,22 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, on
     refetchInterval: 45 * 1000, // Slightly longer interval for larger dataset
     refetchOnWindowFocus: true, // Refetch when user returns to tab
     refetchIntervalInBackground: true, // Continue refetching even when tab is not active
-    staleTime: 0, // Always consider data stale to force refetch on repo change
-    gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes only
+    staleTime: 0, // Always consider data stale to force refetch
+    gcTime: 0, // Force cache invalidation for fresh data
     retry: 3, // More retries for reliability with larger data
   });
 
-  // Simplified since we only show open PRs now
-  const getPRStatusIcon = () => {
-    return <GitPullRequest className="h-3 w-3 text-success" />;
+  // Get PR status icon based on state, merged status, and draft (larger size for better visibility)
+  const getPRStatusIcon = (pr: GitHubPullRequest) => {
+    if (pr.draft) {
+      return <Tag className="h-5 w-5 text-amber-600" />;
+    } else if (pr.state === 'open') {
+      return <CheckCircle className="h-5 w-5 text-green-600" />;
+    } else if (pr.state === 'closed' && pr.merged_at) {
+      return <GitCommit className="h-5 w-5 text-purple-600" />;
+    } else {
+      return <XCircle className="h-5 w-5 text-red-600" />;
+    }
   };
 
   const isSelected = (prNumber: number) => {
@@ -132,7 +163,7 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, on
         uniquePRMap.set(pr.number, pr);
       }
     });
-    const uniquePRs = Array.from(uniquePRMap.values());
+    const uniquePRs = Array.from(uniquePRMap.values()) as GitHubPullRequest[];
     
     console.log(`API returned ${prData.pullRequests.length} PRs, ${uniquePRs.length} unique after client-side deduplication`);
     
@@ -158,11 +189,21 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, on
           }
         }
         
-        // Recent activity filter (updated in last 7 days)
-        if (showRecentActivity) {
-          const sevenDaysAgo = new Date();
-          sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-          if (new Date(pr.updated_at) < sevenDaysAgo) return false;
+        // State filter - compute merged, closed (non-merged), draft states
+        if (!selectedStates.includes('all')) {
+          const isOpen = pr.state === 'open';
+          const isMerged = pr.state === 'closed' && pr.merged_at;
+          const isClosed = pr.state === 'closed' && !pr.merged_at;
+          const isDraft = pr.draft || false;
+          
+          const matchesState = (
+            (selectedStates.includes('open') && isOpen) ||
+            (selectedStates.includes('merged') && isMerged) ||
+            (selectedStates.includes('closed') && isClosed) ||
+            (selectedStates.includes('draft') && isDraft)
+          );
+          
+          if (!matchesState) return false;
         }
         
         // Time range filter
@@ -176,30 +217,6 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, on
           if (new Date(pr.created_at) < oneMonthAgo) return false;
         }
         
-        // Draft filter - skip drafts unless explicitly included
-        if (!showDrafts && pr.title.toLowerCase().includes('draft')) {
-          return false;
-        }
-        
-        // Failed tests filter - this would require workflow run data,
-        // for now we'll implement a placeholder that filters based on PR title patterns
-        if (showFailedTests) {
-          const hasFailureIndicators = pr.title.toLowerCase().includes('fix') ||
-                                     pr.title.toLowerCase().includes('fail') ||
-                                     pr.title.toLowerCase().includes('error') ||
-                                     pr.title.toLowerCase().includes('bug');
-          if (!hasFailureIndicators) return false;
-        }
-        
-        // Multiple commits filter - this would require commit data,
-        // for now we'll implement a placeholder based on PR age (older PRs likely have more commits)
-        if (showMultipleCommits) {
-          const createdDate = new Date(pr.created_at);
-          const daysSinceCreated = (Date.now() - createdDate.getTime()) / (1000 * 60 * 60 * 24);
-          // Assume PRs older than 2 days likely have multiple commits
-          if (daysSinceCreated < 2) return false;
-        }
-        
         return true;
       })
       .sort((a, b) => {
@@ -209,13 +226,11 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, on
             return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
           case 'updated':
             return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
-          case 'long-running':
-            return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
           default:
-            return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+            return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
         }
       });
-  }, [prData?.pullRequests, searchQuery, authorFilter, showRecentActivity, timeRange, sortBy, showFailedTests, showMultipleCommits, showDrafts]);
+  }, [prData?.pullRequests, searchQuery, authorFilter, selectedStates, timeRange, sortBy]);
 
   return (
     <div className="w-80 bg-card border-r border-border flex flex-col" data-testid="navigation-sidebar">
@@ -246,8 +261,18 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, on
             </span>
           </div>
         </div>
-        <div className="mt-2 text-xs text-muted-foreground truncate">
-          {ORGANIZATION}/{repoName}
+        <div className="mt-2 flex items-center justify-between">
+          <div className="text-xs text-muted-foreground truncate">
+            {ORGANIZATION}/{repoName}
+          </div>
+          {statsData && (
+            <div className="flex items-center gap-1">
+              <BarChart3 className="h-3 w-3 text-muted-foreground" />
+              <div className="text-xs text-muted-foreground">
+                {statsData.open + statsData.closed + statsData.merged} total
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -271,40 +296,34 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, on
               <Button variant="outline" size="sm" className="flex-1 justify-start min-w-0 px-2">
                 {sortBy === 'created' && <Calendar className="h-3 w-3 mr-1 flex-shrink-0" />}
                 {sortBy === 'updated' && <TrendingUp className="h-3 w-3 mr-1 flex-shrink-0" />}
-                {sortBy === 'long-running' && <Clock className="h-3 w-3 mr-1 flex-shrink-0" />}
-                <span className="truncate text-xs font-medium">
+                <span className="truncate text-sm font-medium">
                   {getSortText()}
                 </span>
                 <ChevronDown className="h-3 w-3 ml-auto flex-shrink-0" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-44">
-              <DropdownMenuItem onClick={() => setSortBy('updated')}>
-                <TrendingUp className="h-4 w-4 mr-2" />
-                Recently Updated
-              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setSortBy('created')}>
                 <Calendar className="h-4 w-4 mr-2" />
                 Recently Created
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setSortBy('long-running')}>
-                <Clock className="h-4 w-4 mr-2" />
-                Long Running
+              <DropdownMenuItem onClick={() => setSortBy('updated')}>
+                <TrendingUp className="h-4 w-4 mr-2" />
+                Recently Updated
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* Filter Button - Compact design */}
+          {/* State Filter Button - Multi-select design */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" className="flex-shrink-0 px-2">
-                <Filter className="h-3 w-3 mr-1" />
-                <span className="text-xs font-medium">Filter</span>
-                {(authorFilter || showRecentActivity || showFailedTests || showMultipleCommits || showDrafts || timeRange !== 'all') && <div className="w-1.5 h-1.5 bg-primary rounded-full ml-1 flex-shrink-0" />}
+                <Filter className="h-4 w-4" />
+                {!selectedStates.includes('all') && <div className="w-1.5 h-1.5 bg-primary rounded-full ml-1 flex-shrink-0" />}
                 <ChevronDown className="h-3 w-3 ml-1 flex-shrink-0" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuContent align="end" className="w-56">
               <div className="px-2 py-1.5">
                 <div className="relative">
                   <User className="absolute left-2 top-1/2 transform -translate-y-1/2 text-muted-foreground h-3 w-3" />
@@ -316,6 +335,49 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, on
                   />
                 </div>
               </div>
+              <DropdownMenuSeparator />
+              
+              {/* PR State Filters */}
+              <DropdownMenuCheckboxItem
+                checked={selectedStates.includes('all')}
+                onCheckedChange={() => toggleState('all')}
+              >
+                <GitPullRequest className="h-4 w-4 mr-2" />
+                All ({statsData ? statsData.open + statsData.closed + statsData.merged : 0})
+              </DropdownMenuCheckboxItem>
+              
+              <DropdownMenuCheckboxItem
+                checked={selectedStates.includes('all') || selectedStates.includes('open')}
+                onCheckedChange={() => toggleState('open')}
+              >
+                <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
+                Open ({statsData?.open || 0})
+              </DropdownMenuCheckboxItem>
+              
+              <DropdownMenuCheckboxItem
+                checked={selectedStates.includes('all') || selectedStates.includes('merged')}
+                onCheckedChange={() => toggleState('merged')}
+              >
+                <GitCommit className="h-4 w-4 mr-2 text-purple-600" />
+                Merged ({statsData?.merged || 0})
+              </DropdownMenuCheckboxItem>
+              
+              <DropdownMenuCheckboxItem
+                checked={selectedStates.includes('all') || selectedStates.includes('closed')}
+                onCheckedChange={() => toggleState('closed')}
+              >
+                <XCircle className="h-4 w-4 mr-2 text-red-600" />
+                Closed ({statsData?.closed || 0})
+              </DropdownMenuCheckboxItem>
+              
+              <DropdownMenuCheckboxItem
+                checked={selectedStates.includes('all') || selectedStates.includes('draft')}
+                onCheckedChange={() => toggleState('draft')}
+              >
+                <Tag className="h-4 w-4 mr-2 text-amber-600" />
+                Draft
+              </DropdownMenuCheckboxItem>
+              
               <DropdownMenuSeparator />
               
               {/* Time Range Filters */}
@@ -332,42 +394,13 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, on
                 This Month {timeRange === 'month' && '✓'}
               </DropdownMenuItem>
               
-              <DropdownMenuSeparator />
-              
-              {/* Activity Filters */}
-              <DropdownMenuCheckboxItem
-                checked={showRecentActivity}
-                onCheckedChange={setShowRecentActivity}
-              >
-                <AlertCircle className="h-4 w-4 mr-2" />
-                Recent Activity (7 days)
-              </DropdownMenuCheckboxItem>
-              
-              <DropdownMenuCheckboxItem
-                checked={showFailedTests}
-                onCheckedChange={setShowFailedTests}
-              >
-                <XCircle className="h-4 w-4 mr-2" />
-                Failed Tests Only
-              </DropdownMenuCheckboxItem>
-              
-              <DropdownMenuCheckboxItem
-                checked={showDrafts}
-                onCheckedChange={setShowDrafts}
-              >
-                <Tag className="h-4 w-4 mr-2" />
-                Include Drafts
-              </DropdownMenuCheckboxItem>
-              
-              {(authorFilter || showRecentActivity || showFailedTests || showDrafts || timeRange !== 'all') && (
+              {(authorFilter || !selectedStates.includes('all') || timeRange !== 'all') && (
                 <>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onClick={() => {
                       setAuthorFilter("");
-                      setShowRecentActivity(false);
-                      setShowFailedTests(false);
-                      setShowDrafts(false);
+                      setSelectedStates(['all']);
                       setTimeRange('all');
                     }}
                   >
@@ -415,29 +448,58 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, on
                     })}
                     data-testid={`pr-${pr.number}`}
                   >
-                    <div className="flex items-start gap-2">
-                      <div className="flex items-center gap-1 mt-0.5">
-                        {getPRStatusIcon()}
+                    <div className="flex items-start gap-3">
+                      <div className="flex items-center gap-1 mt-1 flex-shrink-0">
+                        {getPRStatusIcon(pr)}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
+                        {/* Header row with PR number and dates */}
+                        <div className="flex items-center justify-between gap-2 mb-1">
                           <span className="text-sm font-medium text-foreground">
                             #{pr.number}
                           </span>
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <div className="flex items-center gap-1">
+                              <Calendar className="h-4 w-4 text-blue-600" />
+                              <span>{new Date(pr.created_at).toLocaleDateString()}</span>
+                            </div>
+                            <span>•</span>
+                            <div className="flex items-center gap-1">
+                              <TrendingUp className="h-4 w-4 text-orange-600" />
+                              <span>{new Date(pr.updated_at).toLocaleDateString()}</span>
+                            </div>
+                          </div>
                         </div>
-                        <p className="text-sm text-foreground mt-1 line-clamp-2">
+                        
+                        {/* Title */}
+                        <p className="text-sm text-foreground line-clamp-2 mb-1">
                           {pr.title}
                         </p>
-                        <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                        
+                        {/* Bottom row with author and status indicators */}
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
                           <div className="flex items-center gap-1">
-                            <User className="h-3 w-3" />
+                            <User className="h-4 w-4" />
                             <span>{pr.user.login}</span>
                           </div>
-                          <span>•</span>
-                          <div className="flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            <span>{new Date(pr.updated_at).toLocaleDateString()}</span>
-                          </div>
+                          {pr.merged_at && (
+                            <>
+                              <span>•</span>
+                              <div className="flex items-center gap-1 text-purple-600">
+                                <GitCommit className="h-5 w-5" />
+                                <span>{new Date(pr.merged_at).toLocaleDateString()}</span>
+                              </div>
+                            </>
+                          )}
+                          {pr.draft && (
+                            <>
+                              <span>•</span>
+                              <div className="flex items-center gap-1 text-amber-600">
+                                <Tag className="h-4 w-4" />
+                                <span>Draft</span>
+                              </div>
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -458,3 +520,4 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, on
     </div>
   );
 }
+
