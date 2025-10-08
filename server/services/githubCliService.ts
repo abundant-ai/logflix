@@ -803,60 +803,66 @@ export class GitHubCliService {
   }
 
   /**
-   * List all tasks in a PR by discovering task.yaml files
+   * List all tasks in a PR by discovering task subdirectories (not just task.yaml files)
    * Returns array of {taskId, pathPrefix, taskYaml}
    */
   async listPRTasks(prNumber: number): Promise<Array<{ taskId: string; pathPrefix: string; taskYaml: any }>> {
     try {
       const files = await this.getPRFiles(prNumber);
       
-      // Find all task.yaml files
-      const taskFiles = files.filter(f =>
-        f.name.endsWith('task.yaml') || f.name.endsWith('task.yml')
-      );
+      // Find all unique task subdirectories under tasks/
+      const taskSubdirs = new Set<string>();
+      files.forEach(f => {
+        if (f.path.startsWith('tasks/')) {
+          const parts = f.path.split('/');
+          if (parts.length > 1) {
+            taskSubdirs.add(parts[1]); // Extract task subdirectory name
+          }
+        }
+      });
       
-      if (taskFiles.length === 0) {
-        console.log(`No task.yaml files found in PR ${prNumber}`);
+      if (taskSubdirs.size === 0) {
+        console.log(`No task subdirectories found in PR ${prNumber}`);
         return [];
       }
 
-      // For each task.yaml, extract taskId and parse content
+      console.log(`Found ${taskSubdirs.size} task subdirectories in PR ${prNumber}: ${Array.from(taskSubdirs).join(', ')}`);
+
+      // For each task subdirectory, try to find and parse task.yaml
       const tasks = await Promise.all(
-        taskFiles.map(async (taskFile) => {
+        Array.from(taskSubdirs).map(async (taskId) => {
           try {
-            // Extract taskId from path: tasks/{taskId}/task.yaml -> taskId
-            const parts = taskFile.path.split('/');
-            let taskId = 'unknown';
-            let pathPrefix = '';
+            const pathPrefix = `tasks/${taskId}`;
             
-            // Find tasks/ directory and extract task folder name
-            const tasksIndex = parts.indexOf('tasks');
-            if (tasksIndex >= 0 && parts.length > tasksIndex + 1) {
-              taskId = parts[tasksIndex + 1];
-              pathPrefix = parts.slice(0, tasksIndex + 2).join('/'); // e.g., "tasks/task-123"
-            } else if (parts.length > 1) {
-              // Fallback: use parent directory name
-              taskId = parts[parts.length - 2];
-              pathPrefix = parts.slice(0, -1).join('/');
+            // Try to find task.yaml in this subdirectory
+            const taskYamlPath = `${pathPrefix}/task.yaml`;
+            const taskYmlPath = `${pathPrefix}/task.yml`;
+            
+            let taskYaml = null;
+            
+            // Try to fetch and parse task.yaml if it exists
+            try {
+              let content = await this.getPRFileContent(prNumber, taskYamlPath);
+              if (!content) {
+                content = await this.getPRFileContent(prNumber, taskYmlPath);
+              }
+              if (content) {
+                taskYaml = yaml.load(content);
+              }
+            } catch (error) {
+              console.warn(`task.yaml not found for task ${taskId}, including task without yaml`);
             }
 
-            // Fetch and parse task.yaml content
-            const content = await this.getPRFileContent(prNumber, taskFile.path);
-            if (!content) {
-              return { taskId, pathPrefix, taskYaml: null };
-            }
-
-            const taskYaml = yaml.load(content);
             return { taskId, pathPrefix, taskYaml };
           } catch (error) {
-            console.error(`Error parsing task file ${taskFile.path}:`, error);
-            return null;
+            console.error(`Error processing task ${taskId}:`, error);
+            return { taskId, pathPrefix: `tasks/${taskId}`, taskYaml: null };
           }
         })
       );
 
-      // Filter out nulls and return valid tasks
-      return tasks.filter((t): t is { taskId: string; pathPrefix: string; taskYaml: any } => t !== null);
+      console.log(`Returning ${tasks.length} tasks from ${taskSubdirs.size} subdirectories`);
+      return tasks;
     } catch (error) {
       console.error(`Error listing tasks for PR ${prNumber}:`, error);
       return [];

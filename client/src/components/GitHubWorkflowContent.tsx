@@ -15,7 +15,11 @@ import {
   User,
   BarChart3,
   Bug,
-  Brain
+  Brain,
+  Calendar,
+  TrendingUp,
+  GitCommit,
+  Tag
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -691,8 +695,8 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
       const fullPath = path ? `${path}/${key}` : key;
       elements.push(
         <div key={fullPath} className="ml-2">
-          <div className="flex items-center gap-1 p-1 text-xs text-muted-foreground">
-            <ChevronRight className="h-3 w-3" />
+          <div className="flex items-center gap-1 p-1 text-sm text-muted-foreground">
+            <ChevronRight className="h-4 w-4" />
             <span>{key}/</span>
           </div>
           {renderTree(node[key], fullPath)}
@@ -707,7 +711,7 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
           <div
             key={file.sha}
             className={`flex items-center gap-2 p-2 ml-2 hover:bg-muted rounded cursor-pointer transition-colors ${
-              selectedFile?.sha === file.sha ? 'bg-primary/20 border border-primary/30' : ''
+              selectedFile?.path === file.path ? 'bg-primary/20 border border-primary/30' : ''
             }`}
             onClick={async () => {
               setSelectedFile(file);
@@ -748,8 +752,8 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
 
   return (
     <div className="flex-1 flex flex-col">
-      {/* Header with Breadcrumbs and Run Selector */}
-      <header className="bg-card border-b border-border px-6 py-5">
+      {/* Header with Breadcrumbs and Run Selector - FIXED POSITION */}
+      <header className="bg-card border-b border-border px-6 py-5 sticky top-0 z-10">
         <div className="flex items-center justify-between gap-8">
           <nav className="flex items-center space-x-2 text-base flex-shrink min-w-0" data-testid="breadcrumbs">
             <span className="text-muted-foreground font-medium truncate max-w-2xl" title={`#${prData.number}: ${prData.title}`}>
@@ -797,27 +801,6 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
               </Select>
             )}
 
-            {/* Task Selector - Show when multiple tasks */}
-            {tasksData && tasksData.tasks.length > 1 && (
-              <Select
-                value={selectedTaskId || ""}
-                onValueChange={(value) => setSelectedTaskId(value)}
-              >
-                <SelectTrigger className="w-64 h-9">
-                  <SelectValue placeholder="Select Task" />
-                </SelectTrigger>
-                <SelectContent>
-                  {tasksData.tasks.map((task, index) => (
-                    <SelectItem key={task.taskId} value={task.taskId}>
-                      <div className="flex items-center gap-2">
-                        <code className="text-xs font-mono">{task.taskId}</code>
-                        {index === 0 && <Badge variant="outline" className="text-xs">First</Badge>}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
 
             {/* Run Selector - Filtered by commit */}
             {filteredRuns.length > 1 && (
@@ -914,7 +897,7 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
             </TabsList>
           </div>
 
-          <TabsContent value="overview" className="p-6 space-y-6 m-0">
+          <TabsContent value="overview" className="p-6 space-y-6 m-0 flex-1 overflow-y-auto">
             {!selectedRun && selectedCommitSha && filteredRuns.length === 0 ? (
               <Card>
                 <CardContent className="p-8 text-center">
@@ -929,38 +912,80 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                   <Card>
                     <CardHeader>
-                      <CardTitle>Task Details</CardTitle>
+                      <div className="flex items-center justify-between">
+                        <CardTitle>Task Details</CardTitle>
+                        {tasksData && tasksData.tasks.length > 0 && (
+                          <Select
+                            value={selectedTaskId || ""}
+                            onValueChange={(value) => setSelectedTaskId(value)}
+                          >
+                            <SelectTrigger className="w-64 h-8">
+                              <SelectValue placeholder="Select Task" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {tasksData.tasks.map((task) => (
+                                <SelectItem key={task.taskId} value={task.taskId}>
+                                  <code className="text-sm font-mono">{task.taskId}</code>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </div>
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-4">
                         <div>
                           <label className="text-sm text-muted-foreground block mb-1">Task ID</label>
-                          <p className="text-sm">{taskData?.taskId || 'N/A'}</p>
+                          <p className="text-base font-medium flex items-center gap-2">
+                            <Tag className="h-5 w-5 text-blue-600" />
+                            {taskData?.taskId || 'N/A'}
+                          </p>
+                          {tasksData && tasksData.tasks.length > 1 && (
+                            <p className="text-xs text-amber-600 mt-1">
+                              {tasksData.tasks.length} tasks available
+                            </p>
+                          )}
                         </div>
                         <div>
                           <label className="text-sm text-muted-foreground block mb-1">Duration</label>
-                          <p className="text-sm">{formatDuration(duration)}</p>
+                          <p className="text-base flex items-center gap-2">
+                            <Clock className="h-5 w-5 text-green-600" />
+                            {formatDuration(duration)}
+                          </p>
                         </div>
                         <div>
                           <label className="text-sm text-muted-foreground block mb-1">Difficulty</label>
-                          <p className="text-sm capitalize">{taskData?.taskYaml?.difficulty || 'N/A'}</p>
+                          <p className="text-base capitalize flex items-center gap-2">
+                            <BarChart3 className="h-5 w-5 text-orange-600" />
+                            {taskData?.taskYaml?.difficulty || 'N/A'}
+                          </p>
                         </div>
                         {taskData?.taskYaml?.category && (
                           <div>
                             <label className="text-sm text-muted-foreground block mb-1">Category</label>
-                            <p className="text-sm">{taskData.taskYaml.category}</p>
+                            <p className="text-base flex items-center gap-2">
+                              <Tag className="h-5 w-5 text-purple-600" />
+                              {taskData.taskYaml.category}
+                            </p>
                           </div>
                         )}
                         {taskData?.taskYaml?.max_agent_timeout_sec && (
                           <div>
                             <label className="text-sm text-muted-foreground block mb-1">Max Agent Timeout</label>
-                            <p className="text-sm">{taskData.taskYaml.max_agent_timeout_sec}s</p>
+                            <p className="text-base flex items-center gap-2">
+                              <Clock className="h-5 w-5 text-red-600" />
+                              {taskData.taskYaml.max_agent_timeout_sec}s
+                            </p>
                           </div>
                         )}
                         {taskData?.taskYaml?.max_test_timeout_sec && (
                           <div>
                             <label className="text-sm text-muted-foreground block mb-1">Max Test Timeout</label>
-                            <p className="text-sm">{taskData.taskYaml.max_test_timeout_sec}s</p>
+                            <p className="text-base flex items-center gap-2">
+                              <Clock className="h-5 w-5 text-amber-600" />
+                              {taskData.taskYaml.max_test_timeout_sec}s
+                            </p>
                           </div>
                         )}
                         {taskData?.taskYaml?.tags && taskData.taskYaml.tags.length > 0 && (
@@ -1130,22 +1155,49 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                       <div className="space-y-4">
                         <div>
                           <label className="text-sm text-muted-foreground block mb-1">Author</label>
-                          <p className="text-sm">
+                          <p className="text-base flex items-center gap-2">
+                            <User className="h-5 w-5 text-blue-600" />
                             {taskData?.taskYaml?.author_name || commitData?.author || prData.user.login}
                             {(commitData?.email || taskData?.taskYaml?.author_email) && (
-                              <> &lt;{commitData?.email || taskData?.taskYaml?.author_email}&gt;</>
+                              <span className="text-sm text-muted-foreground"> &lt;{commitData?.email || taskData?.taskYaml?.author_email}&gt;</span>
                             )}
                           </p>
                         </div>
                         <div>
                           <label className="text-sm text-muted-foreground block mb-1">Github Username</label>
-                          <p className="text-sm">{prData.user.login}</p>
+                          <p className="text-base flex items-center gap-2">
+                            <User className="h-5 w-5 text-purple-600" />
+                            {prData.user.login}
+                          </p>
                         </div>
+                        <div>
+                          <label className="text-sm text-muted-foreground block mb-1">Created At</label>
+                          <p className="text-base flex items-center gap-2">
+                            <Calendar className="h-5 w-5 text-blue-600" />
+                            {formatDate(prData.created_at)}
+                          </p>
+                        </div>
+                        <div>
+                          <label className="text-sm text-muted-foreground block mb-1">Updated At</label>
+                          <p className="text-base flex items-center gap-2">
+                            <TrendingUp className="h-5 w-5 text-orange-600" />
+                            {formatDate(prData.updated_at)}
+                          </p>
+                        </div>
+                        {prData.merged_at && (
+                          <div>
+                            <label className="text-sm text-muted-foreground block mb-1">Merged At</label>
+                            <p className="text-base flex items-center gap-2">
+                              <GitCommit className="h-5 w-5 text-purple-600" />
+                              {formatDate(prData.merged_at)}
+                            </p>
+                          </div>
+                        )}
                         <div>
                           <label className="text-sm text-muted-foreground block mb-1">Commit</label>
                           <div className="space-y-2">
                             <div className="flex items-center gap-2">
-                              <code className="text-xs font-mono bg-muted px-1.5 py-0.5 rounded">
+                              <code className="text-sm font-mono bg-muted px-1.5 py-0.5 rounded">
                                 {(selectedCommitSha || selectedRun?.head_sha || '').substring(0, 7)}
                               </code>
                               <Button
@@ -1174,10 +1226,6 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                               </p>
                             )}
                           </div>
-                        </div>
-                        <div>
-                          <label className="text-sm text-muted-foreground block mb-1">Created At</label>
-                          <p className="text-sm">{formatDate(prData.created_at)}</p>
                         </div>
                       </div>
                     </CardContent>
@@ -1330,24 +1378,10 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
               <div className="flex h-full">
                 {/* File Tree Sidebar */}
                 <div className="w-80 border-r border-border bg-card overflow-y-auto scrollbar-thin">
-                  <div className="p-4 border-b border-border space-y-2">
+                  <div className="p-4 border-b border-border">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium text-muted-foreground">Changed Files</span>
+                      <span className="text-sm font-medium text-muted-foreground">Changed Files</span>
                       <Badge variant="secondary" className="text-xs">{prFilesData.files.length}</Badge>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div className="flex items-center gap-1">
-                        <span className="text-green-600 font-medium">+</span>
-                        <span className="text-muted-foreground">
-                          {prFilesData.files.reduce((sum, f) => sum + (f.additions || 0), 0)}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <span className="text-red-600 font-medium">−</span>
-                        <span className="text-muted-foreground">
-                          {prFilesData.files.reduce((sum, f) => sum + (f.deletions || 0), 0)}
-                        </span>
-                      </div>
                     </div>
                   </div>
                   <div className="p-2">
@@ -1358,37 +1392,11 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                 {/* File Content Viewer */}
                 <div className="flex-1 flex flex-col">
                   {selectedFile && fileContent ? (
-                    <>
-                      <div className="p-4 border-b border-border bg-card flex items-center justify-between">
-                        <div className="min-w-0 flex-1">
-                          <h3 className="font-semibold text-sm truncate">{selectedFile.name}</h3>
-                          <p className="text-xs text-muted-foreground font-mono truncate">{selectedFile.path}</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {selectedFile.download_url && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              asChild
-                            >
-                              <a
-                                href={selectedFile.download_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex items-center gap-2"
-                              >
-                                <ExternalLink className="h-4 w-4" />
-                              </a>
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex-1 overflow-auto bg-black p-4">
-                        <pre className="text-xs font-mono text-green-400 whitespace-pre-wrap break-words">
-                          {fileContent}
-                        </pre>
-                      </div>
-                    </>
+                    <div className="flex-1 overflow-auto bg-black p-4">
+                      <pre className="text-sm font-mono text-green-400 whitespace-pre-wrap break-words">
+                        {fileContent}
+                      </pre>
+                    </div>
                   ) : (
                     <div className="flex-1 flex items-center justify-center">
                       <div className="text-center">
