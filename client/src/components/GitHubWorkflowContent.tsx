@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import CustomTerminalViewer from "./CustomTerminalViewer";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   ChevronRight,
   Download,
@@ -1377,13 +1379,13 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                                    selectedRun.conclusion === 'skipped' ? 'SKIPPED' :
                                    selectedRun.conclusion === 'neutral' ? 'NEUTRAL' :
                                    selectedRun.conclusion === 'action_required' ? 'ACTION REQUIRED' :
-                                   selectedRun.conclusion.toUpperCase()) :
-                                 selectedRun.status === 'in_progress' ? 'IN PROGRESS' :
-                                 selectedRun.status === 'queued' ? 'QUEUED' :
-                                 selectedRun.status === 'requested' ? 'REQUESTED' :
-                                 selectedRun.status === 'waiting' ? 'WAITING' :
-                                 selectedRun.status === 'pending' ? 'PENDING' :
-                                 selectedRun.status?.toUpperCase() || 'UNKNOWN'}
+                                   String(selectedRun.conclusion || 'completed').toUpperCase()) :
+                                  selectedRun.status === 'in_progress' ? 'IN PROGRESS' :
+                                  selectedRun.status === 'queued' ? 'QUEUED' :
+                                  selectedRun.status === 'requested' ? 'REQUESTED' :
+                                  selectedRun.status === 'waiting' ? 'WAITING' :
+                                  selectedRun.status === 'pending' ? 'PENDING' :
+                                  String(selectedRun.status || 'unknown').toUpperCase()}
                               </span>
                             </p>
                           </div>
@@ -1693,150 +1695,142 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
           </TabsContent>
 
           <TabsContent value="comments" className="p-6 space-y-4 m-0">
-            {botCommentsData && botCommentsData.comments.length > 0 ? (
+            {botCommentsData && botCommentsData.comments && botCommentsData.comments.length > 0 ? (
               <div className="space-y-4">
                 {/* Sort comments by date (latest first) and render each in its own card */}
                 {botCommentsData.comments
-                  .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                  .filter(comment => comment && comment.body && comment.created_at && comment.user)
+                  .sort((a, b) => {
+                    try {
+                      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+                    } catch (error) {
+                      console.warn('Error sorting comments by date:', error);
+                      return 0;
+                    }
+                  })
                   .map((comment) => {
-                    const commentDate = new Date(comment.created_at);
-                    const isAgentAnalysis = comment.body.includes('Agent Test Results Overview') ||
-                                          comment.body.includes('Detailed Failure Analysis') ||
-                                          comment.user.login.includes('claude');
-                    
-                    // Format date and time nicely
-                    const dateStr = commentDate.toLocaleDateString('en-US', {
-                      year: 'numeric',
-                      month: 'short',
-                      day: 'numeric'
-                    });
-                    const timeStr = commentDate.toLocaleTimeString('en-US', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                      hour12: true
-                    });
-                    
-                    return (
-                      <Card key={comment.id} className={`${isAgentAnalysis ? 'border-amber-200 bg-amber-50/50 dark:border-amber-800 dark:bg-amber-950/20' : ''}`}>
-                        <CardHeader className="pb-3">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <Badge
-                                variant={isAgentAnalysis ? "default" : "secondary"}
-                                className={isAgentAnalysis ? "bg-amber-600 hover:bg-amber-700" : ""}
-                              >
-                                {isAgentAnalysis ? (
-                                  <div className="flex items-center gap-1">
-                                    <Brain className="h-3 w-3" />
-                                    Agent Analysis
-                                  </div>
-                                ) : (
-                                  comment.user.login
-                                )}
-                              </Badge>
-                              {isAgentAnalysis && (
-                                <Badge variant="outline" className="text-xs">
-                                  Automated Analysis
+                    try {
+                      const commentDate = new Date(comment.created_at);
+                      
+                      // Validate date
+                      if (isNaN(commentDate.getTime())) {
+                        console.warn('Invalid date for comment:', comment.id, comment.created_at);
+                        return null;
+                      }
+                      
+                      const isAgentAnalysis = (comment.body || '').includes('Agent Test Results Overview') ||
+                                            (comment.body || '').includes('Detailed Failure Analysis') ||
+                                            (comment.user?.login || '').includes('claude');
+                      
+                      // Format date and time with error handling
+                      let dateStr = 'Unknown date';
+                      let timeStr = 'Unknown time';
+                      
+                      try {
+                        dateStr = commentDate.toLocaleDateString('en-US', {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric'
+                        });
+                        timeStr = commentDate.toLocaleTimeString('en-US', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          hour12: true
+                        });
+                      } catch (dateError) {
+                        console.warn('Error formatting date for comment:', comment.id, dateError);
+                      }
+                      
+                      return (
+                        <Card key={comment.id || Math.random()} className={`${isAgentAnalysis ? 'border-amber-200 bg-amber-50/50 dark:border-amber-800 dark:bg-amber-950/20' : ''}`}>
+                          <CardHeader className="pb-3">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <Badge
+                                  variant={isAgentAnalysis ? "default" : "secondary"}
+                                  className={isAgentAnalysis ? "bg-amber-600 hover:bg-amber-700" : ""}
+                                >
+                                  {isAgentAnalysis ? (
+                                    <div className="flex items-center gap-1">
+                                      <Brain className="h-3 w-3" />
+                                      Agent Analysis
+                                    </div>
+                                  ) : (
+                                    comment.user?.login || 'Unknown user'
+                                  )}
                                 </Badge>
+                                {isAgentAnalysis && (
+                                  <Badge variant="outline" className="text-xs">
+                                    Automated Analysis
+                                  </Badge>
+                                )}
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                asChild
+                                className="h-7 text-xs"
+                              >
+                                <a
+                                  href={comment.html_url || '#'}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-1"
+                                >
+                                  <ExternalLink className="h-3 w-3" />
+                                  GitHub
+                                </a>
+                              </Button>
+                            </div>
+                            
+                            {/* Date and time prominently displayed */}
+                            <div className="text-sm text-muted-foreground font-medium">
+                              {dateStr} at {timeStr}
+                            </div>
+                          </CardHeader>
+                          
+                          <CardContent>
+                            <div className="bg-background/50 p-4 rounded-lg border border-border/50">
+                              {/* Professional markdown rendering with GitHub Flavored Markdown and error boundary */}
+                              {comment.body ? (
+                                <div className="prose prose-sm max-w-none prose-headings:text-foreground prose-p:text-foreground prose-strong:text-foreground prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-code:font-mono prose-ul:text-foreground prose-ol:text-foreground prose-li:text-foreground">
+                                  <ReactMarkdown
+                                    remarkPlugins={[remarkGfm]}
+                                    components={{
+                                      h1: ({ children }) => <h1 className="text-xl font-bold mt-4 mb-3 text-foreground border-b border-border pb-2">{children}</h1>,
+                                      h2: ({ children }) => <h2 className="text-lg font-semibold mt-4 mb-3 text-foreground border-b border-border/50 pb-1">{children}</h2>,
+                                      h3: ({ children }) => <h3 className="text-base font-semibold mt-3 mb-2 text-amber-600">{children}</h3>,
+                                      ul: ({ children }) => <ul className="my-2 ml-4 list-disc">{children}</ul>,
+                                      ol: ({ children }) => <ol className="my-2 ml-4 list-decimal">{children}</ol>,
+                                      li: ({ children }) => <li className="text-foreground my-1">{children}</li>,
+                                      code: ({ children }) => <code className="bg-muted px-1.5 py-0.5 rounded text-xs font-mono text-foreground">{children}</code>,
+                                      pre: ({ children }) => <pre className="bg-muted p-3 rounded-lg overflow-x-auto my-3 text-sm font-mono">{children}</pre>,
+                                      strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
+                                      p: ({ children }) => <p className="text-foreground leading-relaxed my-2">{children}</p>
+                                    }}
+                                  >
+                                    {comment.body}
+                                  </ReactMarkdown>
+                                </div>
+                              ) : (
+                                <p className="text-muted-foreground italic">No content available</p>
                               )}
                             </div>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              asChild
-                              className="h-7 text-xs"
-                            >
-                              <a
-                                href={comment.html_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex items-center gap-1"
-                              >
-                                <ExternalLink className="h-3 w-3" />
-                                GitHub
-                              </a>
-                            </Button>
-                          </div>
-                          
-                          {/* Date and time prominently displayed */}
-                          <div className="text-sm text-muted-foreground font-medium">
-                            {dateStr} at {timeStr}
-                          </div>
-                        </CardHeader>
-                        
-                        <CardContent>
-                          <div className="bg-background/50 p-4 rounded-lg border border-border/50">
-                            {/* Simple but effective markdown-like formatting */}
-                            <div className="text-sm leading-relaxed">
-                              {comment.body.split('\n').map((line, index) => {
-                                // Headers
-                                if (line.startsWith('### ')) {
-                                  return (
-                                    <h3 key={index} className="text-base font-semibold mt-3 mb-2 text-amber-600">
-                                      {line.replace('### ', '')}
-                                    </h3>
-                                  );
-                                }
-                                if (line.startsWith('## ')) {
-                                  return (
-                                    <h2 key={index} className="text-lg font-semibold mt-4 mb-3 text-foreground border-b border-border/50 pb-1">
-                                      {line.replace('## ', '')}
-                                    </h2>
-                                  );
-                                }
-                                if (line.startsWith('# ')) {
-                                  return (
-                                    <h1 key={index} className="text-xl font-bold mt-4 mb-3 text-foreground border-b border-border pb-2">
-                                      {line.replace('# ', '')}
-                                    </h1>
-                                  );
-                                }
-                                
-                                // Bullet points
-                                if (line.startsWith('- ')) {
-                                  return (
-                                    <div key={index} className="flex items-start gap-2 my-1">
-                                      <span className="text-amber-600 mt-1 flex-shrink-0">•</span>
-                                      <span className="text-foreground">{line.replace('- ', '')}</span>
-                                    </div>
-                                  );
-                                }
-                                
-                                // Numbered lists
-                                const numberedMatch = line.match(/^(\d+)\. (.*)$/);
-                                if (numberedMatch) {
-                                  return (
-                                    <div key={index} className="flex items-start gap-2 my-1">
-                                      <span className="text-amber-600 font-medium min-w-4 flex-shrink-0">{numberedMatch[1]}.</span>
-                                      <span className="text-foreground">{numberedMatch[2]}</span>
-                                    </div>
-                                  );
-                                }
-                                
-                                // Empty lines
-                                if (line.trim() === '') {
-                                  return <div key={index} className="h-2" />;
-                                }
-                                
-                                // Regular paragraphs with bold text
-                                const formattedLine = line
-                                  .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-foreground">$1</strong>')
-                                  .replace(/`([^`]+)`/g, '<code class="bg-muted px-1.5 py-0.5 rounded text-xs font-mono text-foreground">$1</code>');
-                                
-                                return (
-                                  <p
-                                    key={index}
-                                    className="text-foreground leading-relaxed my-2"
-                                    dangerouslySetInnerHTML={{ __html: formattedLine }}
-                                  />
-                                );
-                              })}
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
+                          </CardContent>
+                        </Card>
+                      );
+                    } catch (renderError) {
+                      console.error('Error rendering comment:', comment.id, renderError);
+                      return (
+                        <Card key={comment.id || Math.random()} className="border-red-200 bg-red-50/50">
+                          <CardContent className="p-4">
+                            <p className="text-red-600 text-sm">Error rendering comment. Check console for details.</p>
+                          </CardContent>
+                        </Card>
+                      );
+                    }
+                  })
+                  .filter(Boolean)} {/* Remove null entries */}
               </div>
             ) : (
               <Card>
