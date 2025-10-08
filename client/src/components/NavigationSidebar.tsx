@@ -105,7 +105,7 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, on
     queryFn: async () => {
       const params = new URLSearchParams({
         state: 'all',
-        limit: '413', // Get all PRs using GraphQL cursor pagination
+        limit: '5000', // Fetch all available PRs using GraphQL cursor pagination (server handles pagination automatically)
         sort: 'created',
         direction: 'desc',
         owner: ORGANIZATION,
