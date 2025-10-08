@@ -548,57 +548,182 @@ export class GitHubCliService {
   }
 
   /**
-   * Get workflow runs associated with a pull request (for all commits)
+   * Get workflow runs associated with a pull request (including ALL attempts)
+   * Fixed to properly fetch multiple attempts for same run numbers
    */
   async getWorkflowRunsForPR(prNumber: number, limit: number = 50): Promise<GitHubWorkflowRun[]> {
     try {
-      const repoContext = this.getRepoContext();
-      
-      // Get all commits for this PR
+      // Get all commits for this PR to find the commit range
       const commits = await this.getPRCommits(prNumber);
       
       if (commits.length === 0) {
+        this.logger.warn({ prNumber }, 'No commits found for PR');
         return [];
       }
 
-      // Fetch workflow runs for all commits in the PR
+      this.logger.info({
+        prNumber,
+        commitCount: commits.length,
+        commitRange: `${commits[commits.length - 1]?.sha?.substring(0, 7)}...${commits[0]?.sha?.substring(0, 7)}`
+      }, 'Fetching workflow runs for PR commits');
+
+      // Fallback to original working commit-based approach with enhanced attempts fetching
       const allRuns: GitHubWorkflowRun[] = [];
       
       for (const commit of commits) {
         try {
-          // Filter to only test-tasks.yaml workflow runs
+          // Use the proven working approach - get runs by commit with explicit repo context
+          const repoContext = this.getRepoContext();
           const runsCommand = `run list ${repoContext} --commit ${commit.sha} --workflow="${this.workflowFileName}" --limit ${Math.ceil(limit / commits.length)} --json databaseId,displayTitle,status,conclusion,createdAt,updatedAt,url,workflowDatabaseId,workflowName,headSha,headBranch,number,attempt`;
           const runs = await this.executeGhCommand<GHRunJSON[]>(runsCommand);
           
-          const mappedRuns = runs.map(run => ({
-            id: run.databaseId,
-            name: run.displayTitle || null,
-            status: run.status as 'queued' | 'in_progress' | 'completed',
-            conclusion: run.conclusion as 'success' | 'failure' | 'neutral' | 'cancelled' | 'skipped' | 'timed_out' | 'action_required' | null,
-            created_at: run.createdAt,
-            updated_at: run.updatedAt,
-            html_url: run.url,
-            workflow_id: run.workflowDatabaseId,
-            workflow_name: run.workflowName,
-            head_sha: run.headSha,
-            head_branch: run.headBranch,
-            run_number: run.number,
-            run_attempt: run.attempt,
-          }));
-          
-          allRuns.push(...mappedRuns);
+          this.logger.info({
+            commitSha: commit.sha.substring(0, 7),
+            runsFound: runs.length,
+            runNumbers: runs.map(r => `#${r.number}.${r.attempt}`)
+          }, 'Found runs for commit');
+
+          // For each run found, check if it has multiple attempts by checking for previous attempts
+          for (const run of runs) {
+            try {
+              // First, add the current attempt (what we have from gh run list)
+              const currentRun = {
+                id: run.databaseId,
+                name: run.displayTitle || null,
+                status: run.status as 'queued' | 'in_progress' | 'completed',
+                conclusion: run.conclusion as 'success' | 'failure' | 'neutral' | 'cancelled' | 'skipped' | 'timed_out' | 'action_required' | null,
+                created_at: run.createdAt,
+                updated_at: run.updatedAt,
+                html_url: run.url,
+                workflow_id: run.workflowDatabaseId,
+                workflow_name: run.workflowName,
+                head_sha: run.headSha,
+                head_branch: run.headBranch,
+                run_number: run.number,
+                run_attempt: run.attempt,
+              };
+
+              // Check if this run has previous attempts
+              if (run.attempt > 1) {
+                this.logger.info({
+                  runId: run.databaseId,
+                  runNumber: run.number,
+                  currentAttempt: run.attempt
+                }, 'Run has multiple attempts, fetching previous attempts');
+
+                // Try to fetch previous attempts (attempt 1, 2, etc.)
+                const allAttempts = [currentRun];
+                
+                for (let attemptNum = 1; attemptNum < run.attempt; attemptNum++) {
+                  try {
+                    const prevAttemptCommand = `api repos/${this.repositoryOwner}/${this.repositoryName}/actions/runs/${run.databaseId}/attempts/${attemptNum} --jq '{id: .id, run_number: .run_number, run_attempt: .run_attempt, status: .status, conclusion: .conclusion, created_at: .created_at, updated_at: .updated_at, html_url: .html_url, head_sha: .head_sha}'`;
+                    
+                    const { stdout: prevStdout } = await execAsync(`gh ${prevAttemptCommand}`, {
+                      maxBuffer: 10 * 1024 * 1024
+                    });
+                    
+                    const prevAttempt = JSON.parse(prevStdout.trim());
+                    
+                    const prevRun = {
+                      id: run.databaseId * 1000 + attemptNum, // Unique ID for each attempt
+                      name: run.displayTitle || null,
+                      status: prevAttempt.status as 'queued' | 'in_progress' | 'completed',
+                      conclusion: prevAttempt.conclusion as 'success' | 'failure' | 'neutral' | 'cancelled' | 'skipped' | 'timed_out' | 'action_required' | null,
+                      created_at: prevAttempt.created_at,
+                      updated_at: prevAttempt.updated_at,
+                      html_url: `${prevAttempt.html_url}/attempts/${attemptNum}`,
+                      workflow_id: run.workflowDatabaseId,
+                      workflow_name: run.workflowName,
+                      head_sha: prevAttempt.head_sha,
+                      head_branch: run.headBranch,
+                      run_number: prevAttempt.run_number,
+                      run_attempt: prevAttempt.run_attempt,
+                    };
+                    
+                    allAttempts.unshift(prevRun); // Add to beginning (chronological order)
+                  } catch (prevError: any) {
+                    this.logger.debug({ runId: run.databaseId, attemptNum, error: prevError.message }, 'Could not fetch previous attempt');
+                    break;
+                  }
+                }
+                
+                if (allAttempts.length > 1) {
+                  this.logger.info({
+                    runId: run.databaseId,
+                    runNumber: run.number,
+                    attemptCount: allAttempts.length,
+                    attempts: allAttempts.map(a => `attempt ${a.run_attempt} (${a.status}/${a.conclusion})`)
+                  }, 'Successfully found multiple attempts for run');
+                }
+                
+                allRuns.push(...allAttempts);
+              } else {
+                // Single attempt run
+                allRuns.push(currentRun);
+              }
+            } catch (attemptError: any) {
+              this.logger.warn({ runId: run.databaseId, error: attemptError.message }, 'Error processing attempts for run');
+              
+              // Fallback to just the basic run
+              allRuns.push({
+                id: run.databaseId,
+                name: run.displayTitle || null,
+                status: run.status as 'queued' | 'in_progress' | 'completed',
+                conclusion: run.conclusion as 'success' | 'failure' | 'neutral' | 'cancelled' | 'skipped' | 'timed_out' | 'action_required' | null,
+                created_at: run.createdAt,
+                updated_at: run.updatedAt,
+                html_url: run.url,
+                workflow_id: run.workflowDatabaseId,
+                workflow_name: run.workflowName,
+                head_sha: run.headSha,
+                head_branch: run.headBranch,
+                run_number: run.number,
+                run_attempt: run.attempt,
+              });
+            }
+          }
         } catch (error) {
           this.logger.error({ commitSha: commit.sha, prNumber, error }, 'Error fetching runs for commit');
-          // Continue with other commits
         }
       }
       
       // Sort by created_at descending and limit to requested number
       allRuns.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      
+      // Log run grouping for debugging
+      const runGroups = allRuns.reduce((acc: Record<number, number>, run) => {
+        acc[run.run_number] = (acc[run.run_number] || 0) + 1;
+        return acc;
+      }, {});
+      
+      const multiAttemptRuns = Object.entries(runGroups).filter(([_, count]) => count > 1);
+      
+      this.logger.info({
+        prNumber,
+        totalRuns: allRuns.length,
+        multiAttemptRuns: multiAttemptRuns.map(([runNum, count]) => `#${runNum}:${count}`),
+        hasMultipleAttempts: multiAttemptRuns.length > 0
+      }, 'PR workflow runs analysis complete');
+      
       return allRuns.slice(0, limit);
     } catch (error) {
       this.logger.error({ prNumber, limit, error }, 'Error fetching workflow runs for PR');
       return [];
+    }
+  }
+
+  /**
+   * Get workflow ID for filtering runs
+   */
+  private async getWorkflowId(): Promise<number> {
+    try {
+      const workflowCommand = `api repos/${this.repositoryOwner}/${this.repositoryName}/actions/workflows --jq '.workflows[] | select(.name == "Test Tasks with Multiple Agents") | .id'`;
+      const { stdout } = await execAsync(`gh ${workflowCommand}`);
+      return parseInt(stdout.trim(), 10);
+    } catch (error) {
+      this.logger.warn({ error }, 'Could not determine workflow ID, using workflow name filter');
+      // Return a default that won't match, forcing name-based filtering
+      return 0;
     }
   }
 

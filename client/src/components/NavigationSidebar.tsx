@@ -269,7 +269,7 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, on
             <div className="flex items-center gap-1">
               <BarChart3 className="h-3 w-3 text-muted-foreground" />
               <div className="text-xs text-muted-foreground">
-                {statsData.open + statsData.closed + statsData.merged} total
+                {statsData.open + statsData.closed + statsData.merged}
               </div>
             </div>
           )}

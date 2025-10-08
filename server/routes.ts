@@ -85,14 +85,15 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
     try {
       const { prNumber } = req.params;
       const { limit } = req.query;
-      const githubService = getGitHubService(req.query);
+      const requestLogger = res.locals.logger || logger;
+      const githubService = getGitHubService(req.query, requestLogger);
       
       if (!prNumber || isNaN(parseInt(prNumber, 10))) {
         return res.status(400).json({ error: "Invalid PR number parameter" });
       }
 
       const prNumberInt = parseInt(prNumber, 10);
-      const limitNumber = limit && typeof limit === 'string' ? parseInt(limit, 10) : 10;
+      const limitNumber = limit && typeof limit === 'string' ? parseInt(limit, 10) : 50;
       
       const runs = await githubService.getWorkflowRunsForPR(prNumberInt, limitNumber);
       res.json({ runs, total_count: runs.length });

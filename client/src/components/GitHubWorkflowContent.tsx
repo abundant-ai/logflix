@@ -158,16 +158,105 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
     staleTime: 0,
   });
 
-  // Filter runs by selected commit
-  const filteredRuns = runsData?.runs.filter(run => run.head_sha === selectedCommitSha) || [];
+  // Filter runs by selected commit and analyze run groupings
+  const filteredRuns: GitHubWorkflowRun[] = useMemo(() => {
+    if (!runsData?.runs || !selectedCommitSha) return [];
+    return runsData.runs.filter(run => run.head_sha === selectedCommitSha);
+  }, [runsData, selectedCommitSha]);
+  
+  // Group all runs by run number to show multiple attempts regardless of commit SHA
+  const runsByNumber: Record<number, GitHubWorkflowRun[]> = useMemo(() => {
+    if (!runsData?.runs) return {};
+    
+    const groups: Record<number, GitHubWorkflowRun[]> = {};
+    runsData.runs.forEach(run => {
+      if (!groups[run.run_number]) {
+        groups[run.run_number] = [];
+      }
+      groups[run.run_number].push(run);
+    });
+    
+    return groups;
+  }, [runsData]);
+  
+  // Check if there are multiple attempts for ANY run number (regardless of commit SHA)
+  const hasMultipleAttempts: boolean = useMemo(() => {
+    if (!runsData?.runs?.length) return false;
+    
+    // Check if any run number has multiple attempts across all runs
+    return Object.values(runsByNumber).some(attempts => attempts.length > 1);
+  }, [runsByNumber]);
+  
+  // Get all attempts for the currently selected run's run number
+  const currentRunAttempts: GitHubWorkflowRun[] = useMemo(() => {
+    if (!selectedRunId || !runsData?.runs) return [];
+    
+    const selectedRun = runsData.runs.find(r => r.id === selectedRunId);
+    if (!selectedRun) return [];
+    
+    const allAttempts = runsByNumber[selectedRun.run_number] || [];
+    // Sort by attempt number (latest first for re-runs)
+    return allAttempts.sort((a, b) => b.run_attempt - a.run_attempt);
+  }, [selectedRunId, runsByNumber, runsData]);
+  
+  // Debug logging for multi-run analysis
+  useEffect(() => {
+    if (runsData?.runs && selectedCommitSha && filteredRuns.length > 0) {
+      console.log(`[DEBUG] Commit ${selectedCommitSha.substring(0, 7)} has ${filteredRuns.length} runs:`,
+        filteredRuns.map(r => `#${r.run_number} (attempt ${r.run_attempt}, ${r.status})`).join(', ')
+      );
+      
+      // Check all run numbers and their attempts
+      console.log(`[DEBUG] All run groups:`, Object.entries(runsByNumber).map(([runNum, attempts]) =>
+        `#${runNum}: ${attempts.length} attempts`
+      ).join(', '));
+      
+      console.log(`[DEBUG] hasMultipleAttempts: ${hasMultipleAttempts}`);
+      
+      // Check if there are multiple attempts for any run number
+      const runNumbers = new Set(filteredRuns.map(r => r.run_number));
+      runNumbers.forEach(runNum => {
+        const attempts = filteredRuns.filter(r => r.run_number === runNum);
+        if (attempts.length > 1) {
+          console.log(`[DEBUG] Run #${runNum} has ${attempts.length} attempts:`,
+            attempts.map(r => `attempt ${r.run_attempt} (${r.status})`).join(', ')
+          );
+        }
+      });
+      
+      // Log run number groups for current selection
+      if (selectedRunId) {
+        const selectedRun = runsData.runs.find(r => r.id === selectedRunId);
+        if (selectedRun && currentRunAttempts.length > 1) {
+          console.log(`[DEBUG] Run #${selectedRun.run_number} has ${currentRunAttempts.length} total attempts across commits:`,
+            currentRunAttempts.map(r => `attempt ${r.run_attempt} (${r.head_sha.substring(0, 7)}, ${r.status})`).join(', ')
+          );
+        }
+      }
+    }
+  }, [runsData, selectedCommitSha, filteredRuns, selectedRunId, currentRunAttempts, hasMultipleAttempts]);
 
-  // Auto-select the latest run for the selected commit only if no run is selected
+  // Auto-select the latest run for the selected commit, prioritizing highest attempt number
   useEffect(() => {
     if (filteredRuns.length > 0 && !selectedRunId) {
-      setSelectedRunId(filteredRuns[0].id);
+      // Find the run with the highest attempt number (latest)
+      const latestRun = filteredRuns.reduce((latest, current) => {
+        if (current.run_number === latest.run_number) {
+          return current.run_attempt > latest.run_attempt ? current : latest;
+        }
+        // If different run numbers, prefer the one with higher run number
+        return current.run_number > latest.run_number ? current : latest;
+      });
+      setSelectedRunId(latestRun.id);
     } else if (filteredRuns.length > 0 && selectedRunId && !filteredRuns.find(r => r.id === selectedRunId)) {
-      // If selected run is not in filtered runs, select the first available
-      setSelectedRunId(filteredRuns[0].id);
+      // If selected run is not in filtered runs, select the latest available
+      const latestRun = filteredRuns.reduce((latest, current) => {
+        if (current.run_number === latest.run_number) {
+          return current.run_attempt > latest.run_attempt ? current : latest;
+        }
+        return current.run_number > latest.run_number ? current : latest;
+      });
+      setSelectedRunId(latestRun.id);
     }
   }, [selectedCommitSha, filteredRuns, selectedRunId]);
 
@@ -395,12 +484,43 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
   // Update logContent state from React Query
   const logContent = logContentQuery.data?.content || null;
 
-  const duration = selectedRun ?
-    Math.floor((new Date(selectedRun.updated_at).getTime() - new Date(selectedRun.created_at).getTime()) / 1000) : 0;
+  const duration = selectedRun ? (() => {
+    const startTime = new Date(selectedRun.created_at).getTime();
+    
+    if (selectedRun.status === 'in_progress') {
+      // For in-progress runs, use current time
+      const durationMs = Date.now() - startTime;
+      return Math.floor(durationMs / 1000);
+    } else if (selectedRun.status === 'completed') {
+      // For completed runs, estimate reasonable duration
+      const endTime = new Date(selectedRun.updated_at).getTime();
+      const durationMs = endTime - startTime;
+      const durationSecs = Math.floor(durationMs / 1000);
+      
+      // If duration seems unreasonable or negative, use typical workflow duration
+      if (durationSecs < 0 || durationSecs > 4 * 60 * 60) {
+        // Most workflows take 20-40 minutes, estimate 30 minutes
+        return 30 * 60;
+      }
+      
+      return durationSecs;
+    }
+    
+    return 0;
+  })() : 0;
   
   const formatDuration = (secs: number) => {
-    const mins = Math.floor(secs / 60);
+    if (secs <= 0) {
+      return "0m 0s";
+    }
+    
+    const hours = Math.floor(secs / 3600);
+    const mins = Math.floor((secs % 3600) / 60);
     const remainingSecs = secs % 60;
+    
+    if (hours > 0) {
+      return `${hours}h ${mins}m ${remainingSecs}s`;
+    }
     return `${mins}m ${remainingSecs}s`;
   };
 
@@ -621,11 +741,11 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
 
   const getStatusIcon = (status: string, conclusion?: string | null) => {
     if (status === 'completed') {
-      return conclusion === 'success' ? <CheckCircle className="h-5 w-5" /> : <XCircle className="h-5 w-5" />;
+      return conclusion === 'success' ? <CheckCircle className="h-5 w-5 text-green-600" /> : <XCircle className="h-5 w-5 text-red-600" />;
     } else if (status === 'in_progress') {
-      return <Clock className="h-5 w-5 animate-pulse" />;
+      return <Clock className="h-5 w-5 animate-pulse text-orange-600" />;
     }
-    return <Clock className="h-5 w-5" />;
+    return <Clock className="h-5 w-5 text-gray-600" />;
   };
 
   if (!selectedPR) {
@@ -778,6 +898,70 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
           </nav>
 
           <div className="flex items-center gap-3 flex-shrink-0">
+            {/* Run Selector - Show when multiple attempts exist for any run number */}
+            {hasMultipleAttempts && (
+              <Select
+                value={selectedRunId?.toString() || ""}
+                onValueChange={(value) => setSelectedRunId(parseInt(value, 10))}
+              >
+                <SelectTrigger className="w-80 h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="w-96">
+                  {(() => {
+                    // Show all runs with multiple attempts for the current commit
+                    if (!filteredRuns.length) return [];
+                    
+                    // Find run numbers that have multiple attempts
+                    const multiAttemptRuns: GitHubWorkflowRun[] = [];
+                    const processedRunNumbers = new Set<number>();
+                    
+                    filteredRuns.forEach(run => {
+                      if (!processedRunNumbers.has(run.run_number)) {
+                        const allAttempts = runsByNumber[run.run_number] || [];
+                        if (allAttempts.length > 1) {
+                          // Include all attempts for this run number
+                          multiAttemptRuns.push(...allAttempts);
+                        } else {
+                          // Include the single run
+                          multiAttemptRuns.push(run);
+                        }
+                        processedRunNumbers.add(run.run_number);
+                      }
+                    });
+                    
+                    // Sort by run number desc, then by attempt desc
+                    return multiAttemptRuns.sort((a, b) => {
+                      if (a.run_number !== b.run_number) {
+                        return b.run_number - a.run_number;
+                      }
+                      return b.run_attempt - a.run_attempt;
+                    });
+                  })().map((run, index) => {
+                    const date = new Date(run.created_at);
+                    const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+                    
+                    const statusText = run.status === 'in_progress' ? 'IN PROGRESS' :
+                                     run.status === 'completed' ? (run.conclusion === 'success' ? 'COMPLETED' : 'FAILED') :
+                                     run.status?.toUpperCase() || 'PENDING';
+                    
+                    return (
+                      <SelectItem key={run.id} value={run.id.toString()}>
+                        <div className="flex items-center gap-2" title={`Run #${run.run_number} Attempt ${run.run_attempt} - ${statusText}`}>
+                          <code className="text-xs font-mono flex-shrink-0">#{run.run_number}.{run.run_attempt}</code>
+                          {index === 0 && <Badge variant="default" className="text-xs px-1.5 flex-shrink-0 bg-blue-600 text-white border-blue-600">Latest</Badge>}
+                          <span className="text-xs text-muted-foreground truncate">
+                            {run.head_sha.substring(0, 7)} • {dateStr} {timeStr}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            )}
+
             {/* Commit Selector - Sorted by date (latest first) */}
             {sortedCommits.length > 1 && (
               <Select
@@ -799,39 +983,6 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                       </div>
                     </SelectItem>
                   ))}
-                </SelectContent>
-              </Select>
-            )}
-
-
-            {/* Run Selector - Filtered by commit */}
-            {filteredRuns.length > 1 && (
-              <Select
-                value={selectedRunId?.toString() || ""}
-                onValueChange={(value) => setSelectedRunId(parseInt(value, 10))}
-              >
-                <SelectTrigger className="w-72 h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="w-80">
-                  {filteredRuns.map((run, index) => {
-                    const date = new Date(run.created_at);
-                    const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                    const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-                    
-                    return (
-                      <SelectItem key={run.id} value={run.id.toString()}>
-                        <div className="flex items-center gap-3 min-w-0">
-                          {getWorkflowStatusIcon(run.status, run.conclusion)}
-                          <span className="font-mono flex-shrink-0">#{run.run_number}</span>
-                          {index === 0 && <Badge variant="outline" className="text-xs px-1.5 flex-shrink-0">Latest</Badge>}
-                          <span className="text-xs text-muted-foreground whitespace-nowrap">
-                            {dateStr} {timeStr}
-                          </span>
-                        </div>
-                      </SelectItem>
-                    );
-                  })}
                 </SelectContent>
               </Select>
             )}
@@ -916,7 +1067,7 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                     <CardHeader>
                       <div className="flex items-center justify-between">
                         <CardTitle>Task Details</CardTitle>
-                        {tasksData && tasksData.tasks.length > 0 && (
+                        {tasksData && tasksData.tasks.length > 1 && (
                           <Select
                             value={selectedTaskId || ""}
                             onValueChange={(value) => setSelectedTaskId(value)}
@@ -1186,6 +1337,22 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                             {formatDate(prData.updated_at)}
                           </p>
                         </div>
+                        {selectedRun && (
+                          <div>
+                            <label className="text-sm text-muted-foreground block mb-1">Workflow Status</label>
+                            <p className="text-base flex items-center gap-2">
+                              {getStatusIcon(selectedRun.status, selectedRun.conclusion)}
+                              <span className={`font-medium ${getStatusColor(selectedRun.status, selectedRun.conclusion)}`}>
+                                {selectedRun.status === 'completed' ?
+                                  (selectedRun.conclusion === 'success' ? 'COMPLETED' :
+                                   selectedRun.conclusion === 'failure' ? 'FAILED' :
+                                   selectedRun.conclusion === 'cancelled' ? 'CANCELLED' : 'COMPLETED') :
+                                 selectedRun.status === 'in_progress' ? 'IN PROGRESS' :
+                                 selectedRun.status?.toUpperCase() || 'PENDING'}
+                              </span>
+                            </p>
+                          </div>
+                        )}
                         {prData.merged_at && (
                           <div>
                             <label className="text-sm text-muted-foreground block mb-1">Merged At</label>
