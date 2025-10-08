@@ -119,7 +119,8 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
       
       res.json({ comments });
     } catch (error) {
-      console.error("Error fetching workflow bot comments:", error);
+      const requestLogger = res.locals.logger || logger;
+      requestLogger.error({ prNumber: req.params.prNumber, error }, "Error fetching workflow bot comments");
       res.status(500).json({ error: "Failed to fetch workflow bot comments" });
     }
   });
@@ -138,7 +139,8 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
       const hierarchy = await githubService.getHierarchy(limitNumber);
       res.json(hierarchy);
     } catch (error) {
-      console.error("Error fetching GitHub hierarchy:", error);
+      const requestLogger = res.locals.logger || logger;
+      requestLogger.error({ query: req.query, error }, "Error fetching GitHub hierarchy");
       res.status(500).json({ error: "Failed to fetch GitHub workflow hierarchy" });
     }
   });
@@ -178,7 +180,8 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
 
       res.json(response);
     } catch (error) {
-      console.error("Error fetching workflow run details:", error);
+      const requestLogger = res.locals.logger || logger;
+      requestLogger.error({ runId: req.params.runId, error }, "Error fetching workflow run details");
       res.status(500).json({ error: "Failed to fetch workflow run details" });
     }
   });
@@ -198,7 +201,8 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
       
       res.json({ logs });
     } catch (error) {
-      console.error("Error fetching workflow logs:", error);
+      const requestLogger = res.locals.logger || logger;
+      requestLogger.error({ runId: req.params.runId, error }, "Error fetching workflow logs");
       res.status(500).json({ error: "Failed to fetch workflow logs" });
     }
   });
@@ -225,7 +229,8 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
       
       res.json({ artifacts });
     } catch (error) {
-      console.error("Error fetching workflow artifacts:", error);
+      const requestLogger = res.locals.logger || logger;
+      requestLogger.error({ runId: req.params.runId, error }, "Error fetching workflow artifacts");
       res.status(500).json({ error: "Failed to fetch workflow artifacts" });
     }
   });
@@ -253,7 +258,8 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
 
       res.json({ message: result });
     } catch (error) {
-      console.error("Error downloading artifact:", error);
+      const requestLogger = res.locals.logger || logger;
+      requestLogger.error({ runId: req.params.runId, artifactName: req.params.artifactName, error }, "Error downloading artifact");
       res.status(500).json({ error: "Failed to download artifact" });
     }
   });
@@ -271,7 +277,8 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
       const pullRequests = await githubService.getPullRequestsForCommit(commitSha);
       res.json({ pullRequests });
     } catch (error) {
-      console.error("Error fetching pull requests:", error);
+      const requestLogger = res.locals.logger || logger;
+      requestLogger.error({ commitSha: req.params.commitSha, error }, "Error fetching pull requests");
       res.status(500).json({ error: "Failed to fetch pull requests" });
     }
   });
@@ -291,7 +298,8 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
       
       res.json({ comments });
     } catch (error) {
-      console.error("Error fetching review comments:", error);
+      const requestLogger = res.locals.logger || logger;
+      requestLogger.error({ prNumber: req.params.prNumber, error }, "Error fetching review comments");
       res.status(500).json({ error: "Failed to fetch review comments" });
     }
   });
@@ -350,7 +358,8 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
       
       res.json({ castFiles });
     } catch (error) {
-      console.error("Error listing cast files:", error);
+      const requestLogger = res.locals.logger || logger;
+      requestLogger.error({ runId: req.params.runId, error }, "Error listing cast files");
       res.status(500).json({ error: "Failed to list cast files" });
     }
   });
@@ -400,7 +409,8 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
       
       res.json({ files });
     } catch (error) {
-      console.error("Error fetching PR files:", error);
+      const requestLogger = res.locals.logger || logger;
+      requestLogger.error({ prNumber: req.params.prNumber, error }, "Error fetching PR files");
       res.status(500).json({ error: "Failed to fetch PR files" });
     }
   });
@@ -420,7 +430,8 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
       
       res.json({ tasks, total_count: tasks.length });
     } catch (error) {
-      console.error("Error fetching PR tasks:", error);
+      const requestLogger = res.locals.logger || logger;
+      requestLogger.error({ prNumber: req.params.prNumber, error }, "Error fetching PR tasks");
       res.status(500).json({ error: "Failed to fetch PR tasks" });
     }
   });
@@ -451,7 +462,8 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
 
       res.json({ content });
     } catch (error) {
-      console.error("Error fetching file content:", error);
+      const requestLogger = res.locals.logger || logger;
+      requestLogger.error({ prNumber: req.params.prNumber, path: req.query.path, error }, "Error fetching file content");
       res.status(500).json({ error: "Failed to fetch file content" });
     }
   });
@@ -474,7 +486,8 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
 
       res.json(commitDetails);
     } catch (error) {
-      console.error("Error fetching commit details:", error);
+      const requestLogger = res.locals.logger || logger;
+      requestLogger.error({ commitSha: req.params.commitSha, error }, "Error fetching commit details");
       res.status(500).json({ error: "Failed to fetch commit details" });
     }
   });
@@ -494,7 +507,8 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
       
       res.json({ commits });
     } catch (error) {
-      console.error("Error fetching PR commits:", error);
+      const requestLogger = res.locals.logger || logger;
+      requestLogger.error({ prNumber: req.params.prNumber, error }, "Error fetching PR commits");
       res.status(500).json({ error: "Failed to fetch PR commits" });
     }
   });
@@ -514,7 +528,8 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
       
       res.json({ jobs });
     } catch (error) {
-      console.error("Error fetching workflow jobs:", error);
+      const requestLogger = res.locals.logger || logger;
+      requestLogger.error({ runId: req.params.runId, error }, "Error fetching workflow jobs");
       res.status(500).json({ error: "Failed to fetch workflow jobs" });
     }
   });
@@ -534,7 +549,8 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
       
       res.json({ logFiles });
     } catch (error) {
-      console.error("Error extracting log files:", error);
+      const requestLogger = res.locals.logger || logger;
+      requestLogger.error({ artifactId: req.params.artifactId, error }, "Error extracting log files");
       res.status(500).json({ error: "Failed to extract log files" });
     }
   });
@@ -563,7 +579,8 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
 
       res.json({ content });
     } catch (error) {
-      console.error("Error reading log file:", error);
+      const requestLogger = res.locals.logger || logger;
+      requestLogger.error({ artifactId: req.params.artifactId, path: req.query.path, error }, "Error reading log file");
       res.status(500).json({ error: "Failed to read log file" });
     }
   });
@@ -583,7 +600,8 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
       
       res.json({ comments });
     } catch (error) {
-      console.error("Error fetching review comments for run:", error);
+      const requestLogger = res.locals.logger || logger;
+      requestLogger.error({ runId: req.params.runId, error }, "Error fetching review comments for run");
       res.status(500).json({ error: "Failed to fetch review comments for run" });
     }
   });

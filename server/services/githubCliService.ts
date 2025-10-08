@@ -359,14 +359,14 @@ export class GitHubCliService {
           decodedPath = decodeURIComponent(decodedPath);
         }
       } catch (decodeError) {
-        console.warn(`Failed to decode path ${filePath}, using as-is:`, decodeError);
+        this.logger.warn({ filePath, error: decodeError }, 'Failed to decode path, using as-is');
         decodedPath = filePath;
       }
 
       // Validate path to prevent directory traversal
       const normalizedPath = decodedPath.replace(/\\/g, '/').replace(/\/+/g, '/');
       if (normalizedPath.includes('../') || normalizedPath.includes('..\\') || normalizedPath.startsWith('/')) {
-        console.error(`Invalid file path (directory traversal detected): ${filePath} -> ${normalizedPath}`);
+        this.logger.error({ filePath, normalizedPath }, 'Invalid file path (directory traversal detected)');
         return null;
       }
 
@@ -1045,14 +1045,14 @@ export class GitHubCliService {
           decodedPath = decodeURIComponent(decodedPath);
         }
       } catch (decodeError) {
-        console.warn(`Failed to decode path ${filePath}, using as-is:`, decodeError);
+        this.logger.warn({ filePath, error: decodeError }, 'Failed to decode path, using as-is');
         decodedPath = filePath;
       }
 
       // Validate path to prevent directory traversal
       const normalizedPath = decodedPath.replace(/\\/g, '/').replace(/\/+/g, '/');
       if (normalizedPath.includes('../') || normalizedPath.includes('..\\') || normalizedPath.startsWith('/')) {
-        console.error(`Invalid file path (directory traversal detected): ${filePath} -> ${normalizedPath}`);
+        this.logger.error({ filePath, normalizedPath }, 'Invalid file path (directory traversal detected)');
         return null;
       }
 
