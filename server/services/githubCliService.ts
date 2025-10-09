@@ -818,20 +818,43 @@ export class GitHubCliService {
 
   /**
    * Get files changed in a pull request
+   *
+   * Note: Uses pagination to handle PRs with >100 files (GitHub API limit is 100 per page).
+   * For PRs with >300 files, GitHub may return an error on the diff endpoint, but the
+   * files list endpoint (used here) supports pagination up to 3000 files.
    */
   async getPRFiles(prNumber: number): Promise<any[]> {
     try {
-      // Use GitHub API to get PR files with additions and deletions
-      const filesCommand = `api repos/${this.repositoryOwner}/${this.repositoryName}/pulls/${prNumber}/files --jq '.[] | {name: .filename, path: .filename, sha: .sha, size: (.additions + .deletions), additions: .additions, deletions: .deletions, type: "file", download_url: .raw_url}'`;
-      const { stdout } = await execAsync(`gh ${filesCommand}`);
-      
+      // Use GitHub API with pagination to get all PR files
+      // --paginate handles Link header pagination automatically
+      const filesCommand = `api repos/${this.repositoryOwner}/${this.repositoryName}/pulls/${prNumber}/files --paginate --jq '.[] | {name: .filename, path: .filename, sha: .sha, size: (.additions + .deletions), additions: .additions, deletions: .deletions, type: "file", download_url: .raw_url}'`;
+
+      this.logger.debug({ prNumber }, 'Fetching PR files with pagination');
+
+      const { stdout } = await execAsync(`gh ${filesCommand}`, {
+        maxBuffer: 50 * 1024 * 1024 // 50MB buffer for large PRs
+      });
+
       // Parse newline-delimited JSON
       const files = stdout
         .trim()
         .split('\n')
         .filter(line => line)
         .map(line => JSON.parse(line));
-      
+
+      this.logger.info({
+        prNumber,
+        fileCount: files.length
+      }, 'Fetched PR files');
+
+      // Warn if we're approaching GitHub's limits
+      if (files.length > 2500) {
+        this.logger.warn({
+          prNumber,
+          fileCount: files.length
+        }, 'PR has very large number of files - approaching GitHub API limits (3000 max)');
+      }
+
       return files;
     } catch (error) {
       this.logger.error({ prNumber, error }, 'Error fetching PR files');
@@ -861,18 +884,17 @@ export class GitHubCliService {
     }
   }
 
-  
-
-  
-
   /**
    * List all tasks in a PR by discovering task subdirectories (not just task.yaml files)
    * Returns array of {taskId, pathPrefix, taskYaml}
+   *
+   * Note: This method combines PR files API with direct HEAD content checks to handle
+   * cases where files exist at HEAD but aren't in the PR's changed files list.
    */
   async listPRTasks(prNumber: number): Promise<Array<{ taskId: string; pathPrefix: string; taskYaml: any }>> {
     try {
       const files = await this.getPRFiles(prNumber);
-      
+
       // Find all unique task subdirectories under tasks/
       const taskSubdirs = new Set<string>();
       files.forEach(f => {
@@ -883,7 +905,7 @@ export class GitHubCliService {
           }
         }
       });
-      
+
       if (taskSubdirs.size === 0) {
         this.logger.info({ prNumber }, 'No task subdirectories found in PR');
         return [];
@@ -896,14 +918,15 @@ export class GitHubCliService {
         Array.from(taskSubdirs).map(async (taskId) => {
           try {
             const pathPrefix = `tasks/${taskId}`;
-            
+
             // Try to find task.yaml in this subdirectory
             const taskYamlPath = `${pathPrefix}/task.yaml`;
             const taskYmlPath = `${pathPrefix}/task.yml`;
-            
+
             let taskYaml = null;
-            
-            // Try to fetch and parse task.yaml if it exists
+
+            // Fetch via PR file content (uses HEAD commit)
+            // This works even if the file isn't listed in PR's changed files
             try {
               let content = await this.getPRFileContent(prNumber, taskYamlPath);
               if (!content) {
@@ -913,7 +936,22 @@ export class GitHubCliService {
                 taskYaml = yaml.load(content);
               }
             } catch (error) {
-              this.logger.warn({ taskId, prNumber }, 'task.yaml not found for task, including task without yaml');
+              // getPRFileContent failed - file doesn't exist at HEAD
+              this.logger.warn({ taskId, prNumber, error }, 'task.yaml not found at HEAD commit for task');
+            }
+
+            // Log if we found a task.yaml at HEAD that wasn't in the PR files list
+            const taskYamlInPRFiles = files.some(f =>
+              f.path === taskYamlPath || f.path === taskYmlPath
+            );
+
+            if (taskYaml && !taskYamlInPRFiles) {
+              this.logger.warn({
+                taskId,
+                prNumber,
+                taskYamlPath,
+                filesInPR: files.filter(f => f.path.startsWith(pathPrefix)).map(f => f.path)
+              }, 'task.yaml exists at HEAD but not in PR files list - possible GitHub API issue or rebase artifact');
             }
 
             return { taskId, pathPrefix, taskYaml };
@@ -924,7 +962,14 @@ export class GitHubCliService {
         })
       );
 
-      this.logger.info({ prNumber, taskCount: tasks.length, subdirCount: taskSubdirs.size }, 'Returning tasks from subdirectories');
+      this.logger.info({
+        prNumber,
+        taskCount: tasks.length,
+        subdirCount: taskSubdirs.size,
+        tasksWithYaml: tasks.filter(t => t.taskYaml).length,
+        tasksWithoutYaml: tasks.filter(t => !t.taskYaml).length
+      }, 'Returning tasks from subdirectories');
+
       return tasks;
     } catch (error) {
       this.logger.error({ prNumber, error }, 'Error listing tasks for PR');
