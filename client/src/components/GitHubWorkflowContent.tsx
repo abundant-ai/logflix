@@ -1586,7 +1586,7 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                 <div className="w-80 border-r border-border bg-card overflow-y-auto scrollbar-thin">
                   <div className="p-4 border-b border-border">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-muted-foreground">Changed Files</span>
+                      <span className="text-sm font-medium text-muted-foreground">Modified</span>
                       <Badge variant="secondary" className="text-xs">{prFilesData.files.length}</Badge>
                     </div>
                   </div>
