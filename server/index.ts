@@ -62,9 +62,17 @@ app.use(pinoHttp({
   }
 }));
 
-// Make logger available to routes via locals
+// Make logger available to routes via locals and set API headers
 app.use((req, res, next) => {
   res.locals.logger = res.log || logger;
+  
+  // Prevent confusing 304s for API responses
+  if (req.path.startsWith('/api/')) {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+  }
+  
   next();
 });
 
