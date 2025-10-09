@@ -10,9 +10,18 @@ import SignInPage from "@/pages/SignIn";
 import SignUpPage from "@/pages/SignUp";
 import NotFound from "@/pages/not-found";
 import { useLocation } from "wouter";
+import { clerkTheme } from "@/lib/theme";
 
 // Check if Clerk is enabled
 const isClerkEnabled = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+
+// Create a reusable UserButton component with consistent styling
+const StyledUserButton = () => (
+  <UserButton
+    afterSignOutUrl="/sign-in"
+    appearance={clerkTheme}
+  />
+);
 
 // Router with Clerk authentication
 function AuthenticatedRouter() {
@@ -62,13 +71,10 @@ function AuthenticatedRouter() {
           <Redirect to="/sign-in" />
         </SignedOut>
         <SignedIn>
-          <div className="relative">
-            {/* User button in top right */}
-            <div className="absolute right-4 top-4 z-50">
-              <UserButton afterSignOutUrl="/sign-in" />
-            </div>
-            <RepositorySelector onSelectRepo={(repo) => setLocation(`/repo/${repo}`)} />
-          </div>
+          <RepositorySelector
+            onSelectRepo={(repo) => setLocation(`/repo/${repo}`)}
+            userButton={<StyledUserButton />}
+          />
         </SignedIn>
       </Route>
 
@@ -79,13 +85,10 @@ function AuthenticatedRouter() {
               <Redirect to="/sign-in" />
             </SignedOut>
             <SignedIn>
-              <div className="relative">
-                {/* User button in top right */}
-                <div className="absolute right-4 top-4 z-50">
-                  <UserButton afterSignOutUrl="/sign-in" />
-                </div>
-                <Home repoName={params.repo} />
-              </div>
+              <Home
+                repoName={params.repo}
+                userButton={<StyledUserButton />}
+              />
             </SignedIn>
           </>
         )}

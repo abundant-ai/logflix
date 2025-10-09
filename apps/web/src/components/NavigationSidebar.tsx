@@ -20,9 +20,10 @@ interface NavigationSidebarProps {
   selectedPR: GitHubPRSelection | null;
   repoName: string;
   onBack: () => void;
+  userButton?: React.ReactNode;
 }
 
-export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, onBack }: NavigationSidebarProps) {
+export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, onBack, userButton }: NavigationSidebarProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState<'created' | 'updated'>('created');
   const [authorFilter, setAuthorFilter] = useState("");
@@ -240,7 +241,7 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, on
     <div className="w-80 bg-card border-r border-border flex flex-col" data-testid="navigation-sidebar">
       {/* Header */}
       <div className="p-4 border-b border-border">
-        <div className="flex items-center justify-between">
+        <div className="relative flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Button
               variant="ghost"
@@ -256,13 +257,16 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, on
               LogFlix
             </h1>
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-1.5">
             <div className={`w-2 h-2 rounded-full ${
               error ? 'bg-destructive' : isLoading ? 'bg-warning animate-pulse' : 'bg-success'
             }`}></div>
             <span className="text-xs text-muted-foreground">
               {error ? 'Error' : isLoading ? 'Syncing...' : 'Live'}
             </span>
+          </div>
+          <div>
+            {userButton}
           </div>
         </div>
         <div className="mt-2 flex items-center justify-between">

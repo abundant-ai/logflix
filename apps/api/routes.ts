@@ -2,7 +2,9 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import type { Logger } from "pino";
 import { GitHubCliService } from "@logflix/github-client";
-import { requireAuth } from "./middleware/auth";
+import { requireAuth, requireAdmin, requireRepositoryAccess } from "./middleware/auth";
+import { clerkClient } from "@clerk/express";
+import { UserRole, UserMetadata, AuthContext, canAccessRepository } from "@logflix/shared/auth";
 
 export async function registerRoutes(app: Express, logger: Logger): Promise<Server> {
   // Helper to create service instance with query params
@@ -13,11 +15,166 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
     return new GitHubCliService(owner, repo, workflow, requestLogger || logger);
   };
 
+  // ============= USER & PERMISSIONS API ROUTES =============
+
+  // Get current user's permissions and role
+  app.get("/api/user/permissions", requireAuth, async (req, res) => {
+    try {
+      const authContext = res.locals.auth as AuthContext;
+
+      res.json({
+        userId: authContext.userId,
+        role: authContext.role,
+        permissions: authContext.permissions,
+        assignedRepositories: authContext.assignedRepositories,
+        organizationId: authContext.organizationId,
+      });
+    } catch (error) {
+      const requestLogger = res.locals.logger || logger;
+      requestLogger.error({ error }, "Error fetching user permissions");
+      res.status(500).json({ error: "Failed to fetch user permissions" });
+    }
+  });
+
+  // Get accessible repositories for the current user
+  app.get("/api/user/repositories", requireAuth, async (req, res) => {
+    try {
+      const authContext = res.locals.auth as AuthContext;
+
+      // If admin, return all repositories (or a flag indicating all access)
+      if (authContext.role === UserRole.ADMIN) {
+        res.json({
+          hasAllAccess: true,
+          repositories: [],
+        });
+      } else {
+        // For members, return their assigned repositories
+        res.json({
+          hasAllAccess: false,
+          repositories: authContext.assignedRepositories,
+        });
+      }
+    } catch (error) {
+      const requestLogger = res.locals.logger || logger;
+      requestLogger.error({ error }, "Error fetching accessible repositories");
+      res.status(500).json({ error: "Failed to fetch accessible repositories" });
+    }
+  });
+
+  // ============= ADMIN API ROUTES =============
+
+  // List all users (admin only)
+  app.get("/api/admin/users", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const client = await clerkClient();
+      const usersResponse = await client.users.getUserList({
+        limit: 100,
+      });
+
+      const users = usersResponse.data.map((user) => {
+        const metadata = (user.publicMetadata || {}) as UserMetadata;
+        return {
+          id: user.id,
+          email: user.emailAddresses.find((e) => e.id === user.primaryEmailAddressId)?.emailAddress,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: metadata.role || UserRole.MEMBER,
+          assignedRepositories: metadata.assignedRepositories || [],
+          createdAt: user.createdAt,
+        };
+      });
+
+      res.json({ users });
+    } catch (error) {
+      const requestLogger = res.locals.logger || logger;
+      requestLogger.error({ error }, "Error fetching users");
+      res.status(500).json({ error: "Failed to fetch users" });
+    }
+  });
+
+  // Update user role (admin only)
+  app.patch("/api/admin/users/:userId/role", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const { role } = req.body;
+
+      if (!role || (role !== UserRole.ADMIN && role !== UserRole.MEMBER)) {
+        return res.status(400).json({ error: "Invalid role. Must be 'admin' or 'member'" });
+      }
+
+      const client = await clerkClient();
+      const user = await client.users.getUser(userId);
+      const metadata = (user.publicMetadata || {}) as UserMetadata;
+
+      // Update role in public metadata
+      await client.users.updateUser(userId, {
+        publicMetadata: {
+          ...metadata,
+          role,
+        },
+      });
+
+      res.json({
+        message: "User role updated successfully",
+        userId,
+        role,
+      });
+    } catch (error) {
+      const requestLogger = res.locals.logger || logger;
+      requestLogger.error({ userId: req.params.userId, error }, "Error updating user role");
+      res.status(500).json({ error: "Failed to update user role" });
+    }
+  });
+
+  // Update user's assigned repositories (admin only)
+  app.patch("/api/admin/users/:userId/repositories", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const { repositories } = req.body;
+
+      if (!Array.isArray(repositories)) {
+        return res.status(400).json({ error: "Repositories must be an array" });
+      }
+
+      // Validate repository format (owner/repo)
+      const isValid = repositories.every((repo) => {
+        const parts = repo.split('/');
+        return parts.length === 2 && parts[0] && parts[1];
+      });
+
+      if (!isValid) {
+        return res.status(400).json({ error: "Invalid repository format. Use 'owner/repo'" });
+      }
+
+      const client = await clerkClient();
+      const user = await client.users.getUser(userId);
+      const metadata = (user.publicMetadata || {}) as UserMetadata;
+
+      // Update assigned repositories
+      await client.users.updateUser(userId, {
+        publicMetadata: {
+          ...metadata,
+          assignedRepositories: repositories,
+        },
+      });
+
+      res.json({
+        message: "User repositories updated successfully",
+        userId,
+        repositories,
+      });
+    } catch (error) {
+      const requestLogger = res.locals.logger || logger;
+      requestLogger.error({ userId: req.params.userId, error }, "Error updating user repositories");
+      res.status(500).json({ error: "Failed to update user repositories" });
+    }
+  });
+
   // ============= GITHUB API ROUTES =============
-  // All routes below require authentication
+  // All routes below require authentication and repository access
 
   // Get repository statistics (PR counts by state)
-  app.get("/api/github/repo-stats/:owner/:repo", requireAuth, async (req, res) => {
+  app.get("/api/github/repo-stats/:owner/:repo", requireAuth, requireRepositoryAccess, async (req, res) => {
     try {
       const { owner, repo } = req.params;
       const requestLogger = res.locals.logger || logger;

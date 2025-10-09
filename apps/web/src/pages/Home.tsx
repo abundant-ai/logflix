@@ -9,9 +9,10 @@ import { REPOSITORIES } from "@logflix/shared/config";
 
 interface HomeProps {
   repoName: string;
+  userButton?: React.ReactNode;
 }
 
-export default function Home({ repoName }: HomeProps) {
+export default function Home({ repoName, userButton }: HomeProps) {
   const [, setLocation] = useLocation();
   const searchString = useSearch();
   
@@ -64,6 +65,7 @@ export default function Home({ repoName }: HomeProps) {
         selectedPR={selectedPR}
         repoName={repoName}
         onBack={() => setLocation('/')}
+        userButton={userButton}
       />
       <GitHubWorkflowContent selectedPR={selectedPR} />
     </div>

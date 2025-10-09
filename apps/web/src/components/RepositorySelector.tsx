@@ -7,6 +7,7 @@ import { ORGANIZATION, REPOSITORIES } from "@logflix/shared/config";
 
 interface RepositorySelectorProps {
   onSelectRepo: (repoName: string) => void;
+  userButton?: React.ReactNode;
 }
 
 interface RepoStats {
@@ -95,13 +96,13 @@ function RepositoryCard({ repo, onSelect }: { repo: any; onSelect: (name: string
   );
 }
 
-export default function RepositorySelector({ onSelectRepo }: RepositorySelectorProps) {
+export default function RepositorySelector({ onSelectRepo, userButton }: RepositorySelectorProps) {
   return (
     <div className="flex-1 flex flex-col bg-background">
       {/* Header */}
       <header className="bg-card border-b border-border px-6 py-5">
         <div className="flex items-center justify-between">
-          <div>
+          <div className="flex-1">
             <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
               <GitPullRequest className="h-6 w-6" />
               LogFlix
@@ -110,9 +111,14 @@ export default function RepositorySelector({ onSelectRepo }: RepositorySelectorP
               Terminal Bench Log Viewer for {ORGANIZATION}
             </p>
           </div>
-          <Badge variant="outline" className="text-sm">
-            {REPOSITORIES.length} {REPOSITORIES.length === 1 ? 'Repository' : 'Repositories'}
-          </Badge>
+          <div className="flex-1 flex justify-center">
+            <Badge variant="outline" className="text-sm">
+              {REPOSITORIES.length} {REPOSITORIES.length === 1 ? 'Repository' : 'Repositories'}
+            </Badge>
+          </div>
+          <div className="flex-1 flex justify-end">
+            {userButton}
+          </div>
         </div>
       </header>
 
