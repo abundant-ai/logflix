@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "composite": true,
+    "lib": ["esnext"],
+    "jsx": "preserve",
+    "baseUrl": ".",
+    "paths": {
+      "@logflix/shared": ["../../packages/shared"],
+      "@logflix/github-client": ["../../packages/github-client"]
+    }
+  },
+  "include": ["**/*"],
+  "exclude": ["node_modules", "dist"]
+}
