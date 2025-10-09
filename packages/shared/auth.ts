@@ -39,6 +39,7 @@ export interface UserMetadata {
   role: UserRole;
   assignedRepositories?: string[]; // Format: "owner/repo"
   organizationId?: string;
+  lastGitHubSync?: string; // ISO timestamp of last GitHub sync
 }
 
 // Organization metadata structure
@@ -79,7 +80,14 @@ export function canAccessRepository(
   }
 
   // Members can only access assigned repositories
-  return assignedRepositories.includes(targetRepo);
+  // Support both "owner/repo" and "repo" formats for flexibility
+  const targetRepoName = targetRepo.includes('/') ? targetRepo.split('/')[1] : targetRepo;
+
+  return assignedRepositories.some(assigned => {
+    const assignedName = assigned.includes('/') ? assigned.split('/')[1] : assigned;
+    // Match either exact full format or just the repo name
+    return assigned === targetRepo || assignedName === targetRepoName;
+  });
 }
 
 /**

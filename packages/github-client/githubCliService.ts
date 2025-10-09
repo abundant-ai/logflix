@@ -86,15 +86,18 @@ export class GitHubCliService {
   private repositoryName: string;
   private workflowFileName: string;
   private logger: Logger;
+  private githubToken?: string;
 
-  constructor(owner?: string, repo?: string, workflow?: string, logger?: Logger) {
+  constructor(owner?: string, repo?: string, workflow?: string, logger?: Logger, githubToken?: string) {
     this.repositoryOwner = owner || 'abundant-ai';
     this.repositoryName = repo || 'tbench-hammer';
     this.workflowFileName = workflow || 'test-tasks.yaml';
+    this.githubToken = githubToken;
     this.logger = logger?.child({
       component: 'GitHubCliService',
       repo: `${this.repositoryOwner}/${this.repositoryName}`,
-      workflow: this.workflowFileName
+      workflow: this.workflowFileName,
+      hasToken: !!githubToken
     }) || console as any;
   }
 
@@ -104,12 +107,18 @@ export class GitHubCliService {
   private async executeGhCommand<T = any>(command: string): Promise<T> {
     try {
       this.logger.debug({ command: `gh ${command}` }, 'Executing gh CLI command');
-      const { stdout, stderr } = await execAsync(`gh ${command}`);
-      
+
+      // Build environment with GH_TOKEN if available
+      const env = this.githubToken
+        ? { ...process.env, GH_TOKEN: this.githubToken }
+        : process.env;
+
+      const { stdout, stderr } = await execAsync(`gh ${command}`, { env });
+
       if (stderr && !stderr.includes('Validation')) {
         this.logger.warn({ stderr, command }, 'gh CLI warning');
       }
-      
+
       return JSON.parse(stdout) as T;
     } catch (error: any) {
       this.logger.error({
@@ -120,6 +129,17 @@ export class GitHubCliService {
       }, 'Failed to execute gh command');
       throw new Error(`Failed to execute gh command: ${error.message}`);
     }
+  }
+
+  /**
+   * Get exec options with GitHub token if available
+   */
+  private getExecOptions(options: any = {}): any {
+    const env = this.githubToken
+      ? { ...process.env, GH_TOKEN: this.githubToken }
+      : process.env;
+
+    return { ...options, env };
   }
 
   /**
@@ -1141,11 +1161,11 @@ export class GitHubCliService {
       const mergedCommand = `api 'search/issues?q=repo:${this.repositoryOwner}/${this.repositoryName}+is:pr+is:merged' --jq '.total_count'`;
       
       this.logger.debug('Executing GitHub Search API commands for repository stats');
-      
+
       const [openResult, closedResult, mergedResult] = await Promise.all([
-        execAsync(`gh ${openCommand}`, { maxBuffer: 10 * 1024 * 1024 }),
-        execAsync(`gh ${closedCommand}`, { maxBuffer: 10 * 1024 * 1024 }),
-        execAsync(`gh ${mergedCommand}`, { maxBuffer: 10 * 1024 * 1024 })
+        execAsync(`gh ${openCommand}`, this.getExecOptions({ maxBuffer: 10 * 1024 * 1024 })),
+        execAsync(`gh ${closedCommand}`, this.getExecOptions({ maxBuffer: 10 * 1024 * 1024 })),
+        execAsync(`gh ${mergedCommand}`, this.getExecOptions({ maxBuffer: 10 * 1024 * 1024 }))
       ]);
       
       const open = parseInt(openResult.stdout.trim()) || 0;

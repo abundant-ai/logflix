@@ -10,14 +10,142 @@ import {
   canAccessRepository,
   isValidRole
 } from "@logflix/shared/auth";
+import { fetchUserGitHubRepositories, fetchUserOrgMembership, shouldBeAdmin } from "@logflix/shared/githubSync";
 
 // Check if Clerk is enabled
 const isClerkEnabled = !!(process.env.CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY);
+
+// GitHub sync configuration
+const GITHUB_SYNC_INTERVAL_MS = parseInt(process.env.GITHUB_SYNC_INTERVAL_HOURS || "24", 10) * 60 * 60 * 1000;
+
+/**
+ * Check if GitHub access sync is needed
+ */
+function shouldSyncGitHubAccess(metadata: UserMetadata): boolean {
+  // Sync if no repositories assigned yet
+  if (!metadata.assignedRepositories || metadata.assignedRepositories.length === 0) {
+    return true;
+  }
+
+  // Sync if no lastGitHubSync timestamp
+  if (!metadata.lastGitHubSync) {
+    return true;
+  }
+
+  // Sync if last sync was more than GITHUB_SYNC_INTERVAL_MS ago
+  const lastSync = new Date(metadata.lastGitHubSync).getTime();
+  const now = Date.now();
+  return now - lastSync > GITHUB_SYNC_INTERVAL_MS;
+}
+
+/**
+ * Automatically sync GitHub repository access if needed
+ * This runs during authentication and updates Clerk metadata
+ */
+async function syncGitHubAccessIfNeeded(
+  userId: string,
+  metadata: UserMetadata,
+  requestLogger?: any
+): Promise<UserMetadata> {
+  // Check if sync is needed
+  if (!shouldSyncGitHubAccess(metadata)) {
+    return metadata; // Return existing metadata
+  }
+
+  try {
+    if (requestLogger) {
+      requestLogger.info({ userId }, "Auto-syncing GitHub repository access");
+    }
+
+    const user = await clerkClient.users.getUser(userId);
+
+    // Find GitHub OAuth account
+    const githubAccount = user.externalAccounts.find(
+      (account: any) => account.provider === "oauth_github"
+    );
+
+    if (!githubAccount) {
+      if (requestLogger) {
+        requestLogger.warn({ userId }, "No GitHub OAuth account found for auto-sync");
+      }
+      return metadata; // Return existing metadata
+    }
+
+    // Get GitHub OAuth access token from Clerk
+    let githubToken: string | undefined;
+    try {
+      const tokenResponse = await clerkClient.users.getUserOauthAccessToken(userId, 'github');
+      // The response is an array directly, not an object with a data property
+      githubToken = tokenResponse[0]?.token;
+
+      if (requestLogger && githubToken) {
+        requestLogger.info({ userId }, "Successfully retrieved GitHub OAuth token from Clerk");
+      }
+    } catch (tokenError) {
+      if (requestLogger) {
+        requestLogger.error({ userId, error: tokenError }, "Failed to retrieve GitHub OAuth token from Clerk");
+      }
+    }
+
+    if (!githubToken) {
+      if (requestLogger) {
+        requestLogger.warn({ userId }, "GitHub OAuth token not available. User may need to reconnect their GitHub account.");
+      }
+      return metadata; // Return existing metadata
+    }
+
+    // Fetch GitHub username
+    const githubUsername = githubAccount.username || githubAccount.emailAddress?.split("@")[0] || "";
+
+    // Fetch user's accessible repositories from GitHub
+    const accessibleRepos = await fetchUserGitHubRepositories(githubToken);
+
+    // Fetch user's organization role
+    const { role: githubOrgRole } = await fetchUserOrgMembership(
+      githubToken,
+      undefined,
+      githubUsername
+    );
+
+    // Determine if user should be admin
+    const shouldUpgradeToAdmin = shouldBeAdmin(githubOrgRole);
+    const newRole = shouldUpgradeToAdmin ? UserRole.ADMIN : UserRole.MEMBER;
+
+    // Update user metadata in Clerk
+    const updatedMetadata: UserMetadata = {
+      role: newRole,
+      assignedRepositories: accessibleRepos,
+      organizationId: metadata.organizationId,
+      lastGitHubSync: new Date().toISOString(),
+    };
+
+    await clerkClient.users.updateUserMetadata(userId, {
+      publicMetadata: updatedMetadata,
+    });
+
+    if (requestLogger) {
+      requestLogger.info({
+        userId,
+        syncedRepos: accessibleRepos.length,
+        role: newRole,
+      }, "GitHub access auto-sync completed");
+    }
+
+    return updatedMetadata;
+  } catch (error) {
+    if (requestLogger) {
+      requestLogger.error({ userId, error }, "Error during GitHub auto-sync, using existing metadata");
+    }
+    // Return existing metadata on error - don't block authentication
+    return metadata;
+  }
+}
 
 /**
  * Middleware to require authentication for routes
  * Attaches user info and RBAC context to res.locals.auth
  * If Clerk is not configured, this middleware passes through (for development)
+ * Automatically syncs GitHub repository access if needed
  */
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   // If Clerk is not enabled, skip authentication (for development)
@@ -42,9 +170,26 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     }
 
     // Fetch user metadata from Clerk to get role and permissions
-    const client = await clerkClient();
-    const user = await client.users.getUser(auth.userId);
-    const metadata = (user.publicMetadata || {}) as UserMetadata;
+    const user = await clerkClient.users.getUser(auth.userId);
+    let metadata = (user.publicMetadata || {}) as UserMetadata;
+
+    // Automatically sync GitHub repository access if needed
+    const requestLogger = res.locals.logger;
+    metadata = await syncGitHubAccessIfNeeded(auth.userId, metadata, requestLogger);
+
+    // Retrieve GitHub OAuth token for API calls
+    let githubToken: string | undefined;
+    try {
+      const tokenResponse = await clerkClient.users.getUserOauthAccessToken(auth.userId, 'github');
+      githubToken = tokenResponse[0]?.token;
+      if (requestLogger && githubToken) {
+        requestLogger.debug({ userId: auth.userId }, "GitHub OAuth token retrieved for API calls");
+      }
+    } catch (tokenError) {
+      if (requestLogger) {
+        requestLogger.warn({ userId: auth.userId, error: tokenError }, "Could not retrieve GitHub OAuth token for API calls");
+      }
+    }
 
     // Default to member role if not specified
     const role = metadata.role && isValidRole(metadata.role)
@@ -62,6 +207,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     // Attach auth context to res.locals for use in routes
     res.locals.auth = authContext;
     res.locals.clerkAuth = auth; // Keep original Clerk auth object
+    res.locals.githubToken = githubToken; // Attach GitHub OAuth token for GitHub API calls
     next();
   } catch (error) {
     const requestLogger = res.locals.logger;
@@ -104,8 +250,7 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
     }
 
     // Fetch user metadata
-    const client = await clerkClient();
-    const user = await client.users.getUser(auth.userId);
+    const user = await clerkClient.users.getUser(auth.userId);
     const metadata = (user.publicMetadata || {}) as UserMetadata;
 
     const role = metadata.role && isValidRole(metadata.role)

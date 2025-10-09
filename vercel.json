@@ -2,26 +2,13 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
   "buildCommand": "pnpm build",
-  "outputDirectory": "apps/web/dist",
+  "outputDirectory": "dist/public",
   "installCommand": "pnpm install",
   "framework": null,
-  "functions": {
-    "api/index.ts": {
-      "runtime": "nodejs20.x",
-      "memory": 1024,
-      "maxDuration": 10
-    }
-  },
   "rewrites": [
     {
       "source": "/api/:path*",
       "destination": "/api"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "/api/index.ts"
     }
   ],
   "env": {

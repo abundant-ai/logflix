@@ -8,11 +8,11 @@ import { UserRole, UserMetadata, AuthContext, canAccessRepository } from "@logfl
 
 export async function registerRoutes(app: Express, logger: Logger): Promise<Server> {
   // Helper to create service instance with query params
-  const getGitHubService = (query: any, requestLogger?: Logger) => {
+  const getGitHubService = (query: any, requestLogger?: Logger, githubToken?: string) => {
     const owner = typeof query.owner === 'string' ? query.owner : undefined;
     const repo = typeof query.repo === 'string' ? query.repo : undefined;
     const workflow = typeof query.workflow === 'string' ? query.workflow : undefined;
-    return new GitHubCliService(owner, repo, workflow, requestLogger || logger);
+    return new GitHubCliService(owner, repo, workflow, requestLogger || logger, githubToken);
   };
 
   // ============= USER & PERMISSIONS API ROUTES =============
@@ -40,18 +40,45 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
   app.get("/api/user/repositories", requireAuth, async (req, res) => {
     try {
       const authContext = res.locals.auth as AuthContext;
+      const requestLogger = res.locals.logger || logger;
 
-      // If admin, return all repositories (or a flag indicating all access)
+      // Import repository configuration from shared config
+      const { REPOSITORIES, ORGANIZATION } = await import("@logflix/shared/config");
+
+      requestLogger.info({
+        userId: authContext.userId,
+        role: authContext.role,
+        assignedRepos: authContext.assignedRepositories,
+      }, "Fetching accessible repositories for user");
+
+      // If admin, return all repositories
       if (authContext.role === UserRole.ADMIN) {
+        requestLogger.info("Admin user - returning all repositories");
         res.json({
           hasAllAccess: true,
-          repositories: [],
+          organization: ORGANIZATION,
+          repositories: REPOSITORIES,
         });
       } else {
-        // For members, return their assigned repositories
+        // For members, return only their assigned repositories
+        const accessibleRepos = REPOSITORIES.filter(repo => {
+          // Check if repo.name matches any assigned repository
+          // Support both "owner/repo" and "repo" formats
+          return authContext.assignedRepositories.some(assigned => {
+            const assignedName = assigned.includes('/') ? assigned.split('/')[1] : assigned;
+            return assigned === repo.name || assignedName === repo.name;
+          });
+        });
+
+        requestLogger.info({
+          assignedCount: authContext.assignedRepositories.length,
+          filteredCount: accessibleRepos.length,
+        }, "Member user - returning assigned repositories");
+
         res.json({
           hasAllAccess: false,
-          repositories: authContext.assignedRepositories,
+          organization: ORGANIZATION,
+          repositories: accessibleRepos,
         });
       }
     } catch (error) {
@@ -66,7 +93,7 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
   // List all users (admin only)
   app.get("/api/admin/users", requireAuth, requireAdmin, async (req, res) => {
     try {
-      const client = await clerkClient();
+      const client = clerkClient;
       const usersResponse = await client.users.getUserList({
         limit: 100,
       });
@@ -102,7 +129,7 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
         return res.status(400).json({ error: "Invalid role. Must be 'admin' or 'member'" });
       }
 
-      const client = await clerkClient();
+      const client = clerkClient;
       const user = await client.users.getUser(userId);
       const metadata = (user.publicMetadata || {}) as UserMetadata;
 
@@ -146,7 +173,7 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
         return res.status(400).json({ error: "Invalid repository format. Use 'owner/repo'" });
       }
 
-      const client = await clerkClient();
+      const client = clerkClient;
       const user = await client.users.getUser(userId);
       const metadata = (user.publicMetadata || {}) as UserMetadata;
 
@@ -178,8 +205,9 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
     try {
       const { owner, repo } = req.params;
       const requestLogger = res.locals.logger || logger;
-      const githubService = new GitHubCliService(owner, repo, undefined, requestLogger);
-      
+      const githubToken = res.locals.githubToken;
+      const githubService = new GitHubCliService(owner, repo, undefined, requestLogger, githubToken);
+
       const stats = await githubService.getRepositoryStats();
       res.json(stats);
     } catch (error) {
@@ -190,11 +218,12 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
   });
 
   // List pull requests with filters
-  app.get("/api/github/pull-requests", requireAuth, async (req, res) => {
+  app.get("/api/github/pull-requests", requireAuth, requireRepositoryAccess, async (req, res) => {
     try {
       const { state, limit, sort, direction } = req.query;
       const requestLogger = res.locals.logger || logger;
-      const githubService = getGitHubService(req.query, requestLogger);
+      const githubToken = res.locals.githubToken;
+      const githubService = getGitHubService(req.query, requestLogger, githubToken);
       
       const stateValue = (state === 'open' || state === 'closed' || state === 'all') ? state : 'all';
       const limitNumber = limit && typeof limit === 'string' ? parseInt(limit, 10) : 100;
@@ -215,18 +244,20 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
   });
 
   // Get a specific pull request
-  app.get("/api/github/pull-request/:prNumber", requireAuth, async (req, res) => {
+  app.get("/api/github/pull-request/:prNumber", requireAuth, requireRepositoryAccess, async (req, res) => {
     try {
       const { prNumber } = req.params;
-      const githubService = getGitHubService(req.query);
-      
+      const requestLogger = res.locals.logger || logger;
+      const githubToken = res.locals.githubToken;
+      const githubService = getGitHubService(req.query, requestLogger, githubToken);
+
       if (!prNumber || isNaN(parseInt(prNumber, 10))) {
         return res.status(400).json({ error: "Invalid PR number parameter" });
       }
 
       const prNumberInt = parseInt(prNumber, 10);
       const pullRequest = await githubService.getPullRequest(prNumberInt);
-      
+
       if (!pullRequest) {
         return res.status(404).json({ error: "Pull request not found" });
       }
@@ -240,20 +271,21 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
   });
 
   // Get workflow runs for a pull request
-  app.get("/api/github/pr-workflow-runs/:prNumber", requireAuth, async (req, res) => {
+  app.get("/api/github/pr-workflow-runs/:prNumber", requireAuth, requireRepositoryAccess, async (req, res) => {
     try {
       const { prNumber } = req.params;
       const { limit } = req.query;
       const requestLogger = res.locals.logger || logger;
-      const githubService = getGitHubService(req.query, requestLogger);
-      
+      const githubToken = res.locals.githubToken;
+      const githubService = getGitHubService(req.query, requestLogger, githubToken);
+
       if (!prNumber || isNaN(parseInt(prNumber, 10))) {
         return res.status(400).json({ error: "Invalid PR number parameter" });
       }
 
       const prNumberInt = parseInt(prNumber, 10);
       const limitNumber = limit && typeof limit === 'string' ? parseInt(limit, 10) : 50;
-      
+
       const runs = await githubService.getWorkflowRunsForPR(prNumberInt, limitNumber);
       res.json({ runs, total_count: runs.length });
     } catch (error) {
@@ -264,18 +296,20 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
   });
 
   // Get workflow bot comments for a pull request
-  app.get("/api/github/pr-bot-comments/:prNumber", requireAuth, async (req, res) => {
+  app.get("/api/github/pr-bot-comments/:prNumber", requireAuth, requireRepositoryAccess, async (req, res) => {
     try {
       const { prNumber } = req.params;
-      const githubService = getGitHubService(req.query);
-      
+      const requestLogger = res.locals.logger || logger;
+      const githubToken = res.locals.githubToken;
+      const githubService = getGitHubService(req.query, requestLogger, githubToken);
+
       if (!prNumber || isNaN(parseInt(prNumber, 10))) {
         return res.status(400).json({ error: "Invalid PR number parameter" });
       }
 
       const prNumberInt = parseInt(prNumber, 10);
       const comments = await githubService.getWorkflowBotComments(prNumberInt);
-      
+
       res.json({ comments });
     } catch (error) {
       const requestLogger = res.locals.logger || logger;
@@ -285,12 +319,14 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
   });
 
   // Get GitHub workflow hierarchy (kept for backwards compatibility)
-  app.get("/api/github/hierarchy", requireAuth, async (req, res) => {
+  app.get("/api/github/hierarchy", requireAuth, requireRepositoryAccess, async (req, res) => {
     try {
       const { limit } = req.query;
-      const githubService = getGitHubService(req.query);
+      const requestLogger = res.locals.logger || logger;
+      const githubToken = res.locals.githubToken;
+      const githubService = getGitHubService(req.query, requestLogger, githubToken);
       const limitNumber = limit && typeof limit === 'string' ? parseInt(limit, 10) : 30;
-      
+
       if (isNaN(limitNumber) || limitNumber < 1 || limitNumber > 100) {
         return res.status(400).json({ error: "Invalid limit parameter (must be 1-100)" });
       }
@@ -305,26 +341,28 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
   });
 
   // Get specific workflow run details with logs and artifacts
-  app.get("/api/github/workflow-run/:runId", requireAuth, async (req, res) => {
+  app.get("/api/github/workflow-run/:runId", requireAuth, requireRepositoryAccess, async (req, res) => {
     try {
       const { runId } = req.params;
-      const githubService = getGitHubService(req.query);
-      
+      const requestLogger = res.locals.logger || logger;
+      const githubToken = res.locals.githubToken;
+      const githubService = getGitHubService(req.query, requestLogger, githubToken);
+
       if (!runId || isNaN(parseInt(runId, 10))) {
         return res.status(400).json({ error: "Invalid run ID parameter" });
       }
 
       const runIdNumber = parseInt(runId, 10);
-      
+
       // Fetch workflow run, logs, and artifacts in parallel
       const [workflowRun, logs, artifacts] = await Promise.allSettled([
         githubService.getWorkflowRun(runIdNumber),
         githubService.getWorkflowRunLogs(runIdNumber),
         githubService.getWorkflowRunArtifacts(runIdNumber),
       ]);
-      
+
       const run = workflowRun.status === 'fulfilled' ? workflowRun.value : null;
-      
+
       if (!run) {
         return res.status(404).json({ error: "Workflow run not found" });
       }
@@ -349,15 +387,17 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
   app.get("/api/github/workflow-logs/:runId", requireAuth, async (req, res) => {
     try {
       const { runId } = req.params;
-      const githubService = getGitHubService(req.query);
-      
+      const requestLogger = res.locals.logger || logger;
+      const githubToken = res.locals.githubToken;
+      const githubService = getGitHubService(req.query, requestLogger, githubToken);
+
       if (!runId || isNaN(parseInt(runId, 10))) {
         return res.status(400).json({ error: "Invalid run ID parameter" });
       }
 
       const runIdNumber = parseInt(runId, 10);
       const logs = await githubService.getWorkflowRunLogs(runIdNumber);
-      
+
       res.json({ logs });
     } catch (error) {
       const requestLogger = res.locals.logger || logger;
@@ -370,22 +410,24 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
   app.get("/api/github/workflow-artifacts/:runId", requireAuth, async (req, res) => {
     try {
       const { runId } = req.params;
-      const githubService = getGitHubService(req.query);
-      
+      const requestLogger = res.locals.logger || logger;
+      const githubToken = res.locals.githubToken;
+      const githubService = getGitHubService(req.query, requestLogger, githubToken);
+
       if (!runId || isNaN(parseInt(runId, 10))) {
         return res.status(400).json({ error: "Invalid run ID parameter" });
       }
 
       const runIdNumber = parseInt(runId, 10);
       const allArtifacts = await githubService.getWorkflowRunArtifacts(runIdNumber);
-      
+
       // Filter for cast files
       const artifacts = allArtifacts.filter((artifact: any) =>
         artifact.name.toLowerCase().includes('cast') ||
         artifact.name.toLowerCase().includes('asciinema') ||
         artifact.name.toLowerCase().includes('recording')
       );
-      
+
       res.json({ artifacts });
     } catch (error) {
       const requestLogger = res.locals.logger || logger;
@@ -398,8 +440,10 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
   app.get("/api/github/download-artifact/:runId/:artifactName", requireAuth, async (req, res) => {
     try {
       const { runId, artifactName } = req.params;
-      const githubService = getGitHubService(req.query);
-      
+      const requestLogger = res.locals.logger || logger;
+      const githubToken = res.locals.githubToken;
+      const githubService = getGitHubService(req.query, requestLogger, githubToken);
+
       if (!runId || isNaN(parseInt(runId, 10))) {
         return res.status(400).json({ error: "Invalid run ID parameter" });
       }
@@ -410,7 +454,7 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
 
       const runIdNumber = parseInt(runId, 10);
       const result = await githubService.downloadArtifact(artifactName, runIdNumber);
-      
+
       if (!result) {
         return res.status(404).json({ error: "Artifact not found or failed to download" });
       }
@@ -427,8 +471,10 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
   app.get("/api/github/pull-requests/:commitSha", requireAuth, async (req, res) => {
     try {
       const { commitSha } = req.params;
-      const githubService = getGitHubService(req.query);
-      
+      const requestLogger = res.locals.logger || logger;
+      const githubToken = res.locals.githubToken;
+      const githubService = getGitHubService(req.query, requestLogger, githubToken);
+
       if (!commitSha) {
         return res.status(400).json({ error: "Commit SHA is required" });
       }
@@ -446,15 +492,17 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
   app.get("/api/github/review-comments/:prNumber", requireAuth, async (req, res) => {
     try {
       const { prNumber } = req.params;
-      const githubService = getGitHubService(req.query);
-      
+      const requestLogger = res.locals.logger || logger;
+      const githubToken = res.locals.githubToken;
+      const githubService = getGitHubService(req.query, requestLogger, githubToken);
+
       if (!prNumber || isNaN(parseInt(prNumber, 10))) {
         return res.status(400).json({ error: "Invalid PR number parameter" });
       }
 
       const prNumberInt = parseInt(prNumber, 10);
       const comments = await githubService.getReviewComments(prNumberInt);
-      
+
       res.json({ comments });
     } catch (error) {
       const requestLogger = res.locals.logger || logger;
@@ -486,15 +534,17 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
   app.get("/api/github/cast-list/:runId", requireAuth, async (req, res) => {
     try {
       const { runId } = req.params;
-      const githubService = getGitHubService(req.query);
-      
+      const requestLogger = res.locals.logger || logger;
+      const githubToken = res.locals.githubToken;
+      const githubService = getGitHubService(req.query, requestLogger, githubToken);
+
       if (!runId || isNaN(parseInt(runId, 10))) {
         return res.status(400).json({ error: "Invalid run ID parameter" });
       }
 
       const runIdNumber = parseInt(runId, 10);
       const allArtifacts = await githubService.getWorkflowRunArtifacts(runIdNumber);
-      
+
       // Filter for cast-related artifacts
       const castArtifacts = allArtifacts.filter((artifact: any) =>
         artifact.name.toLowerCase().includes('cast') ||
@@ -514,7 +564,7 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
       });
 
       const castFiles = await Promise.all(castFilesPromises);
-      
+
       res.json({ castFiles });
     } catch (error) {
       const requestLogger = res.locals.logger || logger;
@@ -528,8 +578,10 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
     try {
       const { artifactId } = req.params;
       const { path } = req.query;
-      const githubService = getGitHubService(req.query);
-      
+      const requestLogger = res.locals.logger || logger;
+      const githubToken = res.locals.githubToken;
+      const githubService = getGitHubService(req.query, requestLogger, githubToken);
+
       if (!artifactId || isNaN(parseInt(artifactId, 10))) {
         return res.status(400).json({ error: "Invalid artifact ID parameter" });
       }
@@ -540,7 +592,7 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
 
       const artifactIdNumber = parseInt(artifactId, 10);
       const content = await githubService.getCastFileByPath(artifactIdNumber, path);
-      
+
       if (!content) {
         return res.status(404).json({ error: "Cast file not found" });
       }
@@ -557,15 +609,17 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
   app.get("/api/github/pr-files/:prNumber", requireAuth, async (req, res) => {
     try {
       const { prNumber } = req.params;
-      const githubService = getGitHubService(req.query);
-      
+      const requestLogger = res.locals.logger || logger;
+      const githubToken = res.locals.githubToken;
+      const githubService = getGitHubService(req.query, requestLogger, githubToken);
+
       if (!prNumber || isNaN(parseInt(prNumber, 10))) {
         return res.status(400).json({ error: "Invalid PR number parameter" });
       }
 
       const prNumberInt = parseInt(prNumber, 10);
       const files = await githubService.getPRFiles(prNumberInt);
-      
+
       res.json({ files });
     } catch (error) {
       const requestLogger = res.locals.logger || logger;
@@ -578,15 +632,17 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
   app.get("/api/github/pr-tasks/:prNumber", requireAuth, async (req, res) => {
     try {
       const { prNumber } = req.params;
-      const githubService = getGitHubService(req.query);
-      
+      const requestLogger = res.locals.logger || logger;
+      const githubToken = res.locals.githubToken;
+      const githubService = getGitHubService(req.query, requestLogger, githubToken);
+
       if (!prNumber || isNaN(parseInt(prNumber, 10))) {
         return res.status(400).json({ error: "Invalid PR number parameter" });
       }
 
       const prNumberInt = parseInt(prNumber, 10);
       const tasks = await githubService.listPRTasks(prNumberInt);
-      
+
       res.json({ tasks, total_count: tasks.length });
     } catch (error) {
       const requestLogger = res.locals.logger || logger;
@@ -602,8 +658,10 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
     try {
       const { prNumber } = req.params;
       const { path } = req.query;
-      const githubService = getGitHubService(req.query);
-      
+      const requestLogger = res.locals.logger || logger;
+      const githubToken = res.locals.githubToken;
+      const githubService = getGitHubService(req.query, requestLogger, githubToken);
+
       if (!prNumber || isNaN(parseInt(prNumber, 10))) {
         return res.status(400).json({ error: "Invalid PR number parameter" });
       }
@@ -614,7 +672,7 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
 
       const prNumberInt = parseInt(prNumber, 10);
       const content = await githubService.getPRFileContent(prNumberInt, path);
-      
+
       if (!content) {
         return res.status(404).json({ error: "File not found" });
       }
@@ -631,14 +689,16 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
   app.get("/api/github/commit/:commitSha", requireAuth, async (req, res) => {
     try {
       const { commitSha } = req.params;
-      const githubService = getGitHubService(req.query);
-      
+      const requestLogger = res.locals.logger || logger;
+      const githubToken = res.locals.githubToken;
+      const githubService = getGitHubService(req.query, requestLogger, githubToken);
+
       if (!commitSha) {
         return res.status(400).json({ error: "Commit SHA is required" });
       }
 
       const commitDetails = await githubService.getCommitDetails(commitSha);
-      
+
       if (!commitDetails) {
         return res.status(404).json({ error: "Commit not found" });
       }
@@ -655,15 +715,17 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
   app.get("/api/github/pr-commits/:prNumber", requireAuth, async (req, res) => {
     try {
       const { prNumber } = req.params;
-      const githubService = getGitHubService(req.query);
-      
+      const requestLogger = res.locals.logger || logger;
+      const githubToken = res.locals.githubToken;
+      const githubService = getGitHubService(req.query, requestLogger, githubToken);
+
       if (!prNumber || isNaN(parseInt(prNumber, 10))) {
         return res.status(400).json({ error: "Invalid PR number parameter" });
       }
 
       const prNumberInt = parseInt(prNumber, 10);
       const commits = await githubService.getPRCommits(prNumberInt);
-      
+
       res.json({ commits });
     } catch (error) {
       const requestLogger = res.locals.logger || logger;
@@ -676,15 +738,17 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
   app.get("/api/github/workflow-jobs/:runId", requireAuth, async (req, res) => {
     try {
       const { runId } = req.params;
-      const githubService = getGitHubService(req.query);
-      
+      const requestLogger = res.locals.logger || logger;
+      const githubToken = res.locals.githubToken;
+      const githubService = getGitHubService(req.query, requestLogger, githubToken);
+
       if (!runId || isNaN(parseInt(runId, 10))) {
         return res.status(400).json({ error: "Invalid run ID parameter" });
       }
 
       const runIdNumber = parseInt(runId, 10);
       const jobs = await githubService.getWorkflowJobs(runIdNumber);
-      
+
       res.json({ jobs });
     } catch (error) {
       const requestLogger = res.locals.logger || logger;
@@ -697,15 +761,17 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
   app.get("/api/github/artifact-logs/:artifactId", requireAuth, async (req, res) => {
     try {
       const { artifactId } = req.params;
-      const githubService = getGitHubService(req.query);
-      
+      const requestLogger = res.locals.logger || logger;
+      const githubToken = res.locals.githubToken;
+      const githubService = getGitHubService(req.query, requestLogger, githubToken);
+
       if (!artifactId || isNaN(parseInt(artifactId, 10))) {
         return res.status(400).json({ error: "Invalid artifact ID parameter" });
       }
 
       const artifactIdNumber = parseInt(artifactId, 10);
       const logFiles = await githubService.getArtifactLogFiles(artifactIdNumber);
-      
+
       res.json({ logFiles });
     } catch (error) {
       const requestLogger = res.locals.logger || logger;
@@ -719,8 +785,10 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
     try {
       const { artifactId } = req.params;
       const { path } = req.query;
-      const githubService = getGitHubService(req.query);
-      
+      const requestLogger = res.locals.logger || logger;
+      const githubToken = res.locals.githubToken;
+      const githubService = getGitHubService(req.query, requestLogger, githubToken);
+
       if (!artifactId || isNaN(parseInt(artifactId, 10))) {
         return res.status(400).json({ error: "Invalid artifact ID parameter" });
       }
@@ -731,7 +799,7 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
 
       const artifactIdNumber = parseInt(artifactId, 10);
       const content = await githubService.getArtifactLogContent(artifactIdNumber, path);
-      
+
       if (!content) {
         return res.status(404).json({ error: "Log file not found" });
       }
@@ -748,15 +816,17 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
   app.get("/api/github/review-comments-for-run/:runId", requireAuth, async (req, res) => {
     try {
       const { runId } = req.params;
-      const githubService = getGitHubService(req.query);
-      
+      const requestLogger = res.locals.logger || logger;
+      const githubToken = res.locals.githubToken;
+      const githubService = getGitHubService(req.query, requestLogger, githubToken);
+
       if (!runId || isNaN(parseInt(runId, 10))) {
         return res.status(400).json({ error: "Invalid run ID parameter" });
       }
 
       const runIdNumber = parseInt(runId, 10);
       const comments = await githubService.getReviewCommentsForRun(runIdNumber);
-      
+
       res.json({ comments });
     } catch (error) {
       const requestLogger = res.locals.logger || logger;
