@@ -121,7 +121,7 @@ async function syncGitHubAccessIfNeeded(
     };
 
     await clerkClient.users.updateUserMetadata(userId, {
-      publicMetadata: updatedMetadata as any, // Clerk type compatibility
+      publicMetadata: updatedMetadata as unknown as Record<string, unknown>, // Clerk type compatibility
     });
 
     if (requestLogger) {
@@ -172,7 +172,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
     // Fetch user metadata from Clerk to get role and permissions
     const user = await clerkClient.users.getUser(auth.userId);
-    let metadata = (user.publicMetadata as unknown) as UserMetadata;
+    let metadata = ((user.publicMetadata as unknown) || {}) as UserMetadata;
 
     // Automatically sync GitHub repository access if needed
     const requestLogger = res.locals.logger;
@@ -253,7 +253,7 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
 
     // Fetch user metadata
     const user = await clerkClient.users.getUser(auth.userId);
-    const metadata = (user.publicMetadata as unknown) as UserMetadata;
+    const metadata = ((user.publicMetadata as unknown) || {}) as UserMetadata;
 
     const role = metadata.role && isValidRole(metadata.role)
       ? metadata.role

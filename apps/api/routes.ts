@@ -5,6 +5,7 @@ import { GitHubOctokitService } from "@logflix/github-client";
 import { requireAuth, requireAdmin, requireRepositoryAccess } from "./middleware/auth";
 import { clerkClient } from "@clerk/express";
 import { UserRole, UserMetadata, AuthContext, canAccessRepository } from "@logflix/shared/auth";
+import { GitHubWorkflowArtifact } from "@logflix/shared/schema";
 
 export async function registerRoutes(app: Express, logger: Logger): Promise<Server> {
   /**
@@ -96,7 +97,7 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
       });
 
       const users = usersResponse.data.map((user) => {
-        const metadata = (user.publicMetadata as unknown) as UserMetadata;
+        const metadata = ((user.publicMetadata as unknown) || {}) as UserMetadata;
         return {
           id: user.id,
           email: user.emailAddresses.find((e) => e.id === user.primaryEmailAddressId)?.emailAddress,
@@ -127,7 +128,7 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
 
       const client = clerkClient;
       const user = await client.users.getUser(userId);
-      const metadata = (user.publicMetadata as unknown) as UserMetadata;
+      const metadata = ((user.publicMetadata as unknown) || {}) as UserMetadata;
 
       await client.users.updateUser(userId, {
         publicMetadata: {
@@ -168,7 +169,7 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
 
       const client = clerkClient;
       const user = await client.users.getUser(userId);
-      const metadata = (user.publicMetadata as unknown) as UserMetadata;
+      const metadata = ((user.publicMetadata as unknown) || {}) as UserMetadata;
 
       await client.users.updateUser(userId, {
         publicMetadata: {
@@ -445,7 +446,7 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
       requestLogger.debug({ runId: runIdNumber }, 'Fetching and filtering cast artifacts');
       const allArtifacts = await githubService.getWorkflowRunArtifacts(runIdNumber);
 
-      const artifacts = allArtifacts.filter((artifact: any) =>
+      const artifacts = allArtifacts.filter((artifact) =>
         artifact.name.toLowerCase().includes('cast') ||
         artifact.name.toLowerCase().includes('asciinema') ||
         artifact.name.toLowerCase().includes('recording')
@@ -584,14 +585,14 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
       const allArtifacts = await githubService.getWorkflowRunArtifacts(runIdNumber);
 
       // Filter for cast-related artifacts
-      const castArtifacts = allArtifacts.filter((artifact: any) =>
+      const castArtifacts = allArtifacts.filter((artifact) =>
         artifact.name.toLowerCase().includes('cast') ||
         artifact.name.toLowerCase().includes('asciinema') ||
         artifact.name.toLowerCase().includes('recording')
       );
 
       // Get cast files from each artifact
-      const castFilesPromises = castArtifacts.map(async (artifact: any) => {
+      const castFilesPromises = castArtifacts.map(async (artifact) => {
         const files = await githubService.getCastFilesList(artifact.id);
         return {
           artifact_id: artifact.id,
