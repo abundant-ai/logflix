@@ -20,6 +20,8 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
+    port: parseInt(process.env.PORT || '5001', 10),
+    host: true,
     fs: {
       strict: true,
       deny: ["**/.*"],
