@@ -52,7 +52,7 @@ export async function fetchUserGitHubRepositories(
     const configuredRepoNames = REPOSITORIES.map((r) => r.name);
     const accessibleRepos = repos
       .filter((repo) => configuredRepoNames.includes(repo.name))
-      .map((repo) => repo.name);
+      .map((repo) => repo.full_name);
 
     console.log(`User has access to ${accessibleRepos.length} configured repositories:`, accessibleRepos);
 

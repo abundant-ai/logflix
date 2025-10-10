@@ -61,14 +61,9 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
         });
       } else {
         // For members, return only their assigned repositories
-        const accessibleRepos = REPOSITORIES.filter(repo => {
-          // Check if repo.name matches any assigned repository
-          // Support both "owner/repo" and "repo" formats
-          return authContext.assignedRepositories.some(assigned => {
-            const assignedName = assigned.includes('/') ? assigned.split('/')[1] : assigned;
-            return assigned === repo.name || assignedName === repo.name;
-          });
-        });
+        const accessibleRepos = REPOSITORIES.filter(repo =>
+          canAccessRepository(authContext.role, authContext.assignedRepositories, `${ORGANIZATION}/${repo.name}`)
+        );
 
         requestLogger.info({
           assignedCount: authContext.assignedRepositories.length,
