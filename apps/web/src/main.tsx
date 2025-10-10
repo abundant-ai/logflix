@@ -49,6 +49,20 @@ if (PUBLISHABLE_KEY) {
           identityPreviewText: 'text-white',
           identityPreviewEditButton: 'text-blue-400 hover:text-blue-300',
           formFieldInputShowPasswordButton: 'text-slate-300 hover:text-white',
+          // UserButton styling for better readability
+          userButtonBox: 'shadow-lg',
+          userButtonTrigger: 'focus:shadow-none',
+          userButtonPopoverCard: 'bg-slate-900/98 border-2 border-slate-600/60 shadow-2xl backdrop-blur-xl',
+          userButtonPopoverActionButton: 'text-slate-100 hover:text-white hover:bg-slate-800/80',
+          userButtonPopoverActionButtonText: 'text-slate-100',
+          userButtonPopoverActionButtonIcon: 'text-slate-300',
+          userButtonPopoverFooter: 'hidden',
+          userPreviewTextContainer: 'text-slate-100',
+          userPreviewMainIdentifier: 'text-white font-semibold',
+          userPreviewSecondaryIdentifier: 'text-slate-300',
+          menuList: 'bg-slate-900/98 border-2 border-slate-600/60',
+          menuItem: 'text-slate-100 hover:bg-slate-800/80 hover:text-white',
+          menuButton: 'text-slate-100 hover:bg-slate-800/80 hover:text-white',
         },
       }}
     >

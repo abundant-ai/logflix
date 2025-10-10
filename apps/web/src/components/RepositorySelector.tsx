@@ -134,24 +134,23 @@ export default function RepositorySelector({ onSelectRepo, userButton }: Reposit
       {/* Header */}
       <header className="bg-card border-b border-border px-6 py-5">
         <div className="flex items-center justify-between">
-          <div className="flex-1">
+          <div className="flex items-center gap-4">
+            {userButton}
+            <div className="h-6 w-px bg-border" />
             <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
               <GitPullRequest className="h-6 w-6" />
               LogFlix
             </h1>
-            <p className="text-sm text-muted-foreground mt-1">
+          </div>
+          <div className="flex items-center gap-3">
+            <p className="text-sm text-muted-foreground">
               {organization ? `Terminal Bench Log Viewer for ${organization}` : 'Terminal Bench Log Viewer'}
             </p>
-          </div>
-          <div className="flex-1 flex justify-center">
             {!isLoading && repositories.length > 0 && (
               <Badge variant="outline" className="text-sm">
                 {repositories.length} {repositories.length === 1 ? 'Repository' : 'Repositories'}
               </Badge>
             )}
-          </div>
-          <div className="flex-1 flex justify-end">
-            {userButton}
           </div>
         </div>
       </header>
