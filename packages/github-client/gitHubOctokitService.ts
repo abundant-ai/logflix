@@ -13,11 +13,10 @@ import {
   GitHubPullRequest
 } from '@logflix/shared/schema';
 
-// Extend Octokit with plugins
 const OctokitWithPlugins = Octokit.plugin(paginateRest, throttling);
 
 /**
- * Create Octokit client with throttling and pagination plugins
+ * Creates configured Octokit client with rate limiting and pagination support
  */
 function createOctokitClient(githubToken: string, logger?: Logger) {
   return new OctokitWithPlugins({
@@ -34,11 +33,8 @@ function createOctokitClient(githubToken: string, logger?: Logger) {
           }, 'Request quota exhausted');
         }
 
-        // Retry up to 2 times
         if (retryCount < 2) {
-          if (logger) {
-            logger.info(`Retrying after ${retryAfter} seconds`);
-          }
+          logger?.info({ retryAfter }, 'Rate limit exceeded, retrying request');
           return true;
         }
         return false;
@@ -53,11 +49,8 @@ function createOctokitClient(githubToken: string, logger?: Logger) {
           }, 'Secondary rate limit hit');
         }
 
-        // Retry secondary rate limits once
         if (retryCount < 1) {
-          if (logger) {
-            logger.info(`Retrying after ${retryAfter} seconds`);
-          }
+          logger?.info({ retryAfter }, 'Secondary rate limit hit, retrying request');
           return true;
         }
         return false;
@@ -102,13 +95,12 @@ export class GitHubOctokitService {
   }
 
   /**
-   * Get workflow hierarchy with runs, logs, and artifacts
+   * Retrieves workflow hierarchy including runs, logs, and artifacts
    */
   async getHierarchy(limit: number = 30): Promise<GitHubWorkflowHierarchy> {
     try {
-      this.logger.debug({ limit }, 'Fetching workflow hierarchy using Octokit');
+      this.logger.debug({ limit, workflow: this.workflowFileName }, 'Retrieving workflow hierarchy');
       
-      // List workflow runs for the specific workflow
       const { data: runsResponse } = await this.octokit.actions.listWorkflowRuns({
         owner: this.repositoryOwner,
         repo: this.repositoryName,
@@ -119,7 +111,6 @@ export class GitHubOctokitService {
       const workflowRuns = await Promise.all(
         runsResponse.workflow_runs.slice(0, limit).map(async (run) => {
           try {
-            // Fetch logs and artifacts in parallel
             const [logs, artifacts] = await Promise.allSettled([
               this.getWorkflowRunLogs(run.id),
               this.getWorkflowRunArtifacts(run.id),
@@ -135,7 +126,7 @@ export class GitHubOctokitService {
                 updated_at: run.updated_at,
                 html_url: run.html_url,
                 workflow_id: run.workflow_id,
-                workflow_name: 'Test Tasks with Multiple Agents', // Static name for consistency
+                workflow_name: 'Test Tasks with Multiple Agents',
                 head_sha: run.head_sha,
                 head_branch: run.head_branch,
                 run_number: run.run_number,
@@ -194,24 +185,21 @@ export class GitHubOctokitService {
   }
 
   /**
-   * Get workflow run logs by downloading and concatenating log files
+   * Downloads and processes workflow run logs into unified format
    */
   async getWorkflowRunLogs(runId: number): Promise<GitHubWorkflowLog[]> {
     try {
-      this.logger.debug({ runId }, 'Downloading workflow run logs via Octokit');
+      this.logger.debug({ runId }, 'Downloading workflow logs');
 
-      // Download logs zip file
       const response = await this.octokit.actions.downloadWorkflowRunLogs({
         owner: this.repositoryOwner,
         repo: this.repositoryName,
         run_id: runId,
       });
 
-      // Follow redirect to get the actual zip content
       const zipResponse = await fetch(response.url);
       const zipBuffer = Buffer.from(await zipResponse.arrayBuffer());
       
-      // Extract and concatenate all log files
       const zip = new AdmZip(zipBuffer);
       const entries = zip.getEntries();
       
@@ -223,15 +211,16 @@ export class GitHubOctokitService {
         }
       });
 
-      // Create a single log entry with all content (matches current UI expectations)
-      const logs: GitHubWorkflowLog[] = [{
+      if (allLogContent) {
+        this.logger.debug({ runId, contentLength: allLogContent.length }, 'Successfully processed workflow logs');
+      }
+
+      return [{
         job_name: 'Workflow Run',
         job_id: runId,
         content: allLogContent,
         steps: [],
       }];
-
-      return logs;
     } catch (error) {
       this.logger.error({ runId, error }, 'Error fetching workflow run logs');
       return [];
@@ -239,10 +228,12 @@ export class GitHubOctokitService {
   }
 
   /**
-   * Get workflow run artifacts
+   * Retrieves all artifacts for a workflow run with pagination
    */
   async getWorkflowRunArtifacts(runId: number): Promise<GitHubWorkflowArtifact[]> {
     try {
+      this.logger.debug({ runId }, 'Fetching workflow artifacts');
+      
       const artifacts = await this.octokit.paginate(this.octokit.actions.listWorkflowRunArtifacts, {
         owner: this.repositoryOwner,
         repo: this.repositoryName,
@@ -250,7 +241,7 @@ export class GitHubOctokitService {
         per_page: 100,
       });
 
-      return artifacts.map(artifact => ({
+      const mappedArtifacts = artifacts.map(artifact => ({
         id: artifact.id,
         name: artifact.name,
         size_in_bytes: artifact.size_in_bytes,
@@ -260,6 +251,9 @@ export class GitHubOctokitService {
         expired: artifact.expired,
         workflow_run_id: runId,
       }));
+
+      this.logger.debug({ runId, artifactCount: mappedArtifacts.length }, 'Retrieved workflow artifacts');
+      return mappedArtifacts;
     } catch (error) {
       this.logger.error({ runId, error }, 'Error fetching workflow run artifacts');
       return [];
@@ -267,24 +261,25 @@ export class GitHubOctokitService {
   }
 
   /**
-   * Download artifact to a specific path
+   * Downloads specific artifact by name and returns confirmation message
    */
   async downloadArtifact(artifactName: string, runId?: number): Promise<string | null> {
     try {
       if (!runId) {
+        this.logger.warn({ artifactName }, 'Download requested without run ID');
         return null;
       }
 
-      // List artifacts to find the one with matching name
+      this.logger.debug({ artifactName, runId }, 'Looking up artifact for download');
+      
       const artifacts = await this.getWorkflowRunArtifacts(runId);
       const artifact = artifacts.find(a => a.name === artifactName);
       
       if (!artifact) {
-        this.logger.warn({ artifactName, runId }, 'Artifact not found');
+        this.logger.warn({ artifactName, runId, availableArtifacts: artifacts.map(a => a.name) }, 'Artifact not found');
         return null;
       }
 
-      // Download the artifact (this returns a redirect URL)
       await this.octokit.actions.downloadArtifact({
         owner: this.repositoryOwner,
         repo: this.repositoryName,
@@ -292,6 +287,7 @@ export class GitHubOctokitService {
         archive_format: 'zip',
       });
       
+      this.logger.info({ artifactName, runId, artifactId: artifact.id }, 'Artifact download initiated');
       return `Downloaded artifact: ${artifactName}`;
     } catch (error) {
       this.logger.error({ artifactName, runId, error }, 'Error downloading artifact');
@@ -300,11 +296,12 @@ export class GitHubOctokitService {
   }
 
   /**
-   * List all .cast files in an artifact
+   * Lists all cast files within an artifact
    */
   async getCastFilesList(artifactId: number): Promise<Array<{ name: string; path: string; size: number }>> {
     try {
-      // Download artifact zip
+      this.logger.debug({ artifactId }, 'Listing cast files in artifact');
+      
       const response = await this.octokit.actions.downloadArtifact({
         owner: this.repositoryOwner,
         repo: this.repositoryName,
@@ -312,11 +309,9 @@ export class GitHubOctokitService {
         archive_format: 'zip',
       });
 
-      // Follow redirect to get the zip content
       const zipResponse = await fetch(response.url);
       const zipBuffer = Buffer.from(await zipResponse.arrayBuffer());
       
-      // Extract zip and find cast files
       const zip = new AdmZip(zipBuffer);
       const zipEntries = zip.getEntries();
       
@@ -331,45 +326,43 @@ export class GitHubOctokitService {
         }
       });
       
+      this.logger.debug({ artifactId, castFileCount: castFiles.length }, 'Found cast files in artifact');
       return castFiles;
     } catch (error: any) {
-      // Check if artifact has expired
       if (error.status === 410 || error.message?.includes('Artifact has expired')) {
-        this.logger.warn({ artifactId }, 'Artifact has expired');
+        this.logger.warn({ artifactId }, 'Artifact expired, cast files unavailable');
         return [];
       }
-      this.logger.error({ artifactId, error }, 'Error listing cast files from artifact');
+      this.logger.error({ artifactId, error }, 'Failed to list cast files from artifact');
       return [];
     }
   }
 
   /**
-   * Get specific cast file content from artifact by path
+   * Retrieves cast file content by path with security validation
    */
   async getCastFileByPath(artifactId: number, filePath: string): Promise<string | null> {
     try {
-      // Decode URL-encoded path safely (handle double-encoding)
+      this.logger.debug({ artifactId, filePath }, 'Retrieving cast file content');
+      
       let decodedPath = filePath;
       try {
-        // Decode until no more changes (handles multiple encoding layers)
         let previousPath = '';
         while (previousPath !== decodedPath) {
           previousPath = decodedPath;
           decodedPath = decodeURIComponent(decodedPath);
         }
       } catch (decodeError) {
-        this.logger.warn({ filePath, error: decodeError }, 'Failed to decode path, using as-is');
+        this.logger.warn({ filePath, error: decodeError }, 'Path decode failed, using original');
         decodedPath = filePath;
       }
 
-      // Validate path to prevent directory traversal
       const normalizedPath = decodedPath.replace(/\\/g, '/').replace(/\/+/g, '/');
       if (normalizedPath.includes('../') || normalizedPath.includes('..\\') || normalizedPath.startsWith('/')) {
         this.logger.error({ filePath, normalizedPath }, 'Invalid file path (directory traversal detected)');
         return null;
       }
 
-      // Download artifact zip
       const response = await this.octokit.actions.downloadArtifact({
         owner: this.repositoryOwner,
         repo: this.repositoryName,
@@ -377,11 +370,9 @@ export class GitHubOctokitService {
         archive_format: 'zip',
       });
 
-      // Follow redirect to get the zip content
       const zipResponse = await fetch(response.url);
       const zipBuffer = Buffer.from(await zipResponse.arrayBuffer());
       
-      // Extract specific file using normalized path
       const zip = new AdmZip(zipBuffer);
       const entry = zip.getEntry(normalizedPath);
       
@@ -399,21 +390,22 @@ export class GitHubOctokitService {
       
       return content;
     } catch (error: any) {
-      // Check if artifact has expired
       if (error.status === 410 || error.message?.includes('Artifact has expired')) {
-        this.logger.warn({ artifactId, filePath }, 'Artifact has expired, cannot read cast file');
+        this.logger.warn({ artifactId, filePath }, 'Artifact expired, cast file unavailable');
         return null;
       }
-      this.logger.error({ artifactId, filePath, error }, 'Error reading cast file from artifact');
+      this.logger.error({ artifactId, filePath, error }, 'Failed to read cast file from artifact');
       return null;
     }
   }
 
   /**
-   * Get specific workflow run details
+   * Fetches detailed information for a specific workflow run
    */
   async getWorkflowRun(runId: number): Promise<GitHubWorkflowRun | null> {
     try {
+      this.logger.debug({ runId }, 'Fetching workflow run details');
+      
       const { data: run } = await this.octokit.actions.getWorkflowRun({
         owner: this.repositoryOwner,
         repo: this.repositoryName,
@@ -552,48 +544,49 @@ export class GitHubOctokitService {
   }
 
   /**
-   * Get workflow runs associated with a pull request
-   * CRITICAL: Must preserve the exact logic for finding "Test Tasks with Multiple Agents" runs
+   * Retrieves workflow runs for a PR, including all run attempts
+   * Filters specifically for test-tasks.yaml workflow runs
    */
   async getWorkflowRunsForPR(prNumber: number, limit: number = 50): Promise<GitHubWorkflowRun[]> {
     try {
-      // Get all commits for this PR to find the commit range
+      this.logger.debug({ prNumber, limit }, 'Starting workflow runs retrieval for PR');
+      
       const commits = await this.getPRCommits(prNumber);
       
       if (commits.length === 0) {
-        this.logger.warn({ prNumber }, 'No commits found for PR');
+        this.logger.warn({ prNumber }, 'PR has no commits, cannot find workflow runs');
         return [];
       }
 
       this.logger.info({
         prNumber,
         commitCount: commits.length,
-        commitRange: `${commits[commits.length - 1]?.sha?.substring(0, 7)}...${commits[0]?.sha?.substring(0, 7)}`
-      }, 'Fetching workflow runs for PR commits');
+        commitRange: `${commits[commits.length - 1]?.sha?.substring(0, 7)}...${commits[0]?.sha?.substring(0, 7)}`,
+        workflow: this.workflowFileName
+      }, 'Processing commits to find workflow runs');
 
       const allRuns: GitHubWorkflowRun[] = [];
       
       for (const commit of commits) {
         try {
-          // Get runs for this specific commit and workflow
           const { data: runsResponse } = await this.octokit.actions.listWorkflowRuns({
             owner: this.repositoryOwner,
             repo: this.repositoryName,
-            workflow_id: this.workflowFileName, // Use file name: test-tasks.yaml
+            workflow_id: this.workflowFileName,
             head_sha: commit.sha,
             per_page: 100,
           });
           
-          this.logger.info({
-            commitSha: commit.sha.substring(0, 7),
-            runsFound: runsResponse.workflow_runs.length,
-            runNumbers: runsResponse.workflow_runs.map(r => `#${r.run_number}.${r.run_attempt || 1}`)
-          }, 'Found runs for commit');
+          if (runsResponse.workflow_runs.length > 0) {
+            this.logger.debug({
+              commitSha: commit.sha.substring(0, 7),
+              runsFound: runsResponse.workflow_runs.length,
+              runNumbers: runsResponse.workflow_runs.map(r => `#${r.run_number}.${r.run_attempt || 1}`)
+            }, 'Discovered workflow runs for commit');
+          }
 
-          // For each run found, check if it has multiple attempts
           for (const run of runsResponse.workflow_runs) {
             try {
-              // First, add the current attempt (what we have from list runs)
               const currentRun: GitHubWorkflowRun = {
                 id: run.id,
                 name: run.display_title || run.name || null,
@@ -610,16 +603,14 @@ export class GitHubOctokitService {
                 run_attempt: run.run_attempt || 1,
               };
 
-              // Check if this run has previous attempts (run_attempt > 1)
               const maxAttempt = run.run_attempt || 1;
               if (maxAttempt > 1) {
-                this.logger.info({
+                this.logger.debug({
                   runId: run.id,
                   runNumber: run.run_number,
                   maxAttempt
-                }, 'Run has multiple attempts, fetching previous attempts');
+                }, 'Processing multi-attempt workflow run');
 
-                // Fetch all attempts for this run
                 const allAttempts = [currentRun];
                 
                 for (let attemptNum = 1; attemptNum < maxAttempt; attemptNum++) {
@@ -655,23 +646,21 @@ export class GitHubOctokitService {
                 }
                 
                 if (allAttempts.length > 1) {
-                  this.logger.info({
+                  this.logger.debug({
                     runId: run.id,
                     runNumber: run.run_number,
                     attemptCount: allAttempts.length,
-                    attempts: allAttempts.map(a => `attempt ${a.run_attempt} (${a.status}/${a.conclusion})`)
-                  }, 'Successfully found multiple attempts for run');
+                    attempts: allAttempts.map(a => `${a.run_attempt}:${a.status}`)
+                  }, 'Collected all attempts for workflow run');
                 }
                 
                 allRuns.push(...allAttempts);
               } else {
-                // Single attempt run
                 allRuns.push(currentRun);
               }
             } catch (attemptError: any) {
-              this.logger.warn({ runId: run.id, error: attemptError.message }, 'Error processing attempts for run');
+              this.logger.warn({ runId: run.id, error: attemptError.message }, 'Attempt processing failed, using basic run');
               
-              // Fallback to just the basic run
               allRuns.push({
                 id: run.id,
                 name: run.display_title || run.name || null,
@@ -690,14 +679,12 @@ export class GitHubOctokitService {
             }
           }
         } catch (error) {
-          this.logger.error({ commitSha: commit.sha, prNumber, error }, 'Error fetching runs for commit');
+          this.logger.error({ commitSha: commit.sha, prNumber, error }, 'Failed to fetch runs for commit');
         }
       }
       
-      // Sort by created_at descending and limit to requested number
       allRuns.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       
-      // Log run grouping for debugging
       const runGroups = allRuns.reduce((acc: Record<number, number>, run) => {
         acc[run.run_number] = (acc[run.run_number] || 0) + 1;
         return acc;
@@ -720,11 +707,12 @@ export class GitHubOctokitService {
   }
 
   /**
-   * Get workflow bot comments on a pull request
+   * Filters PR comments for bot-generated content including agent analysis
    */
   async getWorkflowBotComments(prNumber: number): Promise<GitHubReviewComment[]> {
     try {
-      // Get all comments on the PR
+      this.logger.debug({ prNumber }, 'Filtering PR comments for bot content');
+      
       const comments = await this.octokit.paginate(this.octokit.issues.listComments, {
         owner: this.repositoryOwner,
         repo: this.repositoryName,
@@ -734,11 +722,9 @@ export class GitHubOctokitService {
       
       const botComments: GitHubReviewComment[] = [];
       
-      // Filter for bot comments (expanded to include Claude and other automation)
       for (const comment of comments) {
         const authorLogin = comment.user?.login?.toLowerCase() || '';
         
-        // Check if the author is a bot or automation system
         const isBotComment =
           authorLogin.includes('bot') ||
           authorLogin === 'github-actions' ||
@@ -766,7 +752,7 @@ export class GitHubOctokitService {
         }
       }
       
-      this.logger.info({ prNumber, count: botComments.length }, 'Found bot comments for PR');
+      this.logger.debug({ prNumber, botComments: botComments.length, totalComments: comments.length }, 'Bot comment filtering completed');
       return botComments;
     } catch (error) {
       this.logger.error({ prNumber, error }, 'Error fetching workflow bot comments for PR');
@@ -775,10 +761,12 @@ export class GitHubOctokitService {
   }
 
   /**
-   * Get a specific pull request by number
+   * Retrieves detailed information for a specific pull request
    */
   async getPullRequest(prNumber: number): Promise<GitHubPullRequest | null> {
     try {
+      this.logger.debug({ prNumber }, 'Fetching pull request details');
+      
       const { data: pr } = await this.octokit.pulls.get({
         owner: this.repositoryOwner,
         repo: this.repositoryName,
@@ -812,11 +800,11 @@ export class GitHubOctokitService {
   }
 
   /**
-   * Get files changed in a pull request
+   * Lists all files modified in a pull request with GitHub API pagination
    */
   async getPRFiles(prNumber: number): Promise<any[]> {
     try {
-      this.logger.debug({ prNumber }, 'Fetching PR files with pagination');
+      this.logger.debug({ prNumber }, 'Retrieving modified files for PR');
 
       const files = await this.octokit.paginate(this.octokit.pulls.listFiles, {
         owner: this.repositoryOwner,
@@ -836,17 +824,13 @@ export class GitHubOctokitService {
         download_url: file.raw_url,
       }));
 
-      this.logger.info({
-        prNumber,
-        fileCount: mappedFiles.length
-      }, 'Fetched PR files');
+      this.logger.debug({ prNumber, fileCount: mappedFiles.length }, 'PR files retrieved');
 
-      // Warn if we're approaching GitHub's limits
       if (mappedFiles.length > 2500) {
         this.logger.warn({
           prNumber,
           fileCount: mappedFiles.length
-        }, 'PR has very large number of files - approaching GitHub API limits (3000 max)');
+        }, 'Large PR detected - approaching GitHub API file limits');
       }
 
       return mappedFiles;
@@ -857,15 +841,18 @@ export class GitHubOctokitService {
   }
 
   /**
-   * Get file content from PR
+   * Retrieves file content from PR head commit with base64 decoding
    */
   async getPRFileContent(prNumber: number, filePath: string): Promise<string | null> {
     try {
-      // Get PR to find the head SHA
       const pr = await this.getPullRequest(prNumber);
-      if (!pr) return null;
+      if (!pr) {
+        this.logger.warn({ prNumber, filePath }, 'Cannot get file content - PR not found');
+        return null;
+      }
 
-      // Fetch file content from the PR's head commit
+      this.logger.debug({ prNumber, filePath, headSha: pr.head.sha.substring(0, 7) }, 'Fetching file content from PR head');
+      
       const { data: content } = await this.octokit.repos.getContent({
         owner: this.repositoryOwner,
         repo: this.repositoryName,
@@ -873,11 +860,13 @@ export class GitHubOctokitService {
         ref: pr.head.sha,
       });
       
-      // Decode base64 content
       if ('content' in content && typeof content.content === 'string') {
-        return Buffer.from(content.content, 'base64').toString('utf-8');
+        const decoded = Buffer.from(content.content, 'base64').toString('utf-8');
+        this.logger.debug({ prNumber, filePath, contentLength: decoded.length }, 'File content decoded successfully');
+        return decoded;
       }
       
+      this.logger.warn({ prNumber, filePath }, 'File content not available or invalid format');
       return null;
     } catch (error) {
       this.logger.error({ prNumber, filePath, error }, 'Error fetching file content');
@@ -886,43 +875,39 @@ export class GitHubOctokitService {
   }
 
   /**
-   * List all tasks in a PR by discovering task subdirectories
+   * Discovers and parses task definitions from PR file changes
    */
   async listPRTasks(prNumber: number): Promise<Array<{ taskId: string; pathPrefix: string; taskYaml: any }>> {
     try {
+      this.logger.debug({ prNumber }, 'Discovering task definitions in PR');
+      
       const files = await this.getPRFiles(prNumber);
 
-      // Find all unique task subdirectories under tasks/
       const taskSubdirs = new Set<string>();
       files.forEach(f => {
         if (f.path.startsWith('tasks/')) {
           const parts = f.path.split('/');
           if (parts.length > 1) {
-            taskSubdirs.add(parts[1]); // Extract task subdirectory name
+            taskSubdirs.add(parts[1]);
           }
         }
       });
 
       if (taskSubdirs.size === 0) {
-        this.logger.info({ prNumber }, 'No task subdirectories found in PR');
+        this.logger.debug({ prNumber }, 'No task directories found in PR');
         return [];
       }
 
-      this.logger.info({ prNumber, taskCount: taskSubdirs.size, tasks: Array.from(taskSubdirs) }, 'Found task subdirectories in PR');
+      this.logger.debug({ prNumber, taskCount: taskSubdirs.size, tasks: Array.from(taskSubdirs) }, 'Discovered task directories');
 
-      // For each task subdirectory, try to find and parse task.yaml
       const tasks = await Promise.all(
         Array.from(taskSubdirs).map(async (taskId) => {
           try {
             const pathPrefix = `tasks/${taskId}`;
-
-            // Try to find task.yaml in this subdirectory
             const taskYamlPath = `${pathPrefix}/task.yaml`;
             const taskYmlPath = `${pathPrefix}/task.yml`;
-
             let taskYaml = null;
 
-            // Fetch via PR file content (uses HEAD commit)
             try {
               let content = await this.getPRFileContent(prNumber, taskYamlPath);
               if (!content) {
@@ -930,26 +915,25 @@ export class GitHubOctokitService {
               }
               if (content) {
                 taskYaml = yaml.load(content);
+                this.logger.debug({ taskId }, 'Task definition parsed successfully');
               }
             } catch (error) {
-              this.logger.warn({ taskId, prNumber, error }, 'task.yaml not found at HEAD commit for task');
+              this.logger.debug({ taskId, prNumber }, 'Task definition not found or invalid');
             }
 
             return { taskId, pathPrefix, taskYaml };
           } catch (error) {
-            this.logger.error({ taskId, prNumber, error }, 'Error processing task');
+            this.logger.error({ taskId, prNumber, error }, 'Task processing failed');
             return { taskId, pathPrefix: `tasks/${taskId}`, taskYaml: null };
           }
         })
       );
 
-      this.logger.info({
+      this.logger.debug({
         prNumber,
         taskCount: tasks.length,
-        subdirCount: taskSubdirs.size,
-        tasksWithYaml: tasks.filter(t => t.taskYaml).length,
-        tasksWithoutYaml: tasks.filter(t => !t.taskYaml).length
-      }, 'Returning tasks from subdirectories');
+        tasksWithDefinitions: tasks.filter(t => t.taskYaml).length
+      }, 'Task discovery completed');
 
       return tasks;
     } catch (error) {
@@ -959,10 +943,12 @@ export class GitHubOctokitService {
   }
 
   /**
-   * Get commit details including message and email
+   * Retrieves commit metadata including author information
    */
   async getCommitDetails(commitSha: string): Promise<{ message: string; author: string; email: string } | null> {
     try {
+      this.logger.debug({ commitSha: commitSha.substring(0, 7) }, 'Fetching commit details');
+      
       const { data: commit } = await this.octokit.repos.getCommit({
         owner: this.repositoryOwner,
         repo: this.repositoryName,
@@ -981,10 +967,12 @@ export class GitHubOctokitService {
   }
 
   /**
-   * Get all commits for a pull request
+   * Retrieves all commits for a pull request with pagination
    */
   async getPRCommits(prNumber: number): Promise<Array<{ sha: string; message: string; author: string; date: string }>> {
     try {
+      this.logger.debug({ prNumber }, 'Fetching PR commits');
+      
       const commits = await this.octokit.paginate(this.octokit.pulls.listCommits, {
         owner: this.repositoryOwner,
         repo: this.repositoryName,
@@ -992,12 +980,15 @@ export class GitHubOctokitService {
         per_page: 100,
       });
       
-      return commits.map(commit => ({
+      const mappedCommits = commits.map(commit => ({
         sha: commit.sha,
         message: commit.commit.message,
         author: commit.commit.author?.name || 'Unknown',
         date: commit.commit.author?.date || new Date().toISOString(),
       }));
+
+      this.logger.debug({ prNumber, commitCount: mappedCommits.length }, 'PR commits retrieved');
+      return mappedCommits;
     } catch (error) {
       this.logger.error({ prNumber, error }, 'Error fetching commits for PR');
       return [];
@@ -1005,10 +996,12 @@ export class GitHubOctokitService {
   }
 
   /**
-   * Get jobs for a workflow run
+   * Retrieves individual job results for a workflow run
    */
   async getWorkflowJobs(runId: number): Promise<Array<{ name: string; conclusion: string | null; status: string }>> {
     try {
+      this.logger.debug({ runId }, 'Fetching workflow job results');
+      
       const jobs = await this.octokit.paginate(this.octokit.actions.listJobsForWorkflowRun, {
         owner: this.repositoryOwner,
         repo: this.repositoryName,
@@ -1016,11 +1009,14 @@ export class GitHubOctokitService {
         per_page: 100,
       });
       
-      return jobs.map(job => ({
+      const mappedJobs = jobs.map(job => ({
         name: job.name,
         conclusion: job.conclusion,
         status: job.status,
       }));
+
+      this.logger.debug({ runId, jobCount: mappedJobs.length }, 'Workflow jobs retrieved');
+      return mappedJobs;
     } catch (error) {
       this.logger.error({ runId, error }, 'Error fetching jobs for run');
       return [];
@@ -1028,11 +1024,12 @@ export class GitHubOctokitService {
   }
 
   /**
-   * Download artifact and extract log files
+   * Extracts log file listings from artifact archive
    */
   async getArtifactLogFiles(artifactId: number): Promise<Array<{ name: string; path: string }>> {
     try {
-      // Download artifact zip
+      this.logger.debug({ artifactId }, 'Extracting log files from artifact');
+      
       const response = await this.octokit.actions.downloadArtifact({
         owner: this.repositoryOwner,
         repo: this.repositoryName,
@@ -1040,11 +1037,9 @@ export class GitHubOctokitService {
         archive_format: 'zip',
       });
 
-      // Follow redirect to get the zip content
       const zipResponse = await fetch(response.url);
       const zipBuffer = Buffer.from(await zipResponse.arrayBuffer());
       
-      // Extract zip and find log files
       const zip = new AdmZip(zipBuffer);
       const zipEntries = zip.getEntries();
       
@@ -1058,38 +1053,37 @@ export class GitHubOctokitService {
         }
       });
       
+      this.logger.debug({ artifactId, logFileCount: logFiles.length }, 'Log files extracted from artifact');
       return logFiles;
     } catch (error: any) {
-      // Check if artifact has expired
       if (error.status === 410 || error.message?.includes('Artifact has expired')) {
-        this.logger.warn({ artifactId }, 'Artifact has expired');
+        this.logger.warn({ artifactId }, 'Artifact expired, log files unavailable');
         return [];
       }
-      this.logger.error({ artifactId, error }, 'Error extracting log files from artifact');
+      this.logger.error({ artifactId, error }, 'Failed to extract log files from artifact');
       return [];
     }
   }
 
   /**
-   * Get specific log file content from artifact
+   * Retrieves specific log file content with path security validation
    */
   async getArtifactLogContent(artifactId: number, filePath: string): Promise<string | null> {
     try {
-      // Decode URL-encoded path safely (handle double-encoding)
+      this.logger.debug({ artifactId, filePath }, 'Retrieving log file content');
+      
       let decodedPath = filePath;
       try {
-        // Decode until no more changes (handles multiple encoding layers)
         let previousPath = '';
         while (previousPath !== decodedPath) {
           previousPath = decodedPath;
           decodedPath = decodeURIComponent(decodedPath);
         }
       } catch (decodeError) {
-        this.logger.warn({ filePath, error: decodeError }, 'Failed to decode path, using as-is');
+        this.logger.warn({ filePath, error: decodeError }, 'Path decode failed, using original');
         decodedPath = filePath;
       }
 
-      // Validate path to prevent directory traversal
       const normalizedPath = decodedPath.replace(/\\/g, '/').replace(/\/+/g, '/');
       if (normalizedPath.includes('../') || normalizedPath.includes('..\\') || normalizedPath.startsWith('/')) {
         this.logger.error({ filePath, normalizedPath }, 'Invalid file path (directory traversal detected)');
@@ -1104,11 +1098,9 @@ export class GitHubOctokitService {
         archive_format: 'zip',
       });
 
-      // Follow redirect to get the zip content
       const zipResponse = await fetch(response.url);
       const zipBuffer = Buffer.from(await zipResponse.arrayBuffer());
       
-      // Extract specific file using normalized path
       const zip = new AdmZip(zipBuffer);
       const entry = zip.getEntry(normalizedPath);
       
@@ -1119,24 +1111,22 @@ export class GitHubOctokitService {
       
       return zip.readAsText(entry);
     } catch (error: any) {
-      // Check if artifact has expired
       if (error.status === 410 || error.message?.includes('Artifact has expired')) {
-        this.logger.warn({ artifactId, filePath }, 'Artifact has expired, cannot read log file');
+        this.logger.warn({ artifactId, filePath }, 'Artifact expired, log file unavailable');
         return null;
       }
-      this.logger.error({ artifactId, filePath, error }, 'Error reading log file from artifact');
+      this.logger.error({ artifactId, filePath, error }, 'Failed to read log file from artifact');
       return null;
     }
   }
 
   /**
-   * Get repository statistics (PR counts by state) using GitHub Search API
+   * Calculates repository PR statistics using GitHub Search API
    */
   async getRepositoryStats(): Promise<{ open: number; closed: number; merged: number; draft: number }> {
     try {
-      this.logger.info({ repo: `${this.repositoryOwner}/${this.repositoryName}` }, 'Getting repository stats');
+      this.logger.debug({ repo: `${this.repositoryOwner}/${this.repositoryName}` }, 'Computing repository statistics');
 
-      // Use GitHub Search API for accurate counts
       const [openResult, closedResult, mergedResult, draftResult] = await Promise.all([
         this.octokit.search.issuesAndPullRequests({
           q: `repo:${this.repositoryOwner}/${this.repositoryName} is:pr is:open`,
@@ -1156,11 +1146,12 @@ export class GitHubOctokitService {
       const merged = mergedResult.data.total_count || 0;
       const totalClosed = closedResult.data.total_count || 0;
       const draft = draftResult.data.total_count || 0;
-      const closed = Math.max(0, totalClosed - merged); // Closed but not merged
+      const closed = Math.max(0, totalClosed - merged);
 
-      this.logger.info({ open, totalClosed, merged, closed, draft }, 'Repository stats computed');
+      const stats = { open, closed, merged, draft };
+      this.logger.info({ ...stats, totalClosed }, 'Repository statistics calculated');
 
-      return { open, closed, merged, draft };
+      return stats;
     } catch (error) {
       this.logger.error({ error }, 'Error fetching repository stats');
       return { open: 0, closed: 0, merged: 0, draft: 0 };
@@ -1168,7 +1159,7 @@ export class GitHubOctokitService {
   }
 
   /**
-   * List all pull requests using REST API with pagination (more reliable than GraphQL)
+   * Lists pull requests with efficient REST API pagination
    */
   async listPullRequests(
     state: 'open' | 'closed' | 'all' = 'all',
@@ -1177,12 +1168,13 @@ export class GitHubOctokitService {
     sortDirection: 'asc' | 'desc' = 'desc'
   ): Promise<GitHubPullRequest[]> {
     try {
-      this.logger.info({
+      this.logger.debug({
         repo: `${this.repositoryOwner}/${this.repositoryName}`,
         limit,
         state,
-        sortBy
-      }, 'Fetching PRs using GitHub REST API with pagination');
+        sortBy,
+        sortDirection
+      }, 'Retrieving pull requests via REST API');
       
       const restPulls = await this.octokit.paginate(this.octokit.pulls.list, {
         owner: this.repositoryOwner,
