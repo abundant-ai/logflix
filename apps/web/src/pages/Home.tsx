@@ -69,11 +69,14 @@ export default function Home({ repoName }: HomeProps) {
     const prTitle = params.get('title');
 
     if (prNumber) {
-      setSelectedPR({
-        type: 'pr',
-        prNumber: parseInt(prNumber, 10),
-        prTitle: prTitle || ''
-      });
+      const parsedPRNumber = Number(prNumber);
+      if (!isNaN(parsedPRNumber) && parsedPRNumber > 0) {
+        setSelectedPR({
+          type: 'pr',
+          prNumber: parsedPRNumber,
+          prTitle: prTitle || ''
+        });
+      }
     }
   }, [searchString]);
 
