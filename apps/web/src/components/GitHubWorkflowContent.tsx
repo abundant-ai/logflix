@@ -63,6 +63,16 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
   const [castType, setCastType] = useState<'agent' | 'tests'>('agent');
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
+  // Helper to create API parameters with consistent base values
+  const createAPIParams = (additionalParams?: Record<string, string>) => {
+    return new URLSearchParams({
+      owner: organization,
+      repo: repoName,
+      workflow: workflow,
+      ...additionalParams
+    });
+  };
+
   // Reset all selections when PR changes
   useEffect(() => {
     setSelectedCommitSha(null);
@@ -80,12 +90,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
     queryFn: async () => {
       if (!selectedPR) throw new Error('No PR selected');
       
-      const params = new URLSearchParams({
-        owner: organization,
-        repo: repoName,
-        workflow: workflow
-      });
-      
+      const params = createAPIParams();
       const response = await fetch(`/api/github/pull-request/${selectedPR.prNumber}?${params}`);
       if (!response.ok) throw new Error(`Failed to fetch PR: ${response.statusText}`);
       return response.json();
@@ -101,12 +106,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
     queryFn: async () => {
       if (!selectedPR) throw new Error('No PR selected');
       
-      const params = new URLSearchParams({
-        owner: organization,
-        repo: repoName,
-        workflow: workflow
-      });
-      
+      const params = createAPIParams();
       const response = await fetch(`/api/github/pr-commits/${selectedPR.prNumber}?${params}`);
       if (!response.ok) throw new Error(`Failed to fetch commits: ${response.statusText}`);
       return response.json();
@@ -137,12 +137,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
     queryFn: async () => {
       if (!selectedPR) throw new Error('No PR selected');
       
-      const params = new URLSearchParams({
-        owner: organization,
-        repo: repoName,
-        workflow: workflow
-      });
-      
+      const params = createAPIParams();
       const response = await fetch(`/api/github/pr-workflow-runs/${selectedPR.prNumber}?${params}`);
       if (!response.ok) throw new Error(`Failed to fetch workflow runs: ${response.statusText}`);
       return response.json();
@@ -259,12 +254,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
     queryFn: async () => {
       if (!selectedRunId) throw new Error('No run selected');
       
-      const params = new URLSearchParams({
-        owner: organization,
-        repo: repoName,
-        workflow: workflow
-      });
-      
+      const params = createAPIParams();
       const response = await fetch(`/api/github/workflow-run/${selectedRunId}?${params}`);
       if (!response.ok) throw new Error(`Failed to fetch run details: ${response.statusText}`);
       return response.json();
@@ -278,12 +268,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
     queryFn: async () => {
       if (!selectedPR) throw new Error('No PR selected');
       
-      const params = new URLSearchParams({
-        owner: organization,
-        repo: repoName,
-        workflow: workflow
-      });
-      
+      const params = createAPIParams();
       const response = await fetch(`/api/github/pr-bot-comments/${selectedPR.prNumber}?${params}`);
       if (!response.ok) throw new Error(`Failed to fetch bot comments: ${response.statusText}`);
       return response.json();
@@ -297,12 +282,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
     queryFn: async () => {
       if (!selectedPR) throw new Error('No PR selected');
       
-      const params = new URLSearchParams({
-        owner: organization,
-        repo: repoName,
-        workflow: workflow
-      });
-      
+      const params = createAPIParams();
       const response = await fetch(`/api/github/pr-tasks/${selectedPR.prNumber}?${params}`);
       if (!response.ok) throw new Error(`Failed to fetch tasks: ${response.statusText}`);
       return response.json();
@@ -889,7 +869,12 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
             {hasMultipleAttempts && (
               <Select
                 value={selectedRunId?.toString() || ""}
-                onValueChange={(value) => setSelectedRunId(parseInt(value, 10))}
+                onValueChange={(value) => {
+                  const numValue = Number(value);
+                  if (!isNaN(numValue)) {
+                    setSelectedRunId(numValue);
+                  }
+                }}
               >
                 <SelectTrigger className="w-60 h-8 text-xs">
                   <SelectValue />
