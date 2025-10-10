@@ -1,23 +1,29 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import type { Logger } from "pino";
-import { GitHubCliService } from "@logflix/github-client";
+import { GitHubOctokitService } from "@logflix/github-client";
 import { requireAuth, requireAdmin, requireRepositoryAccess } from "./middleware/auth";
 import { clerkClient } from "@clerk/express";
 import { UserRole, UserMetadata, AuthContext, canAccessRepository } from "@logflix/shared/auth";
+import { GitHubWorkflowArtifact } from "@logflix/shared/schema";
 
 export async function registerRoutes(app: Express, logger: Logger): Promise<Server> {
-  // Helper to create service instance with query params
+  /**
+   * Creates GitHub service instance with request-specific parameters
+   */
   const getGitHubService = (query: any, requestLogger?: Logger, githubToken?: string) => {
     const owner = typeof query.owner === 'string' ? query.owner : undefined;
     const repo = typeof query.repo === 'string' ? query.repo : undefined;
     const workflow = typeof query.workflow === 'string' ? query.workflow : undefined;
-    return new GitHubCliService(owner, repo, workflow, requestLogger || logger, githubToken);
+    
+    if (requestLogger) {
+      requestLogger.debug({ owner, repo, workflow, hasToken: !!githubToken }, 'Creating GitHub service instance');
+    }
+    
+    return new GitHubOctokitService(owner, repo, workflow, requestLogger || logger, githubToken);
   };
 
   // ============= USER & PERMISSIONS API ROUTES =============
-
-  // Get current user's permissions and role
   app.get("/api/user/permissions", requireAuth, async (req, res) => {
     try {
       const authContext = res.locals.auth as AuthContext;
@@ -36,7 +42,6 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
     }
   });
 
-  // Get accessible repositories for the current user
   app.get("/api/user/repositories", requireAuth, async (req, res) => {
     try {
       const authContext = res.locals.auth as AuthContext;
@@ -51,24 +56,24 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
         assignedRepos: authContext.assignedRepositories,
       }, "Fetching accessible repositories for user");
 
-      // If admin, return all repositories
       if (authContext.role === UserRole.ADMIN) {
-        requestLogger.info("Admin user - returning all repositories");
+        requestLogger.info({ userId: authContext.userId }, "Admin access granted - returning all repositories");
         res.json({
           hasAllAccess: true,
           organization: ORGANIZATION,
           repositories: REPOSITORIES,
         });
       } else {
-        // For members, return only their assigned repositories
         const accessibleRepos = REPOSITORIES.filter(repo =>
           canAccessRepository(authContext.role, authContext.assignedRepositories, `${ORGANIZATION}/${repo.name}`)
         );
 
         requestLogger.info({
+          userId: authContext.userId,
           assignedCount: authContext.assignedRepositories.length,
           filteredCount: accessibleRepos.length,
-        }, "Member user - returning assigned repositories");
+          repositories: accessibleRepos.map(r => r.name)
+        }, "Member access - returning assigned repositories");
 
         res.json({
           hasAllAccess: false,
@@ -84,8 +89,6 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
   });
 
   // ============= ADMIN API ROUTES =============
-
-  // List all users (admin only)
   app.get("/api/admin/users", requireAuth, requireAdmin, async (req, res) => {
     try {
       const client = clerkClient;
@@ -94,7 +97,7 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
       });
 
       const users = usersResponse.data.map((user) => {
-        const metadata = (user.publicMetadata || {}) as UserMetadata;
+        const metadata = ((user.publicMetadata as unknown) || {}) as UserMetadata;
         return {
           id: user.id,
           email: user.emailAddresses.find((e) => e.id === user.primaryEmailAddressId)?.emailAddress,
@@ -114,7 +117,6 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
     }
   });
 
-  // Update user role (admin only)
   app.patch("/api/admin/users/:userId/role", requireAuth, requireAdmin, async (req, res) => {
     try {
       const { userId } = req.params;
@@ -126,9 +128,8 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
 
       const client = clerkClient;
       const user = await client.users.getUser(userId);
-      const metadata = (user.publicMetadata || {}) as UserMetadata;
+      const metadata = ((user.publicMetadata as unknown) || {}) as UserMetadata;
 
-      // Update role in public metadata
       await client.users.updateUser(userId, {
         publicMetadata: {
           ...metadata,
@@ -148,7 +149,6 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
     }
   });
 
-  // Update user's assigned repositories (admin only)
   app.patch("/api/admin/users/:userId/repositories", requireAuth, requireAdmin, async (req, res) => {
     try {
       const { userId } = req.params;
@@ -158,7 +158,6 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
         return res.status(400).json({ error: "Repositories must be an array" });
       }
 
-      // Validate repository format (owner/repo)
       const isValid = repositories.every((repo) => {
         const parts = repo.split('/');
         return parts.length === 2 && parts[0] && parts[1];
@@ -170,9 +169,8 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
 
       const client = clerkClient;
       const user = await client.users.getUser(userId);
-      const metadata = (user.publicMetadata || {}) as UserMetadata;
+      const metadata = ((user.publicMetadata as unknown) || {}) as UserMetadata;
 
-      // Update assigned repositories
       await client.users.updateUser(userId, {
         publicMetadata: {
           ...metadata,
@@ -193,17 +191,17 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
   });
 
   // ============= GITHUB API ROUTES =============
-  // All routes below require authentication and repository access
-
-  // Get repository statistics (PR counts by state)
   app.get("/api/github/repo-stats/:owner/:repo", requireAuth, requireRepositoryAccess, async (req, res) => {
     try {
       const { owner, repo } = req.params;
       const requestLogger = res.locals.logger || logger;
       const githubToken = res.locals.githubToken;
-      const githubService = new GitHubCliService(owner, repo, undefined, requestLogger, githubToken);
+      const githubService = new GitHubOctokitService(owner, repo, undefined, requestLogger, githubToken);
 
+      requestLogger.debug({ owner, repo }, 'Calculating repository statistics');
       const stats = await githubService.getRepositoryStats();
+      
+      requestLogger.debug({ ...stats }, 'Repository statistics calculated successfully');
       res.json(stats);
     } catch (error) {
       const requestLogger = res.locals.logger || logger;
@@ -212,7 +210,6 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
     }
   });
 
-  // List pull requests with filters
   app.get("/api/github/pull-requests", requireAuth, requireRepositoryAccess, async (req, res) => {
     try {
       const { state, limit, sort, direction } = req.query;
@@ -229,7 +226,11 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
         return res.status(400).json({ error: "Invalid limit parameter (must be 1-5000)" });
       }
 
+      requestLogger.debug({ state: stateValue, limit: limitNumber, sort: sortValue, direction: directionValue }, 'Fetching pull requests with filters');
+      
       const pullRequests = await githubService.listPullRequests(stateValue, limitNumber, sortValue, directionValue);
+      
+      requestLogger.info({ count: pullRequests.length, limit: limitNumber }, 'Pull requests retrieved successfully');
       res.json({ pullRequests, total_count: pullRequests.length });
     } catch (error) {
       const requestLogger = res.locals.logger || logger;
@@ -238,7 +239,6 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
     }
   });
 
-  // Get a specific pull request
   app.get("/api/github/pull-request/:prNumber", requireAuth, requireRepositoryAccess, async (req, res) => {
     try {
       const { prNumber } = req.params;
@@ -251,12 +251,16 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
       }
 
       const prNumberInt = parseInt(prNumber, 10);
+      
+      requestLogger.debug({ prNumber: prNumberInt }, 'Fetching pull request details');
       const pullRequest = await githubService.getPullRequest(prNumberInt);
 
       if (!pullRequest) {
+        requestLogger.warn({ prNumber: prNumberInt }, 'Pull request not found');
         return res.status(404).json({ error: "Pull request not found" });
       }
 
+      requestLogger.debug({ prNumber: prNumberInt, title: pullRequest.title }, 'Pull request details retrieved');
       res.json(pullRequest);
     } catch (error) {
       const requestLogger = res.locals.logger || logger;
@@ -265,7 +269,6 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
     }
   });
 
-  // Get workflow runs for a pull request
   app.get("/api/github/pr-workflow-runs/:prNumber", requireAuth, requireRepositoryAccess, async (req, res) => {
     try {
       const { prNumber } = req.params;
@@ -281,7 +284,15 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
       const prNumberInt = parseInt(prNumber, 10);
       const limitNumber = limit && typeof limit === 'string' ? parseInt(limit, 10) : 50;
 
+      requestLogger.debug({ prNumber: prNumberInt, limit: limitNumber }, 'Fetching workflow runs for PR');
       const runs = await githubService.getWorkflowRunsForPR(prNumberInt, limitNumber);
+      
+      requestLogger.info({
+        prNumber: prNumberInt,
+        runsFound: runs.length,
+        limit: limitNumber
+      }, 'Workflow runs retrieved for PR');
+      
       res.json({ runs, total_count: runs.length });
     } catch (error) {
       const requestLogger = res.locals.logger || logger;
@@ -290,7 +301,6 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
     }
   });
 
-  // Get workflow bot comments for a pull request
   app.get("/api/github/pr-bot-comments/:prNumber", requireAuth, requireRepositoryAccess, async (req, res) => {
     try {
       const { prNumber } = req.params;
@@ -303,8 +313,11 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
       }
 
       const prNumberInt = parseInt(prNumber, 10);
+      
+      requestLogger.debug({ prNumber: prNumberInt }, 'Filtering bot comments for PR');
       const comments = await githubService.getWorkflowBotComments(prNumberInt);
 
+      requestLogger.debug({ prNumber: prNumberInt, commentCount: comments.length }, 'Bot comments filtered');
       res.json({ comments });
     } catch (error) {
       const requestLogger = res.locals.logger || logger;
@@ -313,7 +326,6 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
     }
   });
 
-  // Get GitHub workflow hierarchy (kept for backwards compatibility)
   app.get("/api/github/hierarchy", requireAuth, requireRepositoryAccess, async (req, res) => {
     try {
       const { limit } = req.query;
@@ -326,7 +338,14 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
         return res.status(400).json({ error: "Invalid limit parameter (must be 1-100)" });
       }
 
+      requestLogger.debug({ limit: limitNumber }, 'Fetching workflow hierarchy');
       const hierarchy = await githubService.getHierarchy(limitNumber);
+      
+      requestLogger.debug({
+        runsCount: hierarchy.workflow_runs.length,
+        totalCount: hierarchy.total_count
+      }, 'Workflow hierarchy retrieved');
+      
       res.json(hierarchy);
     } catch (error) {
       const requestLogger = res.locals.logger || logger;
@@ -335,7 +354,6 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
     }
   });
 
-  // Get specific workflow run details with logs and artifacts
   app.get("/api/github/workflow-run/:runId", requireAuth, requireRepositoryAccess, async (req, res) => {
     try {
       const { runId } = req.params;
@@ -349,7 +367,8 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
 
       const runIdNumber = parseInt(runId, 10);
 
-      // Fetch workflow run, logs, and artifacts in parallel
+      requestLogger.debug({ runId: runIdNumber }, 'Fetching workflow run with logs and artifacts');
+      
       const [workflowRun, logs, artifacts] = await Promise.allSettled([
         githubService.getWorkflowRun(runIdNumber),
         githubService.getWorkflowRunLogs(runIdNumber),
@@ -359,6 +378,7 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
       const run = workflowRun.status === 'fulfilled' ? workflowRun.value : null;
 
       if (!run) {
+        requestLogger.warn({ runId: runIdNumber }, 'Workflow run not found');
         return res.status(404).json({ error: "Workflow run not found" });
       }
 
@@ -370,6 +390,13 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
                  (artifacts.status === 'fulfilled' && artifacts.value.length > 0),
       };
 
+      requestLogger.debug({
+        runId: runIdNumber,
+        hasLogs: logs.status === 'fulfilled' && logs.value.length > 0,
+        artifactCount: artifacts.status === 'fulfilled' ? artifacts.value.length : 0,
+        hasData: response.hasData
+      }, 'Workflow run details assembled');
+
       res.json(response);
     } catch (error) {
       const requestLogger = res.locals.logger || logger;
@@ -378,7 +405,6 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
     }
   });
 
-  // Get workflow run logs
   app.get("/api/github/workflow-logs/:runId", requireAuth, requireRepositoryAccess, async (req, res) => {
     try {
       const { runId } = req.params;
@@ -391,8 +417,11 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
       }
 
       const runIdNumber = parseInt(runId, 10);
+      
+      requestLogger.debug({ runId: runIdNumber }, 'Fetching workflow logs');
       const logs = await githubService.getWorkflowRunLogs(runIdNumber);
 
+      requestLogger.debug({ runId: runIdNumber, logCount: logs.length }, 'Workflow logs retrieved');
       res.json({ logs });
     } catch (error) {
       const requestLogger = res.locals.logger || logger;
@@ -401,7 +430,6 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
     }
   });
 
-  // Get workflow run artifacts (specifically cast files)
   app.get("/api/github/workflow-artifacts/:runId", requireAuth, requireRepositoryAccess, async (req, res) => {
     try {
       const { runId } = req.params;
@@ -414,14 +442,21 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
       }
 
       const runIdNumber = parseInt(runId, 10);
+      
+      requestLogger.debug({ runId: runIdNumber }, 'Fetching and filtering cast artifacts');
       const allArtifacts = await githubService.getWorkflowRunArtifacts(runIdNumber);
 
-      // Filter for cast files
-      const artifacts = allArtifacts.filter((artifact: any) =>
+      const artifacts = allArtifacts.filter((artifact) =>
         artifact.name.toLowerCase().includes('cast') ||
         artifact.name.toLowerCase().includes('asciinema') ||
         artifact.name.toLowerCase().includes('recording')
       );
+
+      requestLogger.debug({
+        runId: runIdNumber,
+        totalArtifacts: allArtifacts.length,
+        castArtifacts: artifacts.length
+      }, 'Cast artifacts filtered');
 
       res.json({ artifacts });
     } catch (error) {
@@ -431,7 +466,6 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
     }
   });
 
-  // Download specific artifact
   app.get("/api/github/download-artifact/:runId/:artifactName", requireAuth, requireRepositoryAccess, async (req, res) => {
     try {
       const { runId, artifactName } = req.params;
@@ -448,12 +482,16 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
       }
 
       const runIdNumber = parseInt(runId, 10);
+      
+      requestLogger.debug({ runId: runIdNumber, artifactName }, 'Initiating artifact download');
       const result = await githubService.downloadArtifact(artifactName, runIdNumber);
 
       if (!result) {
+        requestLogger.warn({ runId: runIdNumber, artifactName }, 'Artifact download failed');
         return res.status(404).json({ error: "Artifact not found or failed to download" });
       }
 
+      requestLogger.info({ runId: runIdNumber, artifactName }, 'Artifact download completed');
       res.json({ message: result });
     } catch (error) {
       const requestLogger = res.locals.logger || logger;
@@ -462,7 +500,6 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
     }
   });
 
-  // Get pull requests for a commit SHA
   app.get("/api/github/pull-requests/:commitSha", requireAuth, requireRepositoryAccess, async (req, res) => {
     try {
       const { commitSha } = req.params;
@@ -474,7 +511,14 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
         return res.status(400).json({ error: "Commit SHA is required" });
       }
 
+      requestLogger.debug({ commitSha: commitSha.substring(0, 7) }, 'Finding PRs associated with commit');
       const pullRequests = await githubService.getPullRequestsForCommit(commitSha);
+      
+      requestLogger.debug({
+        commitSha: commitSha.substring(0, 7),
+        prCount: pullRequests.length
+      }, 'PRs found for commit');
+      
       res.json({ pullRequests });
     } catch (error) {
       const requestLogger = res.locals.logger || logger;
@@ -541,14 +585,14 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
       const allArtifacts = await githubService.getWorkflowRunArtifacts(runIdNumber);
 
       // Filter for cast-related artifacts
-      const castArtifacts = allArtifacts.filter((artifact: any) =>
+      const castArtifacts = allArtifacts.filter((artifact) =>
         artifact.name.toLowerCase().includes('cast') ||
         artifact.name.toLowerCase().includes('asciinema') ||
         artifact.name.toLowerCase().includes('recording')
       );
 
       // Get cast files from each artifact
-      const castFilesPromises = castArtifacts.map(async (artifact: any) => {
+      const castFilesPromises = castArtifacts.map(async (artifact) => {
         const files = await githubService.getCastFilesList(artifact.id);
         return {
           artifact_id: artifact.id,
