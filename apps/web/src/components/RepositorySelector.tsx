@@ -3,10 +3,10 @@ import { GitPullRequest, FolderGit2, ExternalLink, ChevronRight, Loader2, Shield
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import GlobalHeader from "./GlobalHeader";
 
 interface RepositorySelectorProps {
   onSelectRepo: (repoName: string) => void;
-  userButton?: React.ReactNode;
 }
 
 interface Repository {
@@ -108,7 +108,7 @@ function RepositoryCard({ repo, organization, onSelect }: { repo: Repository; or
   );
 }
 
-export default function RepositorySelector({ onSelectRepo, userButton }: RepositorySelectorProps) {
+export default function RepositorySelector({ onSelectRepo }: RepositorySelectorProps) {
   // Fetch accessible repositories from authenticated API
   // Repository access is automatically synced from GitHub on authentication
   const { data: repoData, isLoading, error } = useQuery<UserRepositoriesResponse>({
@@ -131,29 +131,10 @@ export default function RepositorySelector({ onSelectRepo, userButton }: Reposit
 
   return (
     <div className="flex-1 flex flex-col bg-background">
-      {/* Header */}
-      <header className="bg-card border-b border-border px-6 py-5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            {userButton}
-            <div className="h-6 w-px bg-border" />
-            <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-              <GitPullRequest className="h-6 w-6" />
-              LogFlix
-            </h1>
-          </div>
-          <div className="flex items-center gap-3">
-            <p className="text-sm text-muted-foreground">
-              {organization ? `Terminal Bench Log Viewer for ${organization}` : 'Terminal Bench Log Viewer'}
-            </p>
-            {!isLoading && repositories.length > 0 && (
-              <Badge variant="outline" className="text-sm">
-                {repositories.length} {repositories.length === 1 ? 'Repository' : 'Repositories'}
-              </Badge>
-            )}
-          </div>
-        </div>
-      </header>
+      <GlobalHeader
+        showRepoStats={true}
+        repositoryCount={repositories.length}
+      />
 
       {/* Repository Cards */}
       <div className="flex-1 overflow-y-auto p-6">

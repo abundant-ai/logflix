@@ -21,10 +21,9 @@ interface NavigationSidebarProps {
   organization: string;
   workflow: string;
   onBack: () => void;
-  userButton?: React.ReactNode;
 }
 
-export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, organization, workflow, onBack, userButton }: NavigationSidebarProps) {
+export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, organization, workflow, onBack }: NavigationSidebarProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState<'created' | 'updated'>('created');
   const [authorFilter, setAuthorFilter] = useState("");
@@ -213,59 +212,17 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, or
 
   return (
     <div className="w-80 bg-card border-r border-border flex flex-col" data-testid="navigation-sidebar">
-      {/* Header */}
-      <div className="p-4 border-b border-border">
-        <div className="flex items-center justify-between gap-4">
-          {/* Left: Back button + LogFlix branding + repo info */}
-          <div className="flex items-center gap-2 min-w-0">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 w-7 p-0 flex-shrink-0"
-              onClick={onBack}
-              title="Back to repositories"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-            <div className="flex flex-col min-w-0">
-              <h1 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                <GitPullRequest className="h-5 w-5 flex-shrink-0" />
-                LogFlix
-              </h1>
-              <div className="text-xs text-muted-foreground truncate">
-                {organization}/{repoName}
-              </div>
-            </div>
-          </div>
-
-          {/* Middle: Status indicator + PR count */}
-          <div className="flex items-center gap-3 flex-shrink-0">
-            <div className="flex items-center gap-1.5">
-              <div className={`w-2 h-2 rounded-full ${
-                error ? 'bg-destructive' : isLoading ? 'bg-warning animate-pulse' : 'bg-success'
-              }`}></div>
-              <span className="text-xs text-muted-foreground whitespace-nowrap">
-                {error ? 'Error' : isLoading ? 'Syncing...' : 'Live'}
-              </span>
-            </div>
-            {statsData && (
-              <>
-                <div className="h-4 w-px bg-border" />
-                <div className="flex items-center gap-1.5">
-                  <BarChart3 className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className="text-xs text-muted-foreground font-medium">
-                    {statsData.open + statsData.closed + statsData.merged}
-                  </span>
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Right: User button */}
-          <div className="flex-shrink-0">
-            {userButton}
-          </div>
-        </div>
+      {/* Back Button */}
+      <div className="p-3 border-b border-border">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full justify-start gap-2"
+          onClick={onBack}
+        >
+          <ArrowLeft className="h-4 w-4" />
+          <span>Back to Repositories</span>
+        </Button>
       </div>
 
       {/* Search and Advanced Controls */}

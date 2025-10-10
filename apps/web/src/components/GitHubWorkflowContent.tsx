@@ -902,37 +902,35 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
 
   return (
     <div className="flex-1 flex flex-col">
-      {/* Header with Breadcrumbs and Run Selector - FIXED POSITION */}
-      <header className="bg-card border-b border-border px-6 py-5 sticky top-0 z-10">
-        <div className="flex items-center justify-between gap-8">
-          <nav className="flex items-center space-x-2 text-base flex-shrink min-w-0" data-testid="breadcrumbs">
-            <span className="text-muted-foreground font-medium truncate max-w-2xl" title={`#${prData.number}: ${prData.title}`}>
+      {/* Header - Part of content flow, not sticky */}
+      <header className="bg-card border-b border-border px-6 py-3">
+        <div className="flex items-center justify-between gap-4">
+          {/* PR Title */}
+          <div className="min-w-0 flex-1">
+            <h2 className="text-sm font-medium text-foreground truncate" title={`#${prData.number}: ${prData.title}`}>
               #{prData.number}: {prData.title}
-            </span>
-            {selectedCommit && (
-              <>
-                <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                <code className="text-foreground font-medium whitespace-nowrap" title={selectedCommit.message}>
+            </h2>
+            <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+              {selectedCommit && (
+                <code className="font-mono" title={selectedCommit.message}>
                   {selectedCommit.sha.substring(0, 7)}
                 </code>
-              </>
-            )}
-            {selectedRun && (
-              <>
-                <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                <span className="text-foreground font-medium whitespace-nowrap">#{selectedRun.run_number}</span>
-              </>
-            )}
-          </nav>
+              )}
+              {selectedRun && selectedCommit && <span>•</span>}
+              {selectedRun && (
+                <span>Run #{selectedRun.run_number}</span>
+              )}
+            </div>
+          </div>
 
-          <div className="flex items-center gap-3 flex-shrink-0">
+          <div className="flex items-center gap-2 flex-shrink-0">
             {/* Run Selector - Show when multiple attempts exist for any run number */}
             {hasMultipleAttempts && (
               <Select
                 value={selectedRunId?.toString() || ""}
                 onValueChange={(value) => setSelectedRunId(parseInt(value, 10))}
               >
-                <SelectTrigger className="w-80 h-9">
+                <SelectTrigger className="w-60 h-8 text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="w-96">
@@ -996,7 +994,7 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
                 value={selectedCommitSha || ""}
                 onValueChange={(value) => setSelectedCommitSha(value)}
               >
-                <SelectTrigger className="w-80 h-9">
+                <SelectTrigger className="w-60 h-8">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="w-96">

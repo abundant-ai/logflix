@@ -5,11 +5,11 @@ import { ArrowLeft, Loader2, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import NavigationSidebar from "@/components/NavigationSidebar";
 import GitHubWorkflowContent from "@/components/GitHubWorkflowContent";
+import GlobalHeader from "@/components/GlobalHeader";
 import { GitHubPRSelection } from "@logflix/shared/schema";
 
 interface HomeProps {
   repoName: string;
-  userButton?: React.ReactNode;
 }
 
 interface Repository {
@@ -25,7 +25,7 @@ interface UserRepositoriesResponse {
   repositories: Repository[];
 }
 
-export default function Home({ repoName, userButton }: HomeProps) {
+export default function Home({ repoName }: HomeProps) {
   const [, setLocation] = useLocation();
   const searchString = useSearch();
 
@@ -48,6 +48,19 @@ export default function Home({ repoName, userButton }: HomeProps) {
   // Validate repository access
   const repo = repoData?.repositories.find(r => r.name === repoName);
   const organization = repoData?.organization || '';
+
+  // Fetch PR stats for the header
+  const { data: prStats } = useQuery<{ open: number; closed: number; merged: number }>({
+    queryKey: ["/api/github/repo-stats", organization, repoName],
+    queryFn: async () => {
+      const response = await fetch(`/api/github/repo-stats/${organization}/${repoName}`);
+      if (!response.ok) throw new Error(`Failed to fetch repo stats: ${response.statusText}`);
+      return response.json();
+    },
+    enabled: !!organization && !!repoName && !!repo,
+    staleTime: 10 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+  });
 
   // Show loading state
   if (isLoading) {
@@ -131,17 +144,29 @@ export default function Home({ repoName, userButton }: HomeProps) {
   };
 
   return (
-    <div className="flex h-screen bg-background text-foreground">
-      <NavigationSidebar
-        onSelectPR={handleSelectPR}
-        selectedPR={selectedPR}
-        repoName={repoName}
+    <div className="flex flex-col h-screen bg-background text-foreground">
+      <GlobalHeader
         organization={organization}
+        repository={repoName}
         workflow={repo.workflow}
-        onBack={() => setLocation('/')}
-        userButton={userButton}
+        prStats={prStats ? {
+          open: prStats.open,
+          merged: prStats.merged,
+          closed: prStats.closed,
+          total: prStats.open + prStats.merged + prStats.closed
+        } : undefined}
       />
-      <GitHubWorkflowContent selectedPR={selectedPR} />
+      <div className="flex flex-1 overflow-hidden">
+        <NavigationSidebar
+          onSelectPR={handleSelectPR}
+          selectedPR={selectedPR}
+          repoName={repoName}
+          organization={organization}
+          workflow={repo.workflow}
+          onBack={() => setLocation('/')}
+        />
+        <GitHubWorkflowContent selectedPR={selectedPR} />
+      </div>
     </div>
   );
 }

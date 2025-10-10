@@ -73,7 +73,6 @@ function AuthenticatedRouter() {
         <SignedIn>
           <RepositorySelector
             onSelectRepo={(repo) => setLocation(`/repo/${repo}`)}
-            userButton={<StyledUserButton />}
           />
         </SignedIn>
       </Route>
@@ -87,7 +86,6 @@ function AuthenticatedRouter() {
             <SignedIn>
               <Home
                 repoName={params.repo}
-                userButton={<StyledUserButton />}
               />
             </SignedIn>
           </>
