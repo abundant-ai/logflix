@@ -121,7 +121,9 @@ async function syncGitHubAccessIfNeeded(
     };
 
     await clerkClient.users.updateUserMetadata(userId, {
-      publicMetadata: updatedMetadata as unknown as Record<string, unknown>, // Clerk type compatibility
+      // Type assertion required due to Clerk SDK type mismatch with UserMetadata interface
+      // This safely converts our strongly-typed UserMetadata to Clerk's expected generic record type
+      publicMetadata: updatedMetadata as unknown as Record<string, unknown>,
     });
 
     if (requestLogger) {
