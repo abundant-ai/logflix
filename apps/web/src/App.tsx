@@ -1,5 +1,5 @@
 import { Switch, Route, Redirect } from "wouter";
-import { SignedIn, SignedOut, useUser, UserButton } from "@clerk/clerk-react";
+import { SignedIn, SignedOut, useUser, UserButton, AuthenticateWithRedirectCallback } from "@clerk/clerk-react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -18,7 +18,6 @@ const isClerkEnabled = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 // Create a reusable UserButton component with consistent styling
 const StyledUserButton = () => (
   <UserButton
-    afterSignOutUrl="/sign-in"
     appearance={clerkTheme}
   />
 );
@@ -60,9 +59,10 @@ function AuthenticatedRouter() {
 
       {/* Clerk SSO callback route */}
       <Route path="/sso-callback">
-        <div className="flex min-h-screen items-center justify-center bg-background">
-          <div className="text-lg text-muted-foreground">Completing sign in...</div>
-        </div>
+        <AuthenticateWithRedirectCallback
+          signInFallbackRedirectUrl="/"
+          signUpFallbackRedirectUrl="/"
+        />
       </Route>
 
       {/* Protected routes */}

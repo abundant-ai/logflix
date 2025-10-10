@@ -14,8 +14,6 @@ if (PUBLISHABLE_KEY) {
   root.render(
     <ClerkProvider
       publishableKey={PUBLISHABLE_KEY}
-      afterSignInUrl="/"
-      afterSignUpUrl="/"
       signInUrl="/sign-in"
       signUpUrl="/sign-up"
       appearance={{
