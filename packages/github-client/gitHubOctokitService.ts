@@ -157,7 +157,7 @@ export class GitHubOctokitService {
                 updated_at: run.updated_at,
                 html_url: run.html_url,
                 workflow_id: run.workflow_id,
-                workflow_name: 'Test Tasks with Multiple Agents',
+                workflow_name: await this.getWorkflowName(),
                 head_sha: run.head_sha,
                 head_branch: run.head_branch,
                 run_number: run.run_number,
@@ -683,7 +683,7 @@ export class GitHubOctokitService {
                     });
                     
                     const prevRun: GitHubWorkflowRun = {
-                      id: run.id * 1000 + attemptNum, // Unique ID for each attempt
+                      id: parseInt(`${run.id}${attemptNum.toString().padStart(3, '0')}`), // Unique ID for each attempt
                       name: prevAttempt.display_title || prevAttempt.name || null,
                       status: prevAttempt.status as 'queued' | 'in_progress' | 'completed',
                       conclusion: prevAttempt.conclusion as 'success' | 'failure' | 'neutral' | 'cancelled' | 'skipped' | 'timed_out' | 'action_required' | null,
