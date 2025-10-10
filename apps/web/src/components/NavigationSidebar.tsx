@@ -31,7 +31,7 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, or
   const [timeRange, setTimeRange] = useState<'all' | 'week' | 'month'>('all');
 
   // Fetch repository stats for counts and display
-  const { data: statsData } = useQuery<{ open: number; closed: number; merged: number }>({
+  const { data: statsData } = useQuery<{ open: number; closed: number; merged: number; draft: number }>({
     queryKey: ["/api/github/repo-stats", organization, repoName],
     queryFn: async () => {
       const response = await fetch(`/api/github/repo-stats/${organization}/${repoName}`);
@@ -324,7 +324,7 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, or
                 onCheckedChange={() => toggleState('draft')}
               >
                 <Tag className="h-4 w-4 mr-2 text-amber-600" />
-                Draft
+                Draft ({statsData?.draft || 0})
               </DropdownMenuCheckboxItem>
               
               <DropdownMenuSeparator />

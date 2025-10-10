@@ -905,20 +905,23 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
       {/* Header - Part of content flow, not sticky */}
       <header className="bg-card border-b border-border px-6 py-3">
         <div className="flex items-center justify-between gap-4">
-          {/* PR Title */}
+          {/* PR Title with Commit and Run Info */}
           <div className="min-w-0 flex-1">
-            <h2 className="text-sm font-medium text-foreground truncate" title={`#${prData.number}: ${prData.title}`}>
-              #{prData.number}: {prData.title}
-            </h2>
-            <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-medium text-foreground truncate" title={`#${prData.number}: ${prData.title}`}>
+                #{prData.number}: {prData.title}
+              </h2>
               {selectedCommit && (
-                <code className="font-mono" title={selectedCommit.message}>
-                  {selectedCommit.sha.substring(0, 7)}
-                </code>
+                <>
+                  <span className="text-sm text-muted-foreground">•</span>
+                  <code className="text-sm text-muted-foreground font-mono" title={selectedCommit.message}>
+                    {selectedCommit.sha.substring(0, 7)}
+                  </code>
+                </>
               )}
-              {selectedRun && selectedCommit && <span>•</span>}
+              {selectedRun && selectedCommit && <span className="text-sm text-muted-foreground">•</span>}
               {selectedRun && (
-                <span>Run #{selectedRun.run_number}</span>
+                <span className="text-sm text-muted-foreground">Run #{selectedRun.run_number}</span>
               )}
             </div>
           </div>

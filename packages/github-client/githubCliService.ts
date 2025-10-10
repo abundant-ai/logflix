@@ -1151,34 +1151,37 @@ export class GitHubCliService {
   /**
    * Get repository statistics (PR counts by state) using GitHub Search API
    */
-  async getRepositoryStats(): Promise<{ open: number; closed: number; merged: number }> {
+  async getRepositoryStats(): Promise<{ open: number; closed: number; merged: number; draft: number }> {
     try {
       this.logger.info({ repo: `${this.repositoryOwner}/${this.repositoryName}` }, 'Getting repository stats');
-      
+
       // Use the working GitHub Search API format
       const openCommand = `api 'search/issues?q=repo:${this.repositoryOwner}/${this.repositoryName}+is:pr+is:open' --jq '.total_count'`;
       const closedCommand = `api 'search/issues?q=repo:${this.repositoryOwner}/${this.repositoryName}+is:pr+is:closed' --jq '.total_count'`;
       const mergedCommand = `api 'search/issues?q=repo:${this.repositoryOwner}/${this.repositoryName}+is:pr+is:merged' --jq '.total_count'`;
-      
+      const draftCommand = `api 'search/issues?q=repo:${this.repositoryOwner}/${this.repositoryName}+is:pr+is:draft' --jq '.total_count'`;
+
       this.logger.debug('Executing GitHub Search API commands for repository stats');
 
-      const [openResult, closedResult, mergedResult] = await Promise.all([
+      const [openResult, closedResult, mergedResult, draftResult] = await Promise.all([
         execAsync(`gh ${openCommand}`, this.getExecOptions({ maxBuffer: 10 * 1024 * 1024 })),
         execAsync(`gh ${closedCommand}`, this.getExecOptions({ maxBuffer: 10 * 1024 * 1024 })),
-        execAsync(`gh ${mergedCommand}`, this.getExecOptions({ maxBuffer: 10 * 1024 * 1024 }))
+        execAsync(`gh ${mergedCommand}`, this.getExecOptions({ maxBuffer: 10 * 1024 * 1024 })),
+        execAsync(`gh ${draftCommand}`, this.getExecOptions({ maxBuffer: 10 * 1024 * 1024 }))
       ]);
-      
+
       const open = parseInt(openResult.stdout.trim()) || 0;
       const merged = parseInt(mergedResult.stdout.trim()) || 0;
       const totalClosed = parseInt(closedResult.stdout.trim()) || 0;
+      const draft = parseInt(draftResult.stdout.trim()) || 0;
       const closed = Math.max(0, totalClosed - merged); // Closed but not merged
-      
-      this.logger.info({ open, totalClosed, merged, closed }, 'Repository stats computed');
-      
-      return { open, closed, merged };
+
+      this.logger.info({ open, totalClosed, merged, closed, draft }, 'Repository stats computed');
+
+      return { open, closed, merged, draft };
     } catch (error) {
       this.logger.error({ error }, 'Error fetching repository stats');
-      return { open: 0, closed: 0, merged: 0 };
+      return { open: 0, closed: 0, merged: 0, draft: 0 };
     }
   }
 

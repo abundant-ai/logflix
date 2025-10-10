@@ -50,7 +50,7 @@ export default function Home({ repoName }: HomeProps) {
   const organization = repoData?.organization || '';
 
   // Fetch PR stats for the header
-  const { data: prStats } = useQuery<{ open: number; closed: number; merged: number }>({
+  const { data: prStats } = useQuery<{ open: number; closed: number; merged: number; draft: number }>({
     queryKey: ["/api/github/repo-stats", organization, repoName],
     queryFn: async () => {
       const response = await fetch(`/api/github/repo-stats/${organization}/${repoName}`);
@@ -153,6 +153,7 @@ export default function Home({ repoName }: HomeProps) {
           open: prStats.open,
           merged: prStats.merged,
           closed: prStats.closed,
+          draft: prStats.draft,
           total: prStats.open + prStats.merged + prStats.closed
         } : undefined}
       />
