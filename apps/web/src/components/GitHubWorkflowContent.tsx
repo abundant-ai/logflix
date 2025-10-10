@@ -1372,7 +1372,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                                 className="h-6 px-2"
                               >
                                 <a
-                                  href={`https://github.com/abundant-ai/${window.location.pathname.split('/')[2] || 'tbench-hammer'}/commit/${selectedCommitSha || selectedRun?.head_sha}`}
+                                  href={`https://github.com/${organization}/${repoName}/commit/${selectedCommitSha || selectedRun?.head_sha}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="flex items-center gap-1"
