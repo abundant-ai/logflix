@@ -15,6 +15,7 @@ import {
 
 const OctokitWithPlugins = Octokit.plugin(paginateRest, throttling);
 
+
 /**
  * Creates configured Octokit client with rate limiting and pagination support
  */
@@ -73,6 +74,7 @@ export class GitHubOctokitService {
   private repositoryOwner: string;
   private repositoryName: string;
   private workflowFileName: string;
+  private workflowName: string | null = null;
   private logger: Logger;
   private octokit: InstanceType<typeof OctokitWithPlugins>;
 
@@ -85,13 +87,42 @@ export class GitHubOctokitService {
       repo: `${this.repositoryOwner}/${this.repositoryName}`,
       workflow: this.workflowFileName,
       hasToken: !!githubToken
-    }) || console as any;
+    }) || ({
+      debug: () => {},
+      info: () => {},
+      warn: () => {},
+      error: () => {},
+      child: () => this.logger,
+    } as unknown as Logger);
 
     if (!githubToken) {
       throw new Error('GitHub token is required for GitHubOctokitService');
     }
 
     this.octokit = createOctokitClient(githubToken, this.logger);
+  }
+
+  /**
+   * Fetches the actual workflow name from GitHub API
+   */
+  private async getWorkflowName(): Promise<string> {
+    if (this.workflowName !== null) {
+      return this.workflowName;
+    }
+
+    try {
+      const { data: workflow } = await this.octokit.actions.getWorkflow({
+        owner: this.repositoryOwner,
+        repo: this.repositoryName,
+        workflow_id: this.workflowFileName,
+      });
+      this.workflowName = workflow.name;
+      return workflow.name;
+    } catch (error) {
+      this.logger.warn({ workflow: this.workflowFileName, error }, 'Could not fetch workflow name, using fallback');
+      this.workflowName = 'Test Tasks with Multiple Agents'; // Fallback
+      return this.workflowName;
+    }
   }
 
   /**
@@ -149,7 +180,7 @@ export class GitHubOctokitService {
                 updated_at: run.updated_at,
                 html_url: run.html_url,
                 workflow_id: run.workflow_id,
-                workflow_name: 'Test Tasks with Multiple Agents',
+                workflow_name: await this.getWorkflowName(),
                 head_sha: run.head_sha,
                 head_branch: run.head_branch,
                 run_number: run.run_number,
@@ -421,7 +452,7 @@ export class GitHubOctokitService {
         updated_at: run.updated_at,
         html_url: run.html_url,
         workflow_id: run.workflow_id,
-        workflow_name: 'Test Tasks with Multiple Agents',
+        workflow_name: await this.getWorkflowName(),
         head_sha: run.head_sha,
         head_branch: run.head_branch,
         run_number: run.run_number,
@@ -472,20 +503,29 @@ export class GitHubOctokitService {
   }
 
   /**
-   * Get review comments for a pull request
+   * Get review comments for a pull request (includes both review summaries and diff comments)
    */
   async getReviewComments(prNumber: number): Promise<GitHubReviewComment[]> {
     try {
-      const reviews = await this.octokit.paginate(this.octokit.pulls.listReviews, {
-        owner: this.repositoryOwner,
-        repo: this.repositoryName,
-        pull_number: prNumber,
-        per_page: 100,
-      });
+      // Get both review summaries and individual diff comments
+      const [reviews, reviewComments] = await Promise.all([
+        this.octokit.paginate(this.octokit.pulls.listReviews, {
+          owner: this.repositoryOwner,
+          repo: this.repositoryName,
+          pull_number: prNumber,
+          per_page: 100,
+        }),
+        this.octokit.paginate(this.octokit.pulls.listReviewComments, {
+          owner: this.repositoryOwner,
+          repo: this.repositoryName,
+          pull_number: prNumber,
+          per_page: 100,
+        })
+      ]);
       
       const comments: GitHubReviewComment[] = [];
       
-      // Parse review comments from the reviews
+      // Add review summary comments
       for (const review of reviews) {
         if (review.body) {
           comments.push({
@@ -503,6 +543,26 @@ export class GitHubOctokitService {
           });
         }
       }
+      
+      // Add individual diff review comments
+      for (const comment of reviewComments) {
+        comments.push({
+          id: comment.id,
+          pull_request_number: prNumber,
+          user: {
+            login: comment.user?.login || 'unknown',
+            avatar_url: comment.user?.avatar_url,
+          },
+          body: comment.body || '',
+          created_at: comment.created_at,
+          updated_at: comment.updated_at,
+          html_url: comment.html_url,
+          in_reply_to_id: comment.in_reply_to_id,
+        });
+      }
+      
+      // Sort by creation date for chronological order
+      comments.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
       
       return comments;
     } catch (error) {
@@ -596,7 +656,7 @@ export class GitHubOctokitService {
                 updated_at: run.updated_at,
                 html_url: run.html_url,
                 workflow_id: run.workflow_id,
-                workflow_name: 'Test Tasks with Multiple Agents',
+                workflow_name: await this.getWorkflowName(),
                 head_sha: run.head_sha,
                 head_branch: run.head_branch,
                 run_number: run.run_number,
@@ -631,7 +691,7 @@ export class GitHubOctokitService {
                       updated_at: prevAttempt.updated_at,
                       html_url: `${prevAttempt.html_url}/attempts/${attemptNum}`,
                       workflow_id: prevAttempt.workflow_id,
-                      workflow_name: 'Test Tasks with Multiple Agents',
+                      workflow_name: await this.getWorkflowName(),
                       head_sha: prevAttempt.head_sha,
                       head_branch: prevAttempt.head_branch,
                       run_number: prevAttempt.run_number,
@@ -670,7 +730,7 @@ export class GitHubOctokitService {
                 updated_at: run.updated_at,
                 html_url: run.html_url,
                 workflow_id: run.workflow_id,
-                workflow_name: 'Test Tasks with Multiple Agents',
+                workflow_name: await this.getWorkflowName(),
                 head_sha: run.head_sha,
                 head_branch: run.head_branch,
                 run_number: run.run_number,
