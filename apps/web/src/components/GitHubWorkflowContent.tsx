@@ -309,11 +309,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
     queryFn: async () => {
       if (!selectedPR) throw new Error('No PR selected');
       
-      const params = new URLSearchParams({
-        owner: organization,
-        repo: repoName,
-        workflow: workflow
-      });
+      const params = createAPIParams();
       
       const response = await fetch(`/api/github/pr-files/${selectedPR.prNumber}?${params}`);
       if (!response.ok) throw new Error(`Failed to fetch PR files: ${response.statusText}`);
@@ -332,11 +328,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
     queryFn: async () => {
       if (!selectedCommitSha) throw new Error('No commit selected');
       
-      const params = new URLSearchParams({
-        owner: organization,
-        repo: repoName,
-        workflow: workflow
-      });
+      const params = createAPIParams();
       
       const response = await fetch(`/api/github/commit/${selectedCommitSha}?${params}`);
       if (!response.ok) throw new Error(`Failed to fetch commit details: ${response.statusText}`);
@@ -351,11 +343,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
     queryFn: async () => {
       if (!selectedRunId) throw new Error('No run selected');
       
-      const params = new URLSearchParams({
-        owner: organization,
-        repo: repoName,
-        workflow: workflow
-      });
+      const params = createAPIParams();
       
       const response = await fetch(`/api/github/workflow-jobs/${selectedRunId}?${params}`);
       if (!response.ok) throw new Error(`Failed to fetch workflow jobs: ${response.statusText}`);
@@ -380,11 +368,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
     queryFn: async () => {
       if (!logArtifact) throw new Error('No log artifact selected');
       
-      const params = new URLSearchParams({
-        owner: organization,
-        repo: repoName,
-        workflow: workflow
-      });
+      const params = createAPIParams();
       
       const response = await fetch(`/api/github/artifact-logs/${logArtifact.id}?${params}`);
       if (!response.ok) throw new Error(`Failed to fetch artifact logs: ${response.statusText}`);
@@ -407,12 +391,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
         throw new Error('No log artifact or file selected');
       }
       
-      const params = new URLSearchParams({
-        owner: organization,
-        repo: repoName,
-        workflow: workflow,
-        path: selectedLogFile
-      });
+      const params = createAPIParams({ path: selectedLogFile });
       
       const response = await fetch(`/api/github/artifact-log-content/${logArtifact.id}?${params}`);
       
@@ -487,11 +466,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
     queryFn: async () => {
       if (!selectedRunId) throw new Error('No run selected');
       
-      const params = new URLSearchParams({
-        owner: organization,
-        repo: repoName,
-        workflow: workflow
-      });
+      const params = createAPIParams();
       
       const response = await fetch(`/api/github/cast-list/${selectedRunId}?${params}`);
       if (!response.ok) throw new Error(`Failed to fetch cast list: ${response.statusText}`);
@@ -620,12 +595,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
         throw new Error('No agent or cast file selected');
       }
       
-      const params = new URLSearchParams({
-        owner: organization,
-        repo: repoName,
-        workflow: workflow,
-        path: selectedCastFile.path
-      });
+      const params = createAPIParams({ path: selectedCastFile.path });
       
       const response = await fetch(`/api/github/cast-file-by-path/${selectedAgentData.id}?${params}`);
       
@@ -808,12 +778,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
               setSelectedFile(file);
               // Fetch file content
               try {
-                const params = new URLSearchParams({
-                  owner: organization,
-                  repo: repoName,
-                  workflow: workflow,
-                  path: file.path
-                });
+                const params = createAPIParams({ path: file.path });
                 
                 const response = await fetch(`/api/github/pr-file-content/${selectedPR.prNumber}?${params}`);
                 const data = await response.json();

@@ -30,6 +30,16 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, or
   const [selectedStates, setSelectedStates] = useState<string[]>(['all']);
   const [timeRange, setTimeRange] = useState<'all' | 'week' | 'month'>('all');
 
+  // Helper to create API parameters with consistent base values
+  const createAPIParams = (additionalParams?: Record<string, string>) => {
+    return new URLSearchParams({
+      owner: organization,
+      repo: repoName,
+      workflow: workflow,
+      ...additionalParams
+    });
+  };
+
   // Fetch repository stats for counts and display
   const { data: statsData } = useQuery<{ open: number; closed: number; merged: number; draft: number }>({
     queryKey: ["/api/github/repo-stats", organization, repoName],
@@ -78,14 +88,11 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, or
   const { data: prData, isLoading, error } = useQuery<{ pullRequests: GitHubPullRequest[]; total_count: number }>({
     queryKey: ["/api/github/pull-requests", organization, repoName, workflow, "v2"], // Cache bust
     queryFn: async () => {
-      const params = new URLSearchParams({
+      const params = createAPIParams({
         state: 'all',
         limit: '5000', // Fetch all available PRs using GraphQL cursor pagination (server handles pagination automatically)
         sort: 'created',
-        direction: 'desc',
-        owner: organization,
-        repo: repoName,
-        workflow: workflow
+        direction: 'desc'
       });
       
       const url = `/api/github/pull-requests?${params}`;
