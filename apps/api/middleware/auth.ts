@@ -75,8 +75,9 @@ async function syncGitHubAccessIfNeeded(
     let githubToken: string | undefined;
     try {
       const tokenResponse = await clerkClient.users.getUserOauthAccessToken(userId, 'github');
-      // The response is an array directly, not an object with a data property
-      githubToken = tokenResponse[0]?.token;
+      // Handle PaginatedResourceResponse structure - access via data property
+      const tokens = Array.isArray(tokenResponse) ? tokenResponse : tokenResponse.data;
+      githubToken = tokens?.[0]?.token;
 
       if (requestLogger && githubToken) {
         requestLogger.info({ userId }, "Successfully retrieved GitHub OAuth token from Clerk");
@@ -120,7 +121,7 @@ async function syncGitHubAccessIfNeeded(
     };
 
     await clerkClient.users.updateUserMetadata(userId, {
-      publicMetadata: updatedMetadata,
+      publicMetadata: updatedMetadata as any, // Clerk type compatibility
     });
 
     if (requestLogger) {
@@ -171,7 +172,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
     // Fetch user metadata from Clerk to get role and permissions
     const user = await clerkClient.users.getUser(auth.userId);
-    let metadata = (user.publicMetadata || {}) as UserMetadata;
+    let metadata = (user.publicMetadata as unknown) as UserMetadata;
 
     // Automatically sync GitHub repository access if needed
     const requestLogger = res.locals.logger;
@@ -181,7 +182,8 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     let githubToken: string | undefined;
     try {
       const tokenResponse = await clerkClient.users.getUserOauthAccessToken(auth.userId, 'github');
-      githubToken = tokenResponse[0]?.token;
+      const tokens = Array.isArray(tokenResponse) ? tokenResponse : tokenResponse.data;
+      githubToken = tokens?.[0]?.token;
       if (requestLogger && githubToken) {
         requestLogger.debug({ userId: auth.userId }, "GitHub OAuth token retrieved for API calls");
       }
@@ -251,7 +253,7 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
 
     // Fetch user metadata
     const user = await clerkClient.users.getUser(auth.userId);
-    const metadata = (user.publicMetadata || {}) as UserMetadata;
+    const metadata = (user.publicMetadata as unknown) as UserMetadata;
 
     const role = metadata.role && isValidRole(metadata.role)
       ? metadata.role

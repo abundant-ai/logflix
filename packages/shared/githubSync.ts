@@ -93,7 +93,7 @@ export async function fetchUserOrgMembership(
       throw new Error(`Failed to fetch organization membership: ${response.statusText}`);
     }
 
-    const membership = await response.json();
+    const membership = await response.json() as { role: string };
     const role = membership.role === "admin" ? "admin" : "member";
 
     console.log(`User ${username} is ${role} in ${organization}`);

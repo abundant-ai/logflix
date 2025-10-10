@@ -1,1 +1,1 @@
-export { GitHubCliService } from './githubCliService';
+export { GitHubOctokitService } from './gitHubOctokitService';

@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import type { Logger } from "pino";
-import { GitHubCliService } from "@logflix/github-client";
+import { GitHubOctokitService } from "@logflix/github-client";
 import { requireAuth, requireAdmin, requireRepositoryAccess } from "./middleware/auth";
 import { clerkClient } from "@clerk/express";
 import { UserRole, UserMetadata, AuthContext, canAccessRepository } from "@logflix/shared/auth";
@@ -12,7 +12,7 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
     const owner = typeof query.owner === 'string' ? query.owner : undefined;
     const repo = typeof query.repo === 'string' ? query.repo : undefined;
     const workflow = typeof query.workflow === 'string' ? query.workflow : undefined;
-    return new GitHubCliService(owner, repo, workflow, requestLogger || logger, githubToken);
+    return new GitHubOctokitService(owner, repo, workflow, requestLogger || logger, githubToken);
   };
 
   // ============= USER & PERMISSIONS API ROUTES =============
@@ -94,7 +94,7 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
       });
 
       const users = usersResponse.data.map((user) => {
-        const metadata = (user.publicMetadata || {}) as UserMetadata;
+        const metadata = (user.publicMetadata as unknown) as UserMetadata;
         return {
           id: user.id,
           email: user.emailAddresses.find((e) => e.id === user.primaryEmailAddressId)?.emailAddress,
@@ -126,7 +126,7 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
 
       const client = clerkClient;
       const user = await client.users.getUser(userId);
-      const metadata = (user.publicMetadata || {}) as UserMetadata;
+      const metadata = (user.publicMetadata as unknown) as UserMetadata;
 
       // Update role in public metadata
       await client.users.updateUser(userId, {
@@ -170,7 +170,7 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
 
       const client = clerkClient;
       const user = await client.users.getUser(userId);
-      const metadata = (user.publicMetadata || {}) as UserMetadata;
+      const metadata = (user.publicMetadata as unknown) as UserMetadata;
 
       // Update assigned repositories
       await client.users.updateUser(userId, {
@@ -201,7 +201,7 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
       const { owner, repo } = req.params;
       const requestLogger = res.locals.logger || logger;
       const githubToken = res.locals.githubToken;
-      const githubService = new GitHubCliService(owner, repo, undefined, requestLogger, githubToken);
+      const githubService = new GitHubOctokitService(owner, repo, undefined, requestLogger, githubToken);
 
       const stats = await githubService.getRepositoryStats();
       res.json(stats);
@@ -313,7 +313,7 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
     }
   });
 
-  // Get GitHub workflow hierarchy (kept for backwards compatibility)
+  // Get GitHub workflow hierarchy using Octokit
   app.get("/api/github/hierarchy", requireAuth, requireRepositoryAccess, async (req, res) => {
     try {
       const { limit } = req.query;
