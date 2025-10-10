@@ -65,7 +65,7 @@ app.use(pinoHttp({
 app.use(clerkMiddleware());
 
 // Register API routes
-registerRoutes(app);
+registerRoutes(app, logger);
 
 // Global error handler
 app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

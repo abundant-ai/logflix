@@ -74,7 +74,8 @@ app.use(pinoHttp({
 
 // Add Clerk authentication middleware (optional - only if keys are configured)
 // This will validate JWT tokens and attach user info to the request
-const clerkPublishableKey = process.env.CLERK_PUBLISHABLE_KEY;
+// Support both backend (CLERK_PUBLISHABLE_KEY) and frontend (VITE_CLERK_PUBLISHABLE_KEY) env variables
+const clerkPublishableKey = process.env.CLERK_PUBLISHABLE_KEY || process.env.VITE_CLERK_PUBLISHABLE_KEY;
 const clerkSecretKey = process.env.CLERK_SECRET_KEY;
 
 if (clerkPublishableKey && clerkSecretKey) {

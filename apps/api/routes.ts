@@ -384,7 +384,7 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
   });
 
   // Get workflow run logs
-  app.get("/api/github/workflow-logs/:runId", requireAuth, async (req, res) => {
+  app.get("/api/github/workflow-logs/:runId", requireAuth, requireRepositoryAccess, async (req, res) => {
     try {
       const { runId } = req.params;
       const requestLogger = res.locals.logger || logger;
@@ -407,7 +407,7 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
   });
 
   // Get workflow run artifacts (specifically cast files)
-  app.get("/api/github/workflow-artifacts/:runId", requireAuth, async (req, res) => {
+  app.get("/api/github/workflow-artifacts/:runId", requireAuth, requireRepositoryAccess, async (req, res) => {
     try {
       const { runId } = req.params;
       const requestLogger = res.locals.logger || logger;
@@ -437,7 +437,7 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
   });
 
   // Download specific artifact
-  app.get("/api/github/download-artifact/:runId/:artifactName", requireAuth, async (req, res) => {
+  app.get("/api/github/download-artifact/:runId/:artifactName", requireAuth, requireRepositoryAccess, async (req, res) => {
     try {
       const { runId, artifactName } = req.params;
       const requestLogger = res.locals.logger || logger;
@@ -468,7 +468,7 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
   });
 
   // Get pull requests for a commit SHA
-  app.get("/api/github/pull-requests/:commitSha", requireAuth, async (req, res) => {
+  app.get("/api/github/pull-requests/:commitSha", requireAuth, requireRepositoryAccess, async (req, res) => {
     try {
       const { commitSha } = req.params;
       const requestLogger = res.locals.logger || logger;
@@ -489,7 +489,7 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
   });
 
   // Get review comments for a pull request
-  app.get("/api/github/review-comments/:prNumber", requireAuth, async (req, res) => {
+  app.get("/api/github/review-comments/:prNumber", requireAuth, requireRepositoryAccess, async (req, res) => {
     try {
       const { prNumber } = req.params;
       const requestLogger = res.locals.logger || logger;
@@ -512,7 +512,7 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
   });
 
   // Get cast file content from artifact (DEPRECATED - use cast-file-by-path instead)
-  app.get("/api/github/cast-file/:artifactId", requireAuth, async (req, res) => {
+  app.get("/api/github/cast-file/:artifactId", requireAuth, requireRepositoryAccess, async (req, res) => {
     const requestLogger = res.locals.logger || logger;
     requestLogger.warn({ artifactId: req.params.artifactId }, 'Deprecated endpoint accessed: /api/github/cast-file/:artifactId');
     
@@ -531,7 +531,7 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
   
 
   // List all cast files in artifacts for a workflow run
-  app.get("/api/github/cast-list/:runId", requireAuth, async (req, res) => {
+  app.get("/api/github/cast-list/:runId", requireAuth, requireRepositoryAccess, async (req, res) => {
     try {
       const { runId } = req.params;
       const requestLogger = res.locals.logger || logger;
@@ -574,7 +574,7 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
   });
 
   // Get specific cast file by path from artifact
-  app.get("/api/github/cast-file-by-path/:artifactId", requireAuth, async (req, res) => {
+  app.get("/api/github/cast-file-by-path/:artifactId", requireAuth, requireRepositoryAccess, async (req, res) => {
     try {
       const { artifactId } = req.params;
       const { path } = req.query;
@@ -606,7 +606,7 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
   });
 
   // Get files changed in a pull request
-  app.get("/api/github/pr-files/:prNumber", requireAuth, async (req, res) => {
+  app.get("/api/github/pr-files/:prNumber", requireAuth, requireRepositoryAccess, async (req, res) => {
     try {
       const { prNumber } = req.params;
       const requestLogger = res.locals.logger || logger;
@@ -629,7 +629,7 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
   });
 
   // List all tasks in a pull request
-  app.get("/api/github/pr-tasks/:prNumber", requireAuth, async (req, res) => {
+  app.get("/api/github/pr-tasks/:prNumber", requireAuth, requireRepositoryAccess, async (req, res) => {
     try {
       const { prNumber } = req.params;
       const requestLogger = res.locals.logger || logger;
@@ -654,7 +654,7 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
   
 
   // Get specific file content from PR
-  app.get("/api/github/pr-file-content/:prNumber", requireAuth, async (req, res) => {
+  app.get("/api/github/pr-file-content/:prNumber", requireAuth, requireRepositoryAccess, async (req, res) => {
     try {
       const { prNumber } = req.params;
       const { path } = req.query;
@@ -686,7 +686,7 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
   });
 
   // Get commit details
-  app.get("/api/github/commit/:commitSha", requireAuth, async (req, res) => {
+  app.get("/api/github/commit/:commitSha", requireAuth, requireRepositoryAccess, async (req, res) => {
     try {
       const { commitSha } = req.params;
       const requestLogger = res.locals.logger || logger;
@@ -712,7 +712,7 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
   });
 
   // Get commits for a pull request
-  app.get("/api/github/pr-commits/:prNumber", requireAuth, async (req, res) => {
+  app.get("/api/github/pr-commits/:prNumber", requireAuth, requireRepositoryAccess, async (req, res) => {
     try {
       const { prNumber } = req.params;
       const requestLogger = res.locals.logger || logger;
@@ -735,7 +735,7 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
   });
 
   // Get jobs for a workflow run
-  app.get("/api/github/workflow-jobs/:runId", requireAuth, async (req, res) => {
+  app.get("/api/github/workflow-jobs/:runId", requireAuth, requireRepositoryAccess, async (req, res) => {
     try {
       const { runId } = req.params;
       const requestLogger = res.locals.logger || logger;
@@ -758,7 +758,7 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
   });
 
   // Get log files from artifact
-  app.get("/api/github/artifact-logs/:artifactId", requireAuth, async (req, res) => {
+  app.get("/api/github/artifact-logs/:artifactId", requireAuth, requireRepositoryAccess, async (req, res) => {
     try {
       const { artifactId } = req.params;
       const requestLogger = res.locals.logger || logger;
@@ -781,7 +781,7 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
   });
 
   // Get specific log file content from artifact
-  app.get("/api/github/artifact-log-content/:artifactId", requireAuth, async (req, res) => {
+  app.get("/api/github/artifact-log-content/:artifactId", requireAuth, requireRepositoryAccess, async (req, res) => {
     try {
       const { artifactId } = req.params;
       const { path } = req.query;
@@ -813,7 +813,7 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
   });
 
   // Get review comments for a workflow run
-  app.get("/api/github/review-comments-for-run/:runId", requireAuth, async (req, res) => {
+  app.get("/api/github/review-comments-for-run/:runId", requireAuth, requireRepositoryAccess, async (req, res) => {
     try {
       const { runId } = req.params;
       const requestLogger = res.locals.logger || logger;
