@@ -76,6 +76,23 @@ if (PUBLISHABLE_KEY) {
           formFieldErrorText: 'text-red-400',
           formHeaderTitle: 'text-white font-semibold',
           formHeaderSubtitle: 'text-slate-300',
+          // Profile page additional styling for better visibility
+          badge: 'bg-blue-600/20 text-blue-300 border border-blue-500/30 font-medium',
+          badgeSecondary: 'bg-slate-700 text-slate-200 border border-slate-600',
+          profileSection: 'text-slate-100',
+          profileSectionSubtitle: 'text-slate-300',
+          profileSectionItemTitle: 'text-white font-medium',
+          profileSectionItemValue: 'text-slate-200',
+          connectedAccount: 'text-white',
+          connectedAccountName: 'text-white font-semibold',
+          connectedAccountProvider: 'text-slate-300',
+          connectedAccountIcon: 'brightness-100 opacity-100 filter-none',
+          avatarImageActionsUpload: 'text-white bg-slate-800 hover:bg-slate-700',
+          avatarImageActionsRemove: 'text-red-400 hover:text-red-300',
+          breadcrumbs: 'text-slate-300',
+          breadcrumbsItem: 'text-slate-300 hover:text-white',
+          breadcrumbsItemDivider: 'text-slate-600',
+          avatarBox: 'border-2 border-slate-700',
         },
       }}
     >
