@@ -39,6 +39,9 @@ import {
 
 interface GitHubWorkflowContentProps {
   selectedPR: GitHubPRSelection | null;
+  organization: string;
+  repoName: string;
+  workflow: string;
 }
 
 interface WorkflowRunDetails {
@@ -48,7 +51,7 @@ interface WorkflowRunDetails {
   hasData: boolean;
 }
 
-export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowContentProps) {
+export default function GitHubWorkflowContent({ selectedPR, organization, repoName, workflow }: GitHubWorkflowContentProps) {
   const [activeTab, setActiveTab] = useState("overview");
   const [selectedCommitSha, setSelectedCommitSha] = useState<string | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
@@ -77,14 +80,10 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
     queryFn: async () => {
       if (!selectedPR) throw new Error('No PR selected');
       
-      // Get current repo info from URL
-      const currentPath = window.location.pathname;
-      const repoName = currentPath.split('/')[2]; // /repo/{repoName}
-      
       const params = new URLSearchParams({
-        owner: 'abundant-ai',
-        repo: repoName || 'tbench-hammer',
-        workflow: 'test-tasks.yaml'
+        owner: organization,
+        repo: repoName,
+        workflow: workflow
       });
       
       const response = await fetch(`/api/github/pull-request/${selectedPR.prNumber}?${params}`);
@@ -102,14 +101,10 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
     queryFn: async () => {
       if (!selectedPR) throw new Error('No PR selected');
       
-      // Get current repo info from URL
-      const currentPath = window.location.pathname;
-      const repoName = currentPath.split('/')[2]; // /repo/{repoName}
-      
       const params = new URLSearchParams({
-        owner: 'abundant-ai',
-        repo: repoName || 'tbench-hammer',
-        workflow: 'test-tasks.yaml'
+        owner: organization,
+        repo: repoName,
+        workflow: workflow
       });
       
       const response = await fetch(`/api/github/pr-commits/${selectedPR.prNumber}?${params}`);
@@ -142,14 +137,10 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
     queryFn: async () => {
       if (!selectedPR) throw new Error('No PR selected');
       
-      // Get current repo info from URL
-      const currentPath = window.location.pathname;
-      const repoName = currentPath.split('/')[2]; // /repo/{repoName}
-      
       const params = new URLSearchParams({
-        owner: 'abundant-ai',
-        repo: repoName || 'tbench-hammer',
-        workflow: 'test-tasks.yaml'
+        owner: organization,
+        repo: repoName,
+        workflow: workflow
       });
       
       const response = await fetch(`/api/github/pr-workflow-runs/${selectedPR.prNumber}?${params}`);
@@ -268,13 +259,10 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
     queryFn: async () => {
       if (!selectedRunId) throw new Error('No run selected');
       
-      const currentPath = window.location.pathname;
-      const repoName = currentPath.split('/')[2];
-      
       const params = new URLSearchParams({
-        owner: 'abundant-ai',
-        repo: repoName || 'tbench-hammer',
-        workflow: 'test-tasks.yaml'
+        owner: organization,
+        repo: repoName,
+        workflow: workflow
       });
       
       const response = await fetch(`/api/github/workflow-run/${selectedRunId}?${params}`);
@@ -290,13 +278,10 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
     queryFn: async () => {
       if (!selectedPR) throw new Error('No PR selected');
       
-      const currentPath = window.location.pathname;
-      const repoName = currentPath.split('/')[2];
-      
       const params = new URLSearchParams({
-        owner: 'abundant-ai',
-        repo: repoName || 'tbench-hammer',
-        workflow: 'test-tasks.yaml'
+        owner: organization,
+        repo: repoName,
+        workflow: workflow
       });
       
       const response = await fetch(`/api/github/pr-bot-comments/${selectedPR.prNumber}?${params}`);
@@ -312,13 +297,10 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
     queryFn: async () => {
       if (!selectedPR) throw new Error('No PR selected');
       
-      const currentPath = window.location.pathname;
-      const repoName = currentPath.split('/')[2];
-      
       const params = new URLSearchParams({
-        owner: 'abundant-ai',
-        repo: repoName || 'tbench-hammer',
-        workflow: 'test-tasks.yaml'
+        owner: organization,
+        repo: repoName,
+        workflow: workflow
       });
       
       const response = await fetch(`/api/github/pr-tasks/${selectedPR.prNumber}?${params}`);
@@ -347,13 +329,10 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
     queryFn: async () => {
       if (!selectedPR) throw new Error('No PR selected');
       
-      const currentPath = window.location.pathname;
-      const repoName = currentPath.split('/')[2];
-      
       const params = new URLSearchParams({
-        owner: 'abundant-ai',
-        repo: repoName || 'tbench-hammer',
-        workflow: 'test-tasks.yaml'
+        owner: organization,
+        repo: repoName,
+        workflow: workflow
       });
       
       const response = await fetch(`/api/github/pr-files/${selectedPR.prNumber}?${params}`);
@@ -373,13 +352,10 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
     queryFn: async () => {
       if (!selectedCommitSha) throw new Error('No commit selected');
       
-      const currentPath = window.location.pathname;
-      const repoName = currentPath.split('/')[2];
-      
       const params = new URLSearchParams({
-        owner: 'abundant-ai',
-        repo: repoName || 'tbench-hammer',
-        workflow: 'test-tasks.yaml'
+        owner: organization,
+        repo: repoName,
+        workflow: workflow
       });
       
       const response = await fetch(`/api/github/commit/${selectedCommitSha}?${params}`);
@@ -395,13 +371,10 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
     queryFn: async () => {
       if (!selectedRunId) throw new Error('No run selected');
       
-      const currentPath = window.location.pathname;
-      const repoName = currentPath.split('/')[2];
-      
       const params = new URLSearchParams({
-        owner: 'abundant-ai',
-        repo: repoName || 'tbench-hammer',
-        workflow: 'test-tasks.yaml'
+        owner: organization,
+        repo: repoName,
+        workflow: workflow
       });
       
       const response = await fetch(`/api/github/workflow-jobs/${selectedRunId}?${params}`);
@@ -427,13 +400,10 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
     queryFn: async () => {
       if (!logArtifact) throw new Error('No log artifact selected');
       
-      const currentPath = window.location.pathname;
-      const repoName = currentPath.split('/')[2];
-      
       const params = new URLSearchParams({
-        owner: 'abundant-ai',
-        repo: repoName || 'tbench-hammer',
-        workflow: 'test-tasks.yaml'
+        owner: organization,
+        repo: repoName,
+        workflow: workflow
       });
       
       const response = await fetch(`/api/github/artifact-logs/${logArtifact.id}?${params}`);
@@ -457,13 +427,10 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
         throw new Error('No log artifact or file selected');
       }
       
-      const currentPath = window.location.pathname;
-      const repoName = currentPath.split('/')[2];
-      
       const params = new URLSearchParams({
-        owner: 'abundant-ai',
-        repo: repoName || 'tbench-hammer',
-        workflow: 'test-tasks.yaml',
+        owner: organization,
+        repo: repoName,
+        workflow: workflow,
         path: selectedLogFile
       });
       
@@ -540,13 +507,10 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
     queryFn: async () => {
       if (!selectedRunId) throw new Error('No run selected');
       
-      const currentPath = window.location.pathname;
-      const repoName = currentPath.split('/')[2];
-      
       const params = new URLSearchParams({
-        owner: 'abundant-ai',
-        repo: repoName || 'tbench-hammer',
-        workflow: 'test-tasks.yaml'
+        owner: organization,
+        repo: repoName,
+        workflow: workflow
       });
       
       const response = await fetch(`/api/github/cast-list/${selectedRunId}?${params}`);
@@ -676,13 +640,10 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
         throw new Error('No agent or cast file selected');
       }
       
-      const currentPath = window.location.pathname;
-      const repoName = currentPath.split('/')[2];
-      
       const params = new URLSearchParams({
-        owner: 'abundant-ai',
-        repo: repoName || 'tbench-hammer',
-        workflow: 'test-tasks.yaml',
+        owner: organization,
+        repo: repoName,
+        workflow: workflow,
         path: selectedCastFile.path
       });
       
@@ -867,13 +828,10 @@ export default function GitHubWorkflowContent({ selectedPR }: GitHubWorkflowCont
               setSelectedFile(file);
               // Fetch file content
               try {
-                const currentPath = window.location.pathname;
-                const repoName = currentPath.split('/')[2];
-                
                 const params = new URLSearchParams({
-                  owner: 'abundant-ai',
-                  repo: repoName || 'tbench-hammer',
-                  workflow: 'test-tasks.yaml',
+                  owner: organization,
+                  repo: repoName,
+                  workflow: workflow,
                   path: file.path
                 });
                 

@@ -62,59 +62,7 @@ export default function Home({ repoName }: HomeProps) {
     gcTime: 30 * 60 * 1000,
   });
 
-  // Show loading state
-  if (isLoading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
-          <p className="text-muted-foreground">Loading repository...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Show error state
-  if (error || !repoData) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <div className="text-center">
-          <ShieldAlert className="h-12 w-12 text-destructive mx-auto mb-4" />
-          <h2 className="text-lg font-semibold mb-2">Authentication Required</h2>
-          <p className="text-muted-foreground max-w-md mb-4">
-            Please sign in to access repositories.
-          </p>
-          <Button onClick={() => setLocation('/')}>
-            Back to Home
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  // Redirect if repository not found or no access (must be at top level for hooks)
-  useEffect(() => {
-    if (!repo && repoData) {
-      setLocation('/');
-    }
-  }, [repo, repoData, setLocation]);
-
-  // Show access denied message while redirecting
-  if (!repo) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <div className="text-center">
-          <ShieldAlert className="h-12 w-12 text-destructive mx-auto mb-4" />
-          <h2 className="text-lg font-semibold mb-2">Access Denied</h2>
-          <p className="text-muted-foreground max-w-md mb-4">
-            You don't have access to the repository '{repoName}'. Redirecting...
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  // Initialize from URL parameters
+  // Initialize from URL parameters - MUST be before any conditional returns
   useEffect(() => {
     const params = new URLSearchParams(searchString);
     const prNumber = params.get('pr');
@@ -128,6 +76,13 @@ export default function Home({ repoName }: HomeProps) {
       });
     }
   }, [searchString]);
+
+  // Redirect if repository not found or no access - MUST be before any conditional returns
+  useEffect(() => {
+    if (!repo && repoData) {
+      setLocation('/');
+    }
+  }, [repo, repoData, setLocation]);
 
   // Handle PR selection and update URL
   const handleSelectPR = (selection: GitHubPRSelection) => {
@@ -143,31 +98,79 @@ export default function Home({ repoName }: HomeProps) {
     setLocation(`/repo/${repoName}?${params.toString()}`);
   };
 
-  return (
-    <div className="flex flex-col h-screen bg-background text-foreground">
-      <GlobalHeader
-        organization={organization}
-        repository={repoName}
-        workflow={repo.workflow}
-        prStats={prStats ? {
-          open: prStats.open,
-          merged: prStats.merged,
-          closed: prStats.closed,
-          draft: prStats.draft,
-          total: prStats.open + prStats.merged + prStats.closed
-        } : undefined}
-      />
-      <div className="flex flex-1 overflow-hidden">
-        <NavigationSidebar
-          onSelectPR={handleSelectPR}
-          selectedPR={selectedPR}
-          repoName={repoName}
-          organization={organization}
-          workflow={repo.workflow}
-          onBack={() => setLocation('/')}
-        />
-        <GitHubWorkflowContent selectedPR={selectedPR} />
+  // Compute page content conditionally to avoid early returns
+  let pageContent;
+
+  if (isLoading) {
+    pageContent = (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading repository...</p>
+        </div>
       </div>
-    </div>
-  );
+    );
+  } else if (error || !repoData) {
+    pageContent = (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <div className="text-center">
+          <ShieldAlert className="h-12 w-12 text-destructive mx-auto mb-4" />
+          <h2 className="text-lg font-semibold mb-2">Authentication Required</h2>
+          <p className="text-muted-foreground max-w-md mb-4">
+            Please sign in to access repositories.
+          </p>
+          <Button onClick={() => setLocation('/')}>
+            Back to Home
+          </Button>
+        </div>
+      </div>
+    );
+  } else if (!repo) {
+    pageContent = (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <div className="text-center">
+          <ShieldAlert className="h-12 w-12 text-destructive mx-auto mb-4" />
+          <h2 className="text-lg font-semibold mb-2">Access Denied</h2>
+          <p className="text-muted-foreground max-w-md mb-4">
+            You don't have access to the repository '{repoName}'. Redirecting...
+          </p>
+        </div>
+      </div>
+    );
+  } else {
+    pageContent = (
+      <div className="flex flex-col h-screen bg-background text-foreground">
+        <GlobalHeader
+          organization={organization}
+          repository={repoName}
+          workflow={repo.workflow}
+          prStats={prStats ? {
+            open: prStats.open,
+            merged: prStats.merged,
+            closed: prStats.closed,
+            draft: prStats.draft,
+            total: prStats.open + prStats.merged + prStats.closed
+          } : undefined}
+        />
+        <div className="flex flex-1 overflow-hidden">
+          <NavigationSidebar
+            onSelectPR={handleSelectPR}
+            selectedPR={selectedPR}
+            repoName={repoName}
+            organization={organization}
+            workflow={repo.workflow}
+            onBack={() => setLocation('/')}
+          />
+          <GitHubWorkflowContent
+            selectedPR={selectedPR}
+            organization={organization}
+            repoName={repoName}
+            workflow={repo.workflow}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  return pageContent;
 }

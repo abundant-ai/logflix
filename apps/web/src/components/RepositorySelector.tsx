@@ -49,6 +49,7 @@ function RepositoryCard({ repo, organization, onSelect }: { repo: Repository; or
     <Card
       className="hover:border-primary/50 transition-all cursor-pointer group hover:shadow-md"
       onClick={() => onSelect(repo.name)}
+      data-testid={`repo-card-${repo.name}`}
     >
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
