@@ -24,7 +24,7 @@ function createOctokitClient(githubToken: string, logger?: Logger) {
     auth: githubToken,
     userAgent: 'LogFlix-App/1.0.0',
     throttle: {
-      onRateLimit: (retryAfter, options, octokit, retryCount) => {
+      onRateLimit: (retryAfter: number, options: any, octokit: any, retryCount: number) => {
         if (logger) {
           logger.warn({
             method: options.method,
@@ -40,7 +40,7 @@ function createOctokitClient(githubToken: string, logger?: Logger) {
         }
         return false;
       },
-      onSecondaryRateLimit: (retryAfter, options, octokit, retryCount) => {
+      onSecondaryRateLimit: (retryAfter: number, options: any, octokit: any, retryCount: number) => {
         if (logger) {
           logger.warn({
             method: options.method,
@@ -140,7 +140,7 @@ export class GitHubOctokitService {
       });
 
       const workflowRuns = await Promise.all(
-        runsResponse.workflow_runs.slice(0, limit).map(async (run) => {
+        runsResponse.workflow_runs.slice(0, limit).map(async (run: any) => {
           try {
             const [logs, artifacts] = await Promise.allSettled([
               this.getWorkflowRunLogs(run.id),
@@ -272,7 +272,7 @@ export class GitHubOctokitService {
         per_page: 100,
       });
 
-      const mappedArtifacts = artifacts.map(artifact => ({
+      const mappedArtifacts = artifacts.map((artifact: any) => ({
         id: artifact.id,
         name: artifact.name,
         size_in_bytes: artifact.size_in_bytes,
@@ -476,7 +476,7 @@ export class GitHubOctokitService {
         per_page: 100,
       });
       
-      return pulls.map(pr => ({
+      return pulls.map((pr: any) => ({
         number: pr.number,
         title: pr.title,
         state: pr.state as 'open' | 'closed',
@@ -641,7 +641,7 @@ export class GitHubOctokitService {
             this.logger.debug({
               commitSha: commit.sha.substring(0, 7),
               runsFound: runsResponse.workflow_runs.length,
-              runNumbers: runsResponse.workflow_runs.map(r => `#${r.run_number}.${r.run_attempt || 1}`)
+              runNumbers: runsResponse.workflow_runs.map((r: any) => `#${r.run_number}.${r.run_attempt || 1}`)
             }, 'Discovered workflow runs for commit');
           }
 
@@ -873,7 +873,7 @@ export class GitHubOctokitService {
         per_page: 100,
       });
 
-      const mappedFiles = files.map(file => ({
+      const mappedFiles = files.map((file: any) => ({
         name: file.filename,
         path: file.filename,
         sha: file.sha,
@@ -1040,7 +1040,7 @@ export class GitHubOctokitService {
         per_page: 100,
       });
       
-      const mappedCommits = commits.map(commit => ({
+      const mappedCommits = commits.map((commit: any) => ({
         sha: commit.sha,
         message: commit.commit.message,
         author: commit.commit.author?.name || 'Unknown',
@@ -1069,7 +1069,7 @@ export class GitHubOctokitService {
         per_page: 100,
       });
       
-      const mappedJobs = jobs.map(job => ({
+      const mappedJobs = jobs.map((job: any) => ({
         name: job.name,
         conclusion: job.conclusion,
         status: job.status,
