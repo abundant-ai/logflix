@@ -3,13 +3,17 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "main": "./schema.ts",
+  "main": "./schema.js",
   "types": "./schema.ts",
   "exports": {
-    "./schema": "./schema.ts",
-    "./config": "./config.ts",
-    "./auth": "./auth.ts",
-    "./githubSync": "./githubSync.ts"
+    "./schema": "./schema.js",
+    "./config": "./config.js",
+    "./auth": "./auth.js",
+    "./githubSync": "./githubSync.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf *.js *.d.ts"
   },
   "dependencies": {
     "zod": "^3.24.2"

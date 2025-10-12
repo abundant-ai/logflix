@@ -3,10 +3,14 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "main": "./index.ts",
+  "main": "./index.js",
   "types": "./index.ts",
   "exports": {
-    ".": "./index.ts"
+    ".": "./index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf *.js *.d.ts"
   },
   "dependencies": {
     "@logflix/shared": "workspace:*",
