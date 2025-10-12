@@ -211,6 +211,17 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
     // Automatically sync GitHub repository access if needed
     const requestLogger = res.locals.logger;
+
+    // Debug logging to help diagnose organization issues
+    if (requestLogger) {
+      requestLogger.debug({
+        userId: auth.userId,
+        hasOrgClaim: !!auth.sessionClaims?.o,
+        orgId: orgId,
+        sessionClaims: auth.sessionClaims
+      }, "Session claims debugging");
+    }
+
     metadata = await syncGitHubAccessIfNeeded(auth.userId, orgId, metadata, requestLogger);
 
     // Retrieve GitHub OAuth token for API calls
