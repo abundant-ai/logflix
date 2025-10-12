@@ -9,8 +9,8 @@ import {
   hasPermission,
   canAccessRepository,
   isValidRole
-} from "@logflix/shared/auth";
-import { fetchUserGitHubRepositories, fetchUserOrgMembership, shouldBeAdmin } from "@logflix/shared/githubSync";
+} from "../../../packages/shared/auth.js";
+import { fetchUserGitHubRepositories, fetchUserOrgMembership, shouldBeAdmin } from "../../../packages/shared/githubSync.js";
 
 // Check if Clerk is enabled
 const isClerkEnabled = !!(process.env.CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY);

@@ -1,11 +1,11 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import type { Logger } from "pino";
-import { GitHubOctokitService } from "@logflix/github-client";
+import { GitHubOctokitService } from "../../packages/github-client/index.js";
 import { requireAuth, requireAdmin, requireRepositoryAccess } from "./middleware/auth.js";
 import { clerkClient } from "@clerk/express";
-import { UserRole, UserMetadata, AuthContext, canAccessRepository } from "@logflix/shared/auth";
-import { GitHubWorkflowArtifact } from "@logflix/shared/schema";
+import { UserRole, UserMetadata, AuthContext, canAccessRepository } from "../../packages/shared/auth.js";
+import { GitHubWorkflowArtifact } from "../../packages/shared/schema.js";
 
 export async function registerRoutes(app: Express, logger: Logger): Promise<Server> {
   /**
@@ -48,7 +48,7 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
       const requestLogger = res.locals.logger || logger;
 
       // Import repository configuration from shared config
-      const { REPOSITORIES, ORGANIZATION } = await import("@logflix/shared/config");
+      const { REPOSITORIES, ORGANIZATION } = await import("../../packages/shared/config.js");
 
       requestLogger.info({
         userId: authContext.userId,
