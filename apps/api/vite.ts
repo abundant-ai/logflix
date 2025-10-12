@@ -1,35 +1,13 @@
 import express, { type Express } from "express";
 import fs from "fs";
 import path from "path";
-import { createServer as createViteServer, createLogger } from "vite";
+import { createServer as createViteServer } from "vite";
 import { type Server } from "http";
 import viteConfig from "../web/vite.config";
 import { nanoid } from "nanoid";
 import type { Logger } from "pino";
 
-const viteLogger = createLogger();
-
-let appLogger: Logger | undefined;
-
-export function setLogger(logger: Logger) {
-  appLogger = logger;
-}
-
-export function log(message: string, source = "express") {
-  if (appLogger) {
-    appLogger.info({ source }, message);
-  } else {
-    const formattedTime = new Date().toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: true,
-    });
-    console.log(`${formattedTime} [${source}] ${message}`);
-  }
-}
-
-export async function setupVite(app: Express, server: Server) {
+export async function setupVite(app: Express, server: Server, logger: Logger) {
   const serverOptions = {
     middlewareMode: true,
     hmr: { server },
@@ -40,11 +18,24 @@ export async function setupVite(app: Express, server: Server) {
     ...viteConfig,
     configFile: false,
     customLogger: {
-      ...viteLogger,
-      error: (msg, options) => {
-        viteLogger.error(msg, options);
+      error: (msg: string, options?: any) => {
+        logger.error({ viteMessage: msg, options }, 'Vite error');
         process.exit(1);
       },
+      warn: (msg: string, options?: any) => {
+        logger.warn({ viteMessage: msg, options }, 'Vite warning');
+      },
+      info: (msg: string, options?: any) => {
+        logger.info({ viteMessage: msg, options }, 'Vite info');
+      },
+      warnOnce: (msg: string, options?: any) => {
+        logger.warn({ viteMessage: msg, options }, 'Vite warning (once)');
+      },
+      clearScreen: () => {
+        // No-op for server environment
+      },
+      hasErrorLogged: () => false,
+      hasWarned: false
     },
     server: serverOptions,
     appType: "custom",

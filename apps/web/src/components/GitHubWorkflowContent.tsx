@@ -28,7 +28,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { 
+import {
   GitHubWorkflowRun,
   GitHubPullRequest,
   GitHubReviewComment,
@@ -36,6 +36,7 @@ import {
   GitHubWorkflowLog,
   GitHubWorkflowArtifact
 } from "@logflix/shared/schema";
+import { parseAgentTestResults } from "@/lib/agentResultsParser";
 
 interface GitHubWorkflowContentProps {
   selectedPR: GitHubPRSelection | null;
@@ -1102,67 +1103,14 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                       {jobsData && jobsData.jobs.length > 0 ? (
                         <div className="space-y-3">
                           {(() => {
-                            // Filter jobs that start with "Test with"
-                            const testJobs = jobsData.jobs.filter(job => job.name.startsWith('Test with '));
+                            // Use utility function for robust job parsing
+                            const sortedAgentEntries = parseAgentTestResults(jobsData.jobs);
                             
-                            if (testJobs.length === 0) {
+                            if (sortedAgentEntries.length === 0) {
                               return <p className="text-sm text-muted-foreground">No agent test results available</p>;
                             }
                             
-                            // Parse and group by agent
-                            const agentGroups: Record<string, Array<{ model: string | null; conclusion: string | null; status: string }>> = {};
                             
-                            testJobs.forEach(job => {
-                              // Parse "Test with {Display}" where display can be:
-                              // - "Oracle Solution" -> agent: "Oracle"
-                              // - "NOP (Should Fail)" -> agent: "NOP", note: "Should Fail"
-                              // - "Terminus (GPT-4.1)" -> agent: "Terminus", model: "GPT-4.1"
-                              const match = job.name.match(/^Test with (.+?)(?:\s*\((.+)\))?$/);
-                              if (match) {
-                                let agentName = match[1].trim();
-                                const parenthesesContent = match[2]?.trim();
-                                
-                                // Clean up agent names
-                                if (agentName === 'Oracle Solution') {
-                                  agentName = 'Oracle';
-                                } else if (agentName === 'NOP Agent') {
-                                  agentName = 'NOP';
-                                }
-                                
-                                // Determine if content in parentheses is a model (not a note like "Should Fail")
-                                const isModel = parenthesesContent && /(?:claude|gpt|gemini|o|llama|sonnet|pro|-|\d)/i.test(parenthesesContent) && !parenthesesContent.toLowerCase().includes('should fail');
-                                const modelName = isModel ? parenthesesContent : null;
-                                
-                                if (!agentGroups[agentName]) {
-                                  agentGroups[agentName] = [];
-                                }
-                                
-                                agentGroups[agentName].push({
-                                  model: modelName,
-                                  conclusion: job.conclusion,
-                                  status: job.status,
-                                });
-                              }
-                            });
-                            
-                            // Sort agents in specific order: NOP first, Oracle second, then Terminus
-                            const agentOrder = ['NOP', 'Oracle', 'Terminus'];
-                            const sortedAgentEntries = Object.entries(agentGroups).sort(([a], [b]) => {
-                              const aIndex = agentOrder.indexOf(a);
-                              const bIndex = agentOrder.indexOf(b);
-                              
-                              // If both agents are in the order list, sort by their position
-                              if (aIndex !== -1 && bIndex !== -1) {
-                                return aIndex - bIndex;
-                              }
-                              
-                              // If only one agent is in the order list, prioritize it
-                              if (aIndex !== -1) return -1;
-                              if (bIndex !== -1) return 1;
-                              
-                              // If neither agent is in the order list, sort alphabetically
-                              return a.localeCompare(b);
-                            });
                             
                             return sortedAgentEntries.map(([agentName, tests]) => {
                               // If all tests have models, show as grouped

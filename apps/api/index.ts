@@ -13,7 +13,7 @@ import pino from "pino";
 import pinoHttp from "pino-http";
 import { nanoid } from "nanoid";
 import { registerRoutes } from "./routes";
-import { setupVite, serveStatic, log } from "./vite";
+import { setupVite, serveStatic } from "./vite";
 
 // Configure Pino logger
 const logger = pino({
@@ -127,7 +127,7 @@ app.use((req, res, next) => {
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
   if (app.get("env") === "development") {
-    await setupVite(app, server);
+    await setupVite(app, server, logger);
   } else {
     serveStatic(app);
   }
