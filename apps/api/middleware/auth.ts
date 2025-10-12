@@ -206,7 +206,8 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     let metadata = ((user.publicMetadata as unknown) || {}) as UserMetadata;
 
     // Extract orgId from session claims
-    const orgId = auth.sessionClaims?.org_id as string | undefined;
+    // The 'o' claim contains organization info: { id, slg, rol, per, fpm }
+    const orgId = (auth.sessionClaims?.o as { id?: string })?.id;
 
     // Automatically sync GitHub repository access if needed
     const requestLogger = res.locals.logger;
