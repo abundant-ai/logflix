@@ -463,19 +463,25 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
       files: Array<{ name: string; path: string; size: number }>;
     }>
   }>({
-    queryKey: selectedRunId ? ["/api/github/cast-list", selectedRunId] : [],
+    queryKey: selectedRunId ? ["/api/github/cast-list", selectedRunId, selectedCommitSha, selectedPR?.prNumber] : [],
     queryFn: async () => {
       if (!selectedRunId) throw new Error('No run selected');
       
       const params = createAPIParams();
       
+      console.log(`[DEBUG] Fetching cast list for run ${selectedRunId} with params:`, params.toString());
+      
       const response = await fetch(`/api/github/cast-list/${selectedRunId}?${params}`);
       if (!response.ok) throw new Error(`Failed to fetch cast list: ${response.statusText}`);
-      return response.json();
+      const data = await response.json();
+      
+      console.log(`[DEBUG] Cast list response for run ${selectedRunId}:`, data);
+      
+      return data;
     },
     enabled: !!selectedRunId,
-    staleTime: 10 * 60 * 1000,
-    gcTime: 15 * 60 * 1000,
+    staleTime: 0, // Force fresh data to avoid caching issues
+    gcTime: 5 * 60 * 1000, // Shorter cache time
   });
 
   // Filter cast files by selected task (if task is selected) - MUST BE AFTER castListData
@@ -588,8 +594,11 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
   const castFileQuery = useQuery<{ content: string }>({
     queryKey: selectedAgentData && selectedCastFile ? [
       "cast-file",
+      selectedRunId,
       selectedAgentData.id,
-      selectedCastFile.path
+      selectedCastFile.path,
+      selectedCommitSha,
+      selectedPR?.prNumber
     ] : [],
     queryFn: async () => {
       if (!selectedAgentData || !selectedCastFile) {
@@ -598,18 +607,24 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
       
       const params = createAPIParams({ path: selectedCastFile.path });
       
+      console.log(`[DEBUG] Fetching cast file for artifact ${selectedAgentData.id} from run ${selectedRunId} with path: ${selectedCastFile.path}`);
+      
       const response = await fetch(`/api/github/cast-file-by-path/${selectedAgentData.id}?${params}`);
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: response.statusText }));
+        console.error(`[DEBUG] Cast file fetch failed:`, errorData);
         throw new Error(errorData.error || `Failed to fetch cast: ${response.statusText}`);
       }
       
-      return await response.json();
+      const data = await response.json();
+      console.log(`[DEBUG] Cast file fetched successfully for artifact ${selectedAgentData.id}`);
+      
+      return data;
     },
     enabled: !!(selectedAgentData && selectedCastFile), // Preload immediately when agent/cast selected
-    staleTime: 10 * 60 * 1000, // Cache for 10 minutes
-    gcTime: 15 * 60 * 1000, // Keep in memory for 15 minutes
+    staleTime: 0, // Force fresh data to avoid caching issues
+    gcTime: 5 * 60 * 1000, // Shorter cache time
     retry: 1,
     refetchOnWindowFocus: false,
   });

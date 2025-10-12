@@ -582,7 +582,18 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
       }
 
       const runIdNumber = parseInt(runId, 10);
+      
+      // DEBUG: Log the run ID being requested
+      requestLogger.info({ runId: runIdNumber }, 'Fetching cast list for workflow run');
+      
       const allArtifacts = await githubService.getWorkflowRunArtifacts(runIdNumber);
+
+      // DEBUG: Log all artifacts found
+      requestLogger.info({
+        runId: runIdNumber,
+        allArtifactCount: allArtifacts.length,
+        allArtifactIds: allArtifacts.map(a => ({ id: a.id, name: a.name }))
+      }, 'All artifacts retrieved');
 
       // Filter for cast-related artifacts
       const castArtifacts = allArtifacts.filter((artifact) =>
@@ -590,6 +601,13 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
         artifact.name.toLowerCase().includes('asciinema') ||
         artifact.name.toLowerCase().includes('recording')
       );
+
+      // DEBUG: Log filtered cast artifacts
+      requestLogger.info({
+        runId: runIdNumber,
+        castArtifactCount: castArtifacts.length,
+        castArtifactIds: castArtifacts.map(a => ({ id: a.id, name: a.name }))
+      }, 'Cast-related artifacts filtered');
 
       // Get cast files from each artifact
       const castFilesPromises = castArtifacts.map(async (artifact) => {
@@ -603,6 +621,13 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
       });
 
       const castFiles = await Promise.all(castFilesPromises);
+
+      // DEBUG: Log final response
+      requestLogger.info({
+        runId: runIdNumber,
+        castFilesCount: castFiles.length,
+        responseArtifactIds: castFiles.map(cf => cf.artifact_id)
+      }, 'Cast files response prepared');
 
       res.json({ castFiles });
     } catch (error) {
