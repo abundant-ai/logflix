@@ -11,16 +11,6 @@
       "destination": "/api"
     }
   ],
-  "env": {
-    "NODE_ENV": "production",
-    "PORT": "5001",
-    "LOG_LEVEL": "info"
-  },
-  "build": {
-    "env": {
-      "NODE_ENV": "production"
-    }
-  },
   "headers": [
     {
       "source": "/api/(.*)",
