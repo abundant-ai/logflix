@@ -1,1 +1,1 @@
-export { GitHubOctokitService } from './gitHubOctokitService';
+export { GitHubOctokitService } from './gitHubOctokitService.js';

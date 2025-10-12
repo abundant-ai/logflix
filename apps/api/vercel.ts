@@ -12,7 +12,7 @@ import { clerkMiddleware } from "@clerk/express";
 import pino from "pino";
 import pinoHttp from "pino-http";
 import { nanoid } from "nanoid";
-import { registerRoutes } from "./routes";
+import { registerRoutes } from "./routes.js";
 
 // Configure Pino logger
 const logger = pino({

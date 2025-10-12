@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import type { Logger } from "pino";
 import { GitHubOctokitService } from "@logflix/github-client";
-import { requireAuth, requireAdmin, requireRepositoryAccess } from "./middleware/auth";
+import { requireAuth, requireAdmin, requireRepositoryAccess } from "./middleware/auth.js";
 import { clerkClient } from "@clerk/express";
 import { UserRole, UserMetadata, AuthContext, canAccessRepository } from "@logflix/shared/auth";
 import { GitHubWorkflowArtifact } from "@logflix/shared/schema";

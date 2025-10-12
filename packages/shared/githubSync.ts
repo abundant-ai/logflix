@@ -1,5 +1,5 @@
 // GitHub OAuth token utilities and repository sync logic
-import { ORGANIZATION, REPOSITORIES } from "./config";
+import { ORGANIZATION, REPOSITORIES } from "./config.js";
 
 export interface GitHubRepository {
   name: string;

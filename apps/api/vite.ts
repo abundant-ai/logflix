@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { type Server } from "http";
-import viteConfig from "../web/vite.config";
+import viteConfig from "../web/vite.config.js";
 import { nanoid } from "nanoid";
 import type { Logger } from "pino";
 
