@@ -346,8 +346,8 @@ export function requireRepositoryAccess(req: Request, res: Response, next: NextF
 
   // Get repository from query params or route params
   // Handle cases where query parameters might be arrays (e.g., ?owner=a&owner=b)
-  const owner = req.params.owner || (Array.isArray(req.query.owner) ? req.query.owner[0] : typeof req.query.owner === 'string' ? req.query.owner : undefined);
-  const repo = req.params.repo || (Array.isArray(req.query.repo) ? req.query.repo[0] : typeof req.query.repo === 'string' ? req.query.repo : undefined);
+  const owner = req.params.owner || (Array.isArray(req.query?.owner) ? req.query.owner[0] : typeof req.query?.owner === 'string' ? req.query.owner : undefined);
+  const repo = req.params.repo || (Array.isArray(req.query?.repo) ? req.query.repo[0] : typeof req.query?.repo === 'string' ? req.query.repo : undefined);
 
   if (!owner || !repo) {
     return res.status(400).json({
