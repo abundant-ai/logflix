@@ -42,12 +42,11 @@ export interface UserMetadata {
   lastGitHubSync?: string; // ISO timestamp of last GitHub sync
 }
 
-// Organization metadata structure
-export interface OrganizationMetadata {
-  repositories: string[]; // All repositories this org has access to
-  settings?: {
-    allowAllRepos?: boolean;
-  };
+// Clerk Organization public metadata structure
+// This is configured in Clerk Dashboard for each organization
+export interface ClerkOrganizationMetadata {
+  githubOrganization: string; // The GitHub organization name to sync repos from
+  defaultWorkflow?: string;   // Default workflow file name (e.g., "test-tasks.yaml")
 }
 
 // Auth context for requests
@@ -57,6 +56,7 @@ export interface AuthContext {
   permissions: Permission[];
   assignedRepositories: string[];
   organizationId?: string;
+  organizationMetadata?: ClerkOrganizationMetadata; // GitHub org settings from Clerk
 }
 
 /**

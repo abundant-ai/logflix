@@ -5,12 +5,13 @@ import {
   Permission,
   UserMetadata,
   AuthContext,
+  ClerkOrganizationMetadata,
   getPermissionsForRole,
   hasPermission,
   canAccessRepository,
   isValidRole
 } from "../../../packages/shared/auth.js";
-import { fetchUserGitHubRepositories, fetchUserOrgMembership, shouldBeAdmin } from "../../../packages/shared/githubSync.js";
+import { fetchAllUserAccessibleRepositories, fetchUserOrgMembership, shouldBeAdmin } from "../../../packages/shared/githubSync.js";
 
 // Check if Clerk is enabled
 const isClerkEnabled = !!(process.env.CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY);
@@ -44,6 +45,7 @@ function shouldSyncGitHubAccess(metadata: UserMetadata): boolean {
  */
 async function syncGitHubAccessIfNeeded(
   userId: string,
+  orgId: string | null | undefined,
   metadata: UserMetadata,
   requestLogger?: any
 ): Promise<UserMetadata> {
@@ -54,7 +56,15 @@ async function syncGitHubAccessIfNeeded(
 
   try {
     if (requestLogger) {
-      requestLogger.info({ userId }, "Auto-syncing GitHub repository access");
+      requestLogger.info({ userId, orgId }, "Auto-syncing GitHub repository access");
+    }
+
+    // User must belong to a Clerk organization
+    if (!orgId) {
+      if (requestLogger) {
+        requestLogger.warn({ userId }, "User not in any Clerk organization - cannot sync repos");
+      }
+      return metadata;
     }
 
     const user = await clerkClient.users.getUser(userId);
@@ -95,16 +105,33 @@ async function syncGitHubAccessIfNeeded(
       return metadata; // Return existing metadata
     }
 
+    // Fetch organization metadata from Clerk to get GitHub org mapping
+    const organization = await clerkClient.organizations.getOrganization({ organizationId: orgId });
+    const orgMetadata = (organization.publicMetadata as unknown) as ClerkOrganizationMetadata | undefined;
+
+    if (!orgMetadata?.githubOrganization) {
+      if (requestLogger) {
+        requestLogger.error({ userId, orgId }, "Clerk organization missing githubOrganization in publicMetadata");
+      }
+      throw new Error("Organization not properly configured. Please contact administrator.");
+    }
+
+    const githubOrgName = orgMetadata.githubOrganization;
+
+    if (requestLogger) {
+      requestLogger.info({ userId, orgId, githubOrg: githubOrgName }, "Fetching repos from GitHub organization");
+    }
+
     // Fetch GitHub username
     const githubUsername = githubAccount.username || githubAccount.emailAddress?.split("@")[0] || "";
 
-    // Fetch user's accessible repositories from GitHub
-    const accessibleRepos = await fetchUserGitHubRepositories(githubToken);
+    // Fetch user's accessible repositories from GitHub filtered by the organization
+    const accessibleRepos = await fetchAllUserAccessibleRepositories(githubToken, githubOrgName);
 
     // Fetch user's organization role
     const { role: githubOrgRole } = await fetchUserOrgMembership(
       githubToken,
-      undefined,
+      githubOrgName,
       githubUsername
     );
 
@@ -116,7 +143,7 @@ async function syncGitHubAccessIfNeeded(
     const updatedMetadata: UserMetadata = {
       role: newRole,
       assignedRepositories: accessibleRepos,
-      organizationId: metadata.organizationId,
+      organizationId: orgId,
       lastGitHubSync: new Date().toISOString(),
     };
 
@@ -129,6 +156,8 @@ async function syncGitHubAccessIfNeeded(
     if (requestLogger) {
       requestLogger.info({
         userId,
+        orgId,
+        githubOrg: githubOrgName,
         syncedRepos: accessibleRepos.length,
         role: newRole,
       }, "GitHub access auto-sync completed");
@@ -137,7 +166,7 @@ async function syncGitHubAccessIfNeeded(
     return updatedMetadata;
   } catch (error) {
     if (requestLogger) {
-      requestLogger.error({ userId, error }, "Error during GitHub auto-sync, using existing metadata");
+      requestLogger.error({ userId, orgId, error }, "Error during GitHub auto-sync, using existing metadata");
     }
     // Return existing metadata on error - don't block authentication
     return metadata;
@@ -176,9 +205,12 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     const user = await clerkClient.users.getUser(auth.userId);
     let metadata = ((user.publicMetadata as unknown) || {}) as UserMetadata;
 
+    // Extract orgId from session claims
+    const orgId = auth.sessionClaims?.org_id as string | undefined;
+
     // Automatically sync GitHub repository access if needed
     const requestLogger = res.locals.logger;
-    metadata = await syncGitHubAccessIfNeeded(auth.userId, metadata, requestLogger);
+    metadata = await syncGitHubAccessIfNeeded(auth.userId, orgId, metadata, requestLogger);
 
     // Retrieve GitHub OAuth token for API calls
     let githubToken: string | undefined;
@@ -200,12 +232,30 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       ? metadata.role
       : UserRole.MEMBER;
 
+    // Fetch organization metadata from Clerk if user belongs to an organization
+    let organizationMetadata: ClerkOrganizationMetadata | undefined;
+    if (orgId) {
+      try {
+        const organization = await clerkClient.organizations.getOrganization({ organizationId: orgId });
+        organizationMetadata = (organization.publicMetadata as unknown) as ClerkOrganizationMetadata | undefined;
+
+        if (requestLogger) {
+          requestLogger.debug({ userId: auth.userId, orgId, orgMetadata: organizationMetadata }, "Fetched organization metadata");
+        }
+      } catch (orgError) {
+        if (requestLogger) {
+          requestLogger.warn({ userId: auth.userId, orgId, error: orgError }, "Failed to fetch organization metadata");
+        }
+      }
+    }
+
     const authContext: AuthContext = {
       userId: auth.userId,
       role,
       permissions: getPermissionsForRole(role),
       assignedRepositories: metadata.assignedRepositories || [],
-      organizationId: metadata.organizationId,
+      organizationId: orgId,
+      organizationMetadata,
     };
 
     // Attach auth context to res.locals for use in routes

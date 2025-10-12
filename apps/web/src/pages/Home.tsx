@@ -16,7 +16,6 @@ interface Repository {
   name: string;
   workflow: string;
   description?: string;
-  defaultBranch?: string;
 }
 
 interface UserRepositoriesResponse {

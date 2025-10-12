@@ -47,38 +47,62 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
       const authContext = res.locals.auth as AuthContext;
       const requestLogger = res.locals.logger || logger;
 
-      // Import repository configuration from shared config
-      const { REPOSITORIES, ORGANIZATION } = await import("../../packages/shared/config.js");
-
       requestLogger.info({
         userId: authContext.userId,
         role: authContext.role,
+        orgId: authContext.organizationId,
         assignedRepos: authContext.assignedRepositories,
       }, "Fetching accessible repositories for user");
 
+      // Check if user belongs to an organization
+      if (!authContext.organizationId || !authContext.organizationMetadata) {
+        requestLogger.warn({ userId: authContext.userId }, "User not in organization or org metadata missing");
+        return res.status(403).json({
+          error: "Organization Required",
+          message: "You must belong to an organization to access repositories. Please contact your administrator.",
+        });
+      }
+
+      const { githubOrganization, defaultWorkflow } = authContext.organizationMetadata;
+
+      // Build repository objects from user's assigned repositories
+      // These come from GitHub OAuth token and include all repos the user has access to
+      const userRepos = authContext.assignedRepositories.map(fullName => {
+        const repoName = fullName.split('/')[1];
+
+        return {
+          name: repoName,
+          full_name: fullName,
+          workflow: defaultWorkflow || 'test-tasks.yaml', // Use org default or fallback
+          description: '',
+        };
+      });
+
       if (authContext.role === UserRole.ADMIN) {
-        requestLogger.info({ userId: authContext.userId }, "Admin access granted - returning all repositories");
+        requestLogger.info({
+          userId: authContext.userId,
+          repoCount: userRepos.length,
+          githubOrg: githubOrganization
+        }, "Admin access granted - returning all accessible repositories");
+
         res.json({
           hasAllAccess: true,
-          organization: ORGANIZATION,
-          repositories: REPOSITORIES,
+          organization: githubOrganization,
+          repositories: userRepos,
         });
       } else {
-        const accessibleRepos = REPOSITORIES.filter(repo =>
-          canAccessRepository(authContext.role, authContext.assignedRepositories, `${ORGANIZATION}/${repo.name}`)
-        );
-
         requestLogger.info({
           userId: authContext.userId,
           assignedCount: authContext.assignedRepositories.length,
-          filteredCount: accessibleRepos.length,
-          repositories: accessibleRepos.map(r => r.name)
+          repoCount: userRepos.length,
+          githubOrg: githubOrganization,
+          repositories: userRepos.map(r => r.name)
         }, "Member access - returning assigned repositories");
 
         res.json({
           hasAllAccess: false,
-          organization: ORGANIZATION,
-          repositories: accessibleRepos,
+          organization: githubOrganization,
+          repositories: userRepos,
         });
       }
     } catch (error) {

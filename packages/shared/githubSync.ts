@@ -1,5 +1,4 @@
 // GitHub OAuth token utilities and repository sync logic
-import { ORGANIZATION, REPOSITORIES } from "./config.js";
 
 export interface GitHubRepository {
   name: string;
@@ -18,45 +17,66 @@ export interface GitHubTokenInfo {
 }
 
 /**
- * Fetch all repositories the user has access to in the organization
- * Uses GitHub API with user's OAuth token
+ * Fetch all repositories the user has access to using the /user/repos endpoint
+ * This includes repos accessible through team memberships, collaborator access, and ownership
+ * Supports pagination to handle users with many repositories
  */
-export async function fetchUserGitHubRepositories(
+export async function fetchAllUserAccessibleRepositories(
   accessToken: string,
-  organization: string = ORGANIZATION
+  organization?: string
 ): Promise<string[]> {
   try {
-    // Fetch user's repositories in the organization
-    const response = await fetch(
-      `https://api.github.com/orgs/${organization}/repos?per_page=100`,
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          Accept: "application/vnd.github.v3+json",
-          "User-Agent": "LogFlix-App",
-        },
-      }
-    );
+    const allRepos: GitHubRepository[] = [];
+    let page = 1;
+    let hasMorePages = true;
 
-    if (!response.ok) {
-      console.error(`GitHub API error: ${response.status} ${response.statusText}`);
-      const errorBody = await response.text();
-      console.error(`Response body: ${errorBody}`);
-      throw new Error(`Failed to fetch GitHub repositories: ${response.statusText}`);
+    while (hasMorePages) {
+      // Use /user/repos with affiliation to get all repos the user has access to
+      const response = await fetch(
+        `https://api.github.com/user/repos?affiliation=organization_member,collaborator&type=all&per_page=100&page=${page}`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            Accept: "application/vnd.github.v3+json",
+            "User-Agent": "LogFlix-App",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        console.error(`GitHub API error: ${response.status} ${response.statusText}`);
+        const errorBody = await response.text();
+        console.error(`Response body: ${errorBody}`);
+        throw new Error(`Failed to fetch GitHub repositories: ${response.statusText}`);
+      }
+
+      const repos = (await response.json()) as GitHubRepository[];
+
+      if (repos.length === 0) {
+        hasMorePages = false;
+      } else {
+        allRepos.push(...repos);
+        page++;
+        // GitHub returns less than per_page items on the last page
+        if (repos.length < 100) {
+          hasMorePages = false;
+        }
+      }
     }
 
-    const repos = (await response.json()) as GitHubRepository[];
+    // Filter by organization if specified
+    let accessibleRepos = allRepos;
+    if (organization) {
+      accessibleRepos = allRepos.filter((repo) =>
+        repo.full_name.startsWith(`${organization}/`)
+      );
+    }
 
-    // Filter to only include repositories that are in our REPOSITORIES config
-    // This ensures we only grant access to repos we're actually tracking
-    const configuredRepoNames = REPOSITORIES.map((r) => r.name);
-    const accessibleRepos = repos
-      .filter((repo) => configuredRepoNames.includes(repo.name))
-      .map((repo) => repo.full_name);
+    const repoFullNames = accessibleRepos.map((repo) => repo.full_name);
 
-    console.log(`User has access to ${accessibleRepos.length} configured repositories:`, accessibleRepos);
+    console.log(`User has access to ${repoFullNames.length} repositories${organization ? ` in ${organization}` : ''}:`, repoFullNames);
 
-    return accessibleRepos;
+    return repoFullNames;
   } catch (error) {
     console.error("Error fetching GitHub repositories:", error);
     throw error;
@@ -68,7 +88,7 @@ export async function fetchUserGitHubRepositories(
  */
 export async function fetchUserOrgMembership(
   accessToken: string,
-  organization: string = ORGANIZATION,
+  organization: string,
   username: string
 ): Promise<{ role: "admin" | "member" | null }> {
   try {
