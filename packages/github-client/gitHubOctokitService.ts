@@ -1193,16 +1193,16 @@ export class GitHubOctokitService {
             pullRequests {
               totalCount
             }
-            openPRs: pullRequests(states: OPEN) {
+            openPRs: pullRequests(states: [OPEN]) {
               totalCount
             }
-            closedPRs: pullRequests(states: CLOSED) {
+            closedPRs: pullRequests(states: [CLOSED]) {
               totalCount
             }
-            mergedPRs: pullRequests(states: MERGED) {
+            mergedPRs: pullRequests(states: [MERGED]) {
               totalCount
             }
-            draftPRs: pullRequests(states: OPEN) {
+            draftPRs: pullRequests(states: [OPEN]) {
               nodes {
                 isDraft
               }
