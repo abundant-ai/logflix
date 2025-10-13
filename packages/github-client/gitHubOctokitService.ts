@@ -374,21 +374,48 @@ export class GitHubOctokitService {
    */
   async getCastFileByPath(artifactId: number, filePath: string): Promise<string | null> {
     try {
-      this.logger.debug({ artifactId, filePath }, 'Retrieving cast file content');
+      // DEBUG: Enhanced logging to trace path corruption (Vercel compatible)
+      console.log("DEBUG: getCastFileByPath called with path:", JSON.stringify({
+        artifactId,
+        originalFilePath: filePath,
+        filePathType: typeof filePath,
+        filePathLength: filePath?.length || 0
+      }));
       
       let decodedPath = filePath;
       try {
         let previousPath = '';
-        while (previousPath !== decodedPath) {
+        let decodeIteration = 0;
+        while (previousPath !== decodedPath && decodeIteration < 10) {
           previousPath = decodedPath;
           decodedPath = decodeURIComponent(decodedPath);
+          decodeIteration++;
+          
+          // DEBUG: Log each decode iteration (Vercel compatible)
+          console.log("DEBUG: Path decode iteration:", JSON.stringify({
+            artifactId,
+            iteration: decodeIteration,
+            previousPath,
+            decodedPath,
+            pathChanged: previousPath !== decodedPath
+          }));
         }
       } catch (decodeError) {
-        this.logger.warn({ filePath, error: decodeError }, 'Path decode failed, using original');
+        this.logger.warn({ filePath, decodedPath, error: decodeError }, 'Path decode failed, using original');
         decodedPath = filePath;
       }
 
       const normalizedPath = decodedPath.replace(/\\/g, '/').replace(/\/+/g, '/');
+      
+      // DEBUG: Log path normalization (Vercel compatible)
+      console.log("DEBUG: Path processing complete:", JSON.stringify({
+        artifactId,
+        originalPath: filePath,
+        decodedPath,
+        normalizedPath,
+        isValidPath: !normalizedPath.includes('../') && !normalizedPath.includes('..\\') && !normalizedPath.startsWith('/')
+      }));
+      
       if (normalizedPath.includes('../') || normalizedPath.includes('..\\') || normalizedPath.startsWith('/')) {
         this.logger.error({ filePath, normalizedPath }, 'Invalid file path (directory traversal detected)');
         return null;
