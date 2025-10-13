@@ -5,6 +5,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import RepositorySelector from "@/components/RepositorySelector";
+import { OrganizationManager } from "@/components/OrganizationManager";
 import Home from "@/pages/Home";
 import SignInPage from "@/pages/SignIn";
 import SignUpPage from "@/pages/SignUp";
@@ -71,6 +72,7 @@ function AuthenticatedRouter() {
           <Redirect to="/sign-in" />
         </SignedOut>
         <SignedIn>
+          <OrganizationManager />
           <RepositorySelector
             onSelectRepo={(repo) => setLocation(`/repo/${repo}`)}
           />
@@ -84,6 +86,7 @@ function AuthenticatedRouter() {
               <Redirect to="/sign-in" />
             </SignedOut>
             <SignedIn>
+              <OrganizationManager />
               <Home
                 repoName={params.repo}
               />

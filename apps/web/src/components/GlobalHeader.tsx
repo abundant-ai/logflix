@@ -1,4 +1,4 @@
-import { UserButton } from "@clerk/clerk-react";
+import { UserButton, OrganizationSwitcher } from "@clerk/clerk-react";
 import { Activity, GitBranch, GitPullRequest, CheckCircle, XCircle, Clock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
@@ -72,12 +72,30 @@ export default function GlobalHeader({
           ) : null}
         </div>
 
-        {/* Right: Status and User */}
+        {/* Right: Status, Organization, and User */}
         <div className="flex items-center gap-4 flex-shrink-0">
           <div className="flex items-center gap-2">
             <Activity className="h-4 w-4 text-success" />
             <span className="text-sm font-medium text-success">Live</span>
           </div>
+          <OrganizationSwitcher
+            hidePersonal
+            afterSelectOrganizationUrl="/"
+            appearance={{
+              elements: {
+                rootBox: "flex items-center",
+                organizationSwitcherTrigger: "px-3 py-1.5 rounded-md hover:bg-accent text-sm border border-border bg-card",
+                organizationSwitcherTriggerIcon: "text-muted-foreground",
+                organizationPreviewTextContainer: "text-foreground",
+                organizationPreviewMainIdentifier: "text-foreground font-medium",
+                organizationPreviewSecondaryIdentifier: "text-muted-foreground",
+                organizationSwitcherPopoverCard: "bg-card border border-border shadow-lg",
+                organizationSwitcherPopoverActionButton: "hover:bg-accent text-foreground",
+                organizationSwitcherPopoverActionButtonText: "text-foreground",
+                organizationSwitcherPopoverActionButtonIcon: "text-muted-foreground",
+              }
+            }}
+          />
           <UserButton
             afterSignOutUrl="/sign-in"
             appearance={{
