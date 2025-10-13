@@ -515,8 +515,8 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
       return data;
     },
     enabled: !!selectedRunId,
-    staleTime: 0, // Force fresh data to avoid caching issues
-    gcTime: 5 * 60 * 1000, // Shorter cache time
+    staleTime: 60 * 1000, // Cache for 1 minute
+    gcTime: 10 * 60 * 1000, // Keep in memory for 10 minutes
   });
 
   // Filter cast files by selected task (if task is selected) - MUST BE AFTER castListData
