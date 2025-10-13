@@ -1181,35 +1181,62 @@ export class GitHubOctokitService {
   }
 
   /**
-   * Calculates repository PR statistics using GitHub Search API
+   * Calculates repository PR statistics using efficient GraphQL queries
    */
   async getRepositoryStats(): Promise<{ open: number; closed: number; merged: number; draft: number }> {
     try {
       this.logger.debug({ repo: `${this.repositoryOwner}/${this.repositoryName}` }, 'Computing repository statistics');
 
-      const [openResult, closedResult, mergedResult, draftResult] = await Promise.all([
-        this.octokit.search.issuesAndPullRequests({
-          q: `repo:${this.repositoryOwner}/${this.repositoryName} is:pr is:open`,
+      // First query: get basic PR counts
+      const basicStatsQuery = `
+        query($owner: String!, $repo: String!) {
+          repository(owner: $owner, name: $repo) {
+            pullRequests {
+              totalCount
+            }
+            openPRs: pullRequests(states: [OPEN]) {
+              totalCount
+            }
+            closedPRs: pullRequests(states: [CLOSED]) {
+              totalCount
+            }
+            mergedPRs: pullRequests(states: [MERGED]) {
+              totalCount
+            }
+          }
+        }
+      `;
+
+      // Second query: use search API to get draft PR count efficiently
+      const draftSearchQuery = `
+        query($searchQuery: String!) {
+          search(query: $searchQuery, type: ISSUE, first: 0) {
+            issueCount
+          }
+        }
+      `;
+
+      const [basicResponse, draftResponse] = await Promise.all([
+        this.octokit.graphql(basicStatsQuery, {
+          owner: this.repositoryOwner,
+          repo: this.repositoryName,
         }),
-        this.octokit.search.issuesAndPullRequests({
-          q: `repo:${this.repositoryOwner}/${this.repositoryName} is:pr is:closed`,
-        }),
-        this.octokit.search.issuesAndPullRequests({
-          q: `repo:${this.repositoryOwner}/${this.repositoryName} is:pr is:merged`,
-        }),
-        this.octokit.search.issuesAndPullRequests({
-          q: `repo:${this.repositoryOwner}/${this.repositoryName} is:pr is:draft`,
-        }),
+        this.octokit.graphql(draftSearchQuery, {
+          searchQuery: `repo:${this.repositoryOwner}/${this.repositoryName} is:pr is:open is:draft`,
+        })
       ]);
 
-      const open = openResult.data.total_count || 0;
-      const merged = mergedResult.data.total_count || 0;
-      const totalClosed = closedResult.data.total_count || 0;
-      const draft = draftResult.data.total_count || 0;
-      const closed = Math.max(0, totalClosed - merged);
+      const repo = (basicResponse as any).repository;
+      const draftSearch = (draftResponse as any).search;
+      
+      // Extract counts from GraphQL responses
+      const open = repo.openPRs.totalCount || 0;
+      const merged = repo.mergedPRs.totalCount || 0;
+      const closed = repo.closedPRs.totalCount || 0; // CLOSED state means closed without merging
+      const draft = draftSearch.issueCount || 0; // Draft PRs from search API
 
       const stats = { open, closed, merged, draft };
-      this.logger.info({ ...stats, totalClosed }, 'Repository statistics calculated');
+      this.logger.info({ ...stats, total: open + closed + merged }, 'Repository statistics calculated');
 
       return stats;
     } catch (error) {
