@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useOrganization } from "@clerk/clerk-react";
 import { GitPullRequest, FolderGit2, ExternalLink, ChevronRight, Loader2, ShieldAlert } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,7 +14,6 @@ interface Repository {
   name: string;
   workflow: string;
   description?: string;
-  defaultBranch?: string;
 }
 
 interface UserRepositoriesResponse {
@@ -110,10 +110,14 @@ function RepositoryCard({ repo, organization, onSelect }: { repo: Repository; or
 }
 
 export default function RepositorySelector({ onSelectRepo }: RepositorySelectorProps) {
+  // Get current active organization from Clerk - this triggers refetch when org changes
+  const { organization: clerkOrg } = useOrganization();
+
   // Fetch accessible repositories from authenticated API
   // Repository access is automatically synced from GitHub on authentication
+  // Query key includes organization ID to refetch when switching organizations
   const { data: repoData, isLoading, error } = useQuery<UserRepositoriesResponse>({
-    queryKey: ['/api/user/repositories'],
+    queryKey: ['/api/user/repositories', clerkOrg?.id],
     queryFn: async () => {
       const response = await fetch('/api/user/repositories');
 
@@ -123,12 +127,13 @@ export default function RepositorySelector({ onSelectRepo }: RepositorySelectorP
 
       return response.json();
     },
+    enabled: !!clerkOrg, // Only fetch when organization is set
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
     gcTime: 10 * 60 * 1000,
   });
 
   const repositories = repoData?.repositories || [];
-  const organization = repoData?.organization || '';
+  const githubOrganization = repoData?.organization || '';
 
   return (
     <div className="flex-1 flex flex-col bg-background">
@@ -172,7 +177,7 @@ export default function RepositorySelector({ onSelectRepo }: RepositorySelectorP
               <RepositoryCard
                 key={repo.name}
                 repo={repo}
-                organization={organization}
+                organization={githubOrganization}
                 onSelect={onSelectRepo}
               />
             ))}

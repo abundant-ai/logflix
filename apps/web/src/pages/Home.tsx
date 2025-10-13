@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useSearch, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+import { useOrganization } from "@clerk/clerk-react";
 import { ArrowLeft, Loader2, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import NavigationSidebar from "@/components/NavigationSidebar";
@@ -16,7 +17,6 @@ interface Repository {
   name: string;
   workflow: string;
   description?: string;
-  defaultBranch?: string;
 }
 
 interface UserRepositoriesResponse {
@@ -31,9 +31,13 @@ export default function Home({ repoName }: HomeProps) {
 
   const [selectedPR, setSelectedPR] = useState<GitHubPRSelection | null>(null);
 
+  // Get current active organization from Clerk - this triggers refetch when org changes
+  const { organization: clerkOrg } = useOrganization();
+
   // Fetch accessible repositories to validate and get organization
+  // Query key includes organization ID to refetch when switching organizations
   const { data: repoData, isLoading, error } = useQuery<UserRepositoriesResponse>({
-    queryKey: ['/api/user/repositories'],
+    queryKey: ['/api/user/repositories', clerkOrg?.id],
     queryFn: async () => {
       const response = await fetch('/api/user/repositories');
       if (!response.ok) {
@@ -41,6 +45,7 @@ export default function Home({ repoName }: HomeProps) {
       }
       return response.json();
     },
+    enabled: !!clerkOrg, // Only fetch when organization is set
     staleTime: 5 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
   });
