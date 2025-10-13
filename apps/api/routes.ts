@@ -670,38 +670,15 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
       const githubToken = res.locals.githubToken;
       const githubService = getGitHubService(req.query, requestLogger, githubToken);
 
-      // DEBUG: Log all request parameters (Vercel compatible)
-      console.log("DEBUG: cast-file-by-path request received:", JSON.stringify({
-        artifactId,
-        rawPath: path,
-        queryParams: req.query,
-        originalUrl: req.originalUrl,
-        fullUrl: req.url
-      }));
-
       if (!artifactId || isNaN(parseInt(artifactId, 10))) {
         return res.status(400).json({ error: "Invalid artifact ID parameter" });
       }
 
       if (!path || typeof path !== 'string') {
-        console.log("DEBUG: Path parameter validation failed:", JSON.stringify({
-          artifactId,
-          pathValue: path,
-          pathType: typeof path,
-          queryKeys: Object.keys(req.query)
-        }));
         return res.status(400).json({ error: "File path is required" });
       }
 
       const artifactIdNumber = parseInt(artifactId, 10);
-      
-      // DEBUG: Log the exact path being passed to getCastFileByPath (Vercel compatible)
-      console.log("DEBUG: Calling getCastFileByPath with path:", JSON.stringify({
-        artifactId: artifactIdNumber,
-        pathToService: path,
-        decodedPath: decodeURIComponent(path as string)
-      }));
-      
       const content = await githubService.getCastFileByPath(artifactIdNumber, path);
 
       if (!content) {
