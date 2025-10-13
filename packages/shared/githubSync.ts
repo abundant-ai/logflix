@@ -33,7 +33,7 @@ export async function fetchAllUserAccessibleRepositories(
     while (hasMorePages) {
       // Use /user/repos with affiliation to get all repos the user has access to
       const response = await fetch(
-        `https://api.github.com/user/repos?affiliation=organization_member,collaborator&type=all&per_page=100&page=${page}`,
+        `https://api.github.com/user/repos?affiliation=organization_member,collaborator&per_page=100&page=${page}`,
         {
           headers: {
             Authorization: `Bearer ${accessToken}`,
