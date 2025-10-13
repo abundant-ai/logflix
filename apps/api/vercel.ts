@@ -18,7 +18,7 @@ import { registerRoutes } from "./routes.js";
 const logger = pino({
   name: 'logflix-api',
   level: process.env.LOG_LEVEL || 'info',
-  ...(process.env.NODE_ENV === 'development' && {
+  ...(process.env.NODE_ENV === 'development' && !process.env.VERCEL && {
     transport: {
       target: 'pino-pretty',
       options: {
