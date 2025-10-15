@@ -1058,18 +1058,19 @@ export class GitHubOctokitService {
   /**
    * Retrieves individual job results for a workflow run
    */
-  async getWorkflowJobs(runId: number): Promise<Array<{ name: string; conclusion: string | null; status: string }>> {
+  async getWorkflowJobs(runId: number): Promise<Array<{ id: number; name: string; conclusion: string | null; status: string }>> {
     try {
       this.logger.debug({ runId }, 'Fetching workflow job results');
-      
+
       const jobs = await this.octokit.paginate(this.octokit.actions.listJobsForWorkflowRun, {
         owner: this.repositoryOwner,
         repo: this.repositoryName,
         run_id: runId,
         per_page: 100,
       });
-      
+
       const mappedJobs = jobs.map((job: any) => ({
+        id: job.id,
         name: job.name,
         conclusion: job.conclusion,
         status: job.status,
@@ -1080,6 +1081,318 @@ export class GitHubOctokitService {
     } catch (error) {
       this.logger.error({ runId, error }, 'Error fetching jobs for run');
       return [];
+    }
+  }
+
+  /**
+   * Downloads and extracts job logs for a specific job
+   */
+  async getJobLogs(jobId: number): Promise<string | null> {
+    try {
+      this.logger.debug({ jobId }, 'Downloading job logs');
+
+      const response = await this.octokit.actions.downloadJobLogsForWorkflowRun({
+        owner: this.repositoryOwner,
+        repo: this.repositoryName,
+        job_id: jobId,
+      });
+
+      // The response contains a redirect URL to the actual log file (plain text)
+      this.logger.debug({ jobId, responseUrl: response.url }, 'Got job logs redirect URL');
+
+      const logResponse = await fetch(response.url);
+      const logContent = await logResponse.text();
+
+      if (logContent) {
+        this.logger.debug({ jobId, contentLength: logContent.length }, 'Job logs downloaded successfully');
+      } else {
+        this.logger.warn({ jobId }, 'No log content found in job logs');
+      }
+
+      return logContent || null;
+    } catch (error: any) {
+      this.logger.error({ jobId, error: error.message || error }, 'Error fetching job logs');
+      return null;
+    }
+  }
+
+  /**
+   * Parses job logs to extract test result from SUMMARY line
+   */
+  parseJobLogsForSummary(logs: string): { status: 'PASS' | 'FAIL' | 'UNKNOWN' } {
+    try {
+      this.logger.debug({ logLength: logs.length }, 'Parsing job logs for SUMMARY');
+
+      // Search for SUMMARY line
+      const lines = logs.split('\n');
+      const summaryLine = lines.find(line => line.includes('SUMMARY:'));
+
+      if (!summaryLine) {
+        // Log sample lines to help diagnose
+        const sampleLines = lines.slice(Math.max(0, lines.length - 50), lines.length);
+        this.logger.debug({
+          totalLines: lines.length,
+          lastFewLines: sampleLines.map(l => l.substring(0, 100))
+        }, 'No SUMMARY line found in job logs - showing last 50 lines');
+        return { status: 'UNKNOWN' };
+      }
+
+      this.logger.debug({ summaryLine: summaryLine.substring(0, 200) }, 'Found SUMMARY line');
+
+      // Check for success or failure markers
+      if (summaryLine.includes('✅') || summaryLine.toLowerCase().includes('all tests passed')) {
+        this.logger.info({ summaryLine }, 'Detected PASS from SUMMARY');
+        return { status: 'PASS' };
+      } else if (summaryLine.includes('❌') || summaryLine.toLowerCase().includes('failed')) {
+        this.logger.info({ summaryLine }, 'Detected FAIL from SUMMARY');
+        return { status: 'FAIL' };
+      }
+
+      this.logger.warn({ summaryLine }, 'SUMMARY found but could not determine status');
+      return { status: 'UNKNOWN' };
+    } catch (error: any) {
+      this.logger.error({ error: error.message || error }, 'Error parsing job logs for SUMMARY');
+      return { status: 'UNKNOWN' };
+    }
+  }
+
+  /**
+   * Gets test result from artifact (primary logic)
+   */
+  async getTestResultFromArtifact(
+    runId: number,
+    agentName: string,
+    modelName: string | null
+  ): Promise<{ status: 'PASS' | 'FAIL' | 'UNKNOWN'; source: 'artifact' | 'unknown'; expired: boolean }> {
+    try {
+      // Normalize agent name for artifact matching
+      // Examples: "Oracle" -> "oracle", "NOP" -> "nop", "Terminus" -> "terminus"
+      const normalizedAgent = agentName.toLowerCase();
+
+      this.logger.debug({ runId, agentName, modelName, normalizedAgent }, 'Searching for test result artifact');
+
+      // Fetch all artifacts for the run
+      const artifacts = await this.getWorkflowRunArtifacts(runId);
+
+      // Find matching artifact using flexible strategy
+      let artifact;
+
+      if (!modelName) {
+        // For agents without models (Oracle, NOP): exact match "test-result-{agent}"
+        artifact = artifacts.find(a =>
+          a.name.toLowerCase() === `test-result-${normalizedAgent}`
+        );
+      } else {
+        // For agents with models (Terminus): match "test-result-{agent}-" + model family
+        // Extract model family identifier from model name
+        // "GPT-4.1" -> "gpt", "Claude 4 Sonnet" -> "claude", "Gemini 2.5 Pro" -> "gemini"
+        const modelFamily = modelName.toLowerCase().split(/[\s-]/)[0];
+
+        // Find artifact starting with "test-result-{agent}-" and containing model family
+        artifact = artifacts.find(a => {
+          const artifactLower = a.name.toLowerCase();
+          return artifactLower.startsWith(`test-result-${normalizedAgent}-`) &&
+                 artifactLower.includes(modelFamily);
+        });
+      }
+
+      this.logger.debug({
+        runId,
+        agentName,
+        modelName,
+        normalizedAgent,
+        foundArtifact: artifact ? { id: artifact.id, name: artifact.name } : null,
+        availableArtifacts: artifacts.filter(a => a.name.startsWith('test-result')).map(a => a.name)
+      }, 'Artifact search result');
+
+      if (!artifact) {
+        this.logger.warn({ runId, agentName, modelName, normalizedAgent, availableArtifacts: artifacts.map(a => a.name) }, 'Test result artifact not found');
+        return { status: 'UNKNOWN', source: 'unknown', expired: false };
+      }
+
+      this.logger.debug({ runId, agentName, modelName, artifactId: artifact.id, expired: artifact.expired }, 'Found test result artifact');
+
+      // Check if artifact is expired
+      if (artifact.expired) {
+        this.logger.warn({ runId, agentName, modelName, artifactId: artifact.id }, 'Test result artifact has expired');
+        return { status: 'UNKNOWN', source: 'unknown', expired: true };
+      }
+
+      // Download and extract artifact
+      const response = await this.octokit.actions.downloadArtifact({
+        owner: this.repositoryOwner,
+        repo: this.repositoryName,
+        artifact_id: artifact.id,
+        archive_format: 'zip',
+      });
+
+      const zipResponse = await fetch(response.url);
+      const zipBuffer = Buffer.from(await zipResponse.arrayBuffer());
+
+      const zip = new AdmZip(zipBuffer);
+      const entries = zip.getEntries();
+
+      // Find the .txt file (e.g., nop.txt, oracle.txt, terminus.txt)
+      const txtEntry = entries.find(entry =>
+        !entry.isDirectory && entry.entryName.endsWith('.txt')
+      );
+
+      if (!txtEntry) {
+        this.logger.error({ runId, agentName, modelName, artifactId: artifact.id }, 'No .txt file found in test result artifact');
+        return { status: 'UNKNOWN', source: 'unknown', expired: false };
+      }
+
+      const content = zip.readAsText(txtEntry).trim().toLowerCase();
+
+      this.logger.debug({ runId, agentName, modelName, artifactId: artifact.id, content }, 'Read test result content from artifact');
+
+      // Parse content: "success" or "failure"
+      if (content === 'success') {
+        return { status: 'PASS', source: 'artifact', expired: false };
+      } else if (content === 'failure') {
+        return { status: 'FAIL', source: 'artifact', expired: false };
+      } else {
+        this.logger.warn({ runId, agentName, modelName, artifactId: artifact.id, content }, 'Unexpected content in test result artifact');
+        return { status: 'UNKNOWN', source: 'unknown', expired: false };
+      }
+    } catch (error: any) {
+      if (error.status === 410 || error.message?.includes('Artifact has expired')) {
+        this.logger.warn({ runId, agentName, modelName }, 'Test result artifact expired during download');
+        return { status: 'UNKNOWN', source: 'unknown', expired: true };
+      }
+      this.logger.error({ runId, agentName, modelName, error: error.message || error }, 'Error fetching test result from artifact');
+      return { status: 'UNKNOWN', source: 'unknown', expired: false };
+    }
+  }
+
+  /**
+   * Helper: Parses agent job name to extract agent and model
+   */
+  private parseAgentJobName(jobName: string): { agentName: string; modelName: string | null } | null {
+    // Match pattern: "Test with {AgentName} (optional model/note)"
+    const match = jobName.match(/^Test with (.+?)(?:\s*\((.+)\))?$/);
+
+    if (!match) return null;
+
+    const rawAgentName = match[1].trim();
+    const parenthesesContent = match[2]?.trim();
+
+    // Normalize agent name
+    let agentName = rawAgentName;
+    if (agentName === 'Oracle Solution') agentName = 'Oracle';
+    if (agentName === 'NOP Agent') agentName = 'NOP';
+
+    // Check if parentheses content is a model name
+    const isModelName = parenthesesContent &&
+      /(?:claude|gpt|gemini|o1|llama|sonnet|pro|haiku|opus|-|\d)/i.test(parenthesesContent) &&
+      !parenthesesContent.toLowerCase().includes('should fail');
+
+    const modelName = isModelName ? parenthesesContent : null;
+
+    return { agentName, modelName };
+  }
+
+  /**
+   * Orchestrates fetching agent test results using primary (artifact) and fallback (logs) logic
+   */
+  async getAgentTestResults(runId: number): Promise<{
+    [agentName: string]: Array<{
+      model: string | null;
+      status: 'PASS' | 'FAIL' | 'UNKNOWN';
+      source: 'artifact' | 'fallback' | 'unknown';
+      conclusion: string | null;
+      jobStatus: string;
+    }>;
+  }> {
+    try {
+      this.logger.info({ runId }, 'Starting agent test results orchestration');
+
+      // Fetch all jobs for the workflow run
+      const jobs = await this.getWorkflowJobs(runId);
+
+      this.logger.debug({ runId, totalJobs: jobs.length }, 'Retrieved workflow jobs');
+
+      // Filter to only jobs that match "Test with" pattern
+      const testJobs = jobs.filter(job => job.name.startsWith('Test with '));
+
+      this.logger.info({ runId, testJobs: testJobs.length, totalJobs: jobs.length }, 'Filtered to test jobs');
+
+      const results: {
+        [agentName: string]: Array<{
+          model: string | null;
+          status: 'PASS' | 'FAIL' | 'UNKNOWN';
+          source: 'artifact' | 'fallback' | 'unknown';
+          conclusion: string | null;
+          jobStatus: string;
+        }>;
+      } = {};
+
+      // Process each test job
+      for (const job of testJobs) {
+        const parsed = this.parseAgentJobName(job.name);
+
+        if (!parsed) {
+          this.logger.warn({ runId, jobName: job.name }, 'Could not parse agent job name');
+          continue;
+        }
+
+        const { agentName, modelName } = parsed;
+
+        this.logger.debug({ runId, jobId: job.id, agentName, modelName, jobName: job.name }, 'Processing agent test job');
+
+        let status: 'PASS' | 'FAIL' | 'UNKNOWN' = 'UNKNOWN';
+        let source: 'artifact' | 'fallback' | 'unknown' = 'unknown';
+
+        // PRIMARY LOGIC: Try to fetch from artifact
+        const artifactResult = await this.getTestResultFromArtifact(runId, agentName, modelName);
+
+        if (artifactResult.status !== 'UNKNOWN' && !artifactResult.expired) {
+          // Successfully got result from artifact
+          status = artifactResult.status;
+          source = 'artifact';
+          this.logger.info({ runId, jobId: job.id, agentName, modelName, status, source }, 'Got test result from artifact');
+        } else if (artifactResult.expired || artifactResult.source === 'unknown') {
+          // FALLBACK LOGIC: Try to fetch from job logs
+          this.logger.debug({ runId, jobId: job.id, agentName, modelName }, 'Artifact unavailable/expired, trying fallback to job logs');
+
+          const logs = await this.getJobLogs(job.id);
+
+          if (logs) {
+            const logResult = this.parseJobLogsForSummary(logs);
+            status = logResult.status;
+            source = logResult.status !== 'UNKNOWN' ? 'fallback' : 'unknown';
+            this.logger.info({ runId, jobId: job.id, agentName, modelName, status, source }, 'Got test result from job logs (fallback)');
+          } else {
+            this.logger.warn({ runId, jobId: job.id, agentName, modelName }, 'Could not fetch job logs for fallback');
+          }
+        }
+
+        // Add to results grouped by agent
+        if (!results[agentName]) {
+          results[agentName] = [];
+        }
+
+        results[agentName].push({
+          model: modelName,
+          status,
+          source,
+          conclusion: job.conclusion,
+          jobStatus: job.status,
+        });
+
+        this.logger.debug({ runId, agentName, modelName, status, source }, 'Added test result to grouped results');
+      }
+
+      this.logger.info({
+        runId,
+        agentCount: Object.keys(results).length,
+        totalResults: Object.values(results).flat().length
+      }, 'Agent test results orchestration complete');
+
+      return results;
+    } catch (error: any) {
+      this.logger.error({ runId, error: error.message || error }, 'Error orchestrating agent test results');
+      return {};
     }
   }
 

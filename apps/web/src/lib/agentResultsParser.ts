@@ -7,6 +7,7 @@ export interface AgentTestResult {
   model: string | null;
   conclusion: string | null;
   status: string;
+  source?: 'artifact' | 'fallback' | 'unknown';
 }
 
 export interface AgentResultGroups {

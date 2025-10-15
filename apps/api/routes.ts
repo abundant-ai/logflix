@@ -845,6 +845,38 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
     }
   });
 
+  // Get agent test results for a workflow run
+  app.get("/api/github/agent-test-results/:runId", requireAuth, requireRepositoryAccess, async (req, res) => {
+    try {
+      const { runId } = req.params;
+      const requestLogger = res.locals.logger || logger;
+      const githubToken = res.locals.githubToken;
+      const githubService = getGitHubService(req.query, requestLogger, githubToken);
+
+      if (!runId || isNaN(parseInt(runId, 10))) {
+        return res.status(400).json({ error: "Invalid run ID parameter" });
+      }
+
+      const runIdNumber = parseInt(runId, 10);
+
+      requestLogger.info({ runId: runIdNumber }, 'Fetching agent test results for workflow run');
+
+      const agentResults = await githubService.getAgentTestResults(runIdNumber);
+
+      requestLogger.info({
+        runId: runIdNumber,
+        agentCount: Object.keys(agentResults).length,
+        totalResults: Object.values(agentResults).flat().length
+      }, 'Agent test results retrieved successfully');
+
+      res.json({ agentResults });
+    } catch (error) {
+      const requestLogger = res.locals.logger || logger;
+      requestLogger.error({ runId: req.params.runId, error }, "Error fetching agent test results");
+      res.status(500).json({ error: "Failed to fetch agent test results" });
+    }
+  });
+
   // Get log files from artifact
   app.get("/api/github/artifact-logs/:artifactId", requireAuth, requireRepositoryAccess, async (req, res) => {
     try {
