@@ -21,13 +21,15 @@ import {
   Calendar,
   TrendingUp,
   GitCommit,
-  Tag
+  Tag,
+  HelpCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   GitHubWorkflowRun,
   GitHubPullRequest,
@@ -1199,139 +1201,155 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                           <span className="ml-3 text-muted-foreground">Loading agent results...</span>
                         </div>
                       ) : agentTestResultsData?.agentResults && Object.keys(agentTestResultsData.agentResults).length > 0 ? (
-                        <div className="space-y-3">
-                          {(() => {
-                            console.log('[AGENT RESULTS] Rendering agent results:', agentTestResultsData.agentResults);
+                        <TooltipProvider>
+                          <div className="space-y-4">
+                            {/* Column Headers */}
+                            <div className="grid grid-cols-3 gap-4 pb-3 border-b">
+                              <div className="flex items-center gap-2">
+                                <span className="text-base font-semibold text-foreground">Agents</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-base font-semibold text-foreground">Run Status</span>
+                                <Tooltip>
+                                  <TooltipTrigger>
+                                    <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>The GitHub Actions workflow job status (e.g., SUCCESS, FAILURE)</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-base font-semibold text-foreground">Run Result</span>
+                                <Tooltip>
+                                  <TooltipTrigger>
+                                    <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>The test execution result (PASS/FAIL) from agent output</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </div>
+                            </div>
 
-                            // Define agent display order
-                            const agentOrder = ['NOP', 'Oracle', 'Terminus'];
-                            const sortedAgents = Object.entries(agentTestResultsData.agentResults).sort(([a], [b]) => {
-                              const aIndex = agentOrder.indexOf(a);
-                              const bIndex = agentOrder.indexOf(b);
-                              if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
-                              if (aIndex !== -1) return -1;
-                              if (bIndex !== -1) return 1;
-                              return a.localeCompare(b);
-                            });
+                            {/* Agent Rows */}
+                            {(() => {
+                              console.log('[AGENT RESULTS] Rendering agent results:', agentTestResultsData.agentResults);
 
-                            return sortedAgents.map(([agentName, results]) => {
-                              console.log(`[AGENT RESULTS] Rendering agent: ${agentName}`, results);
+                              // Define agent display order
+                              const agentOrder = ['NOP', 'Oracle', 'Terminus'];
+                              const sortedAgents = Object.entries(agentTestResultsData.agentResults).sort(([a], [b]) => {
+                                const aIndex = agentOrder.indexOf(a);
+                                const bIndex = agentOrder.indexOf(b);
+                                if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+                                if (aIndex !== -1) return -1;
+                                if (bIndex !== -1) return 1;
+                                return a.localeCompare(b);
+                              });
 
-                              // Check if this agent has models
-                              const hasModels = results.some(r => r.model);
+                              return sortedAgents.map(([agentName, results]) => {
+                                console.log(`[AGENT RESULTS] Rendering agent: ${agentName}`, results);
 
-                              if (hasModels) {
-                                // Agent with models - show grouped with models beneath
-                                return (
-                                  <div key={agentName} className="space-y-1">
-                                    <div className="font-semibold text-sm text-foreground py-1.5 px-3 bg-muted/20 rounded">
-                                      {agentName}
-                                    </div>
-                                    {results.map((result, idx) => {
-                                      console.log(`[AGENT RESULTS] Rendering ${agentName} model ${result.model}:`, result);
+                                // Check if this agent has models
+                                const hasModels = results.some(r => r.model);
 
-                                      // Get status icon
-                                      const statusIcon = result.status === 'PASS' ? (
-                                        <CheckCircle className="h-4 w-4 text-success" />
-                                      ) : result.status === 'FAIL' ? (
-                                        <XCircle className="h-4 w-4 text-destructive" />
-                                      ) : (
-                                        <Clock className="h-4 w-4 text-muted-foreground" />
-                                      );
+                                if (hasModels) {
+                                  // Agent with models - show grouped with models beneath
+                                  return (
+                                    <div key={agentName} className="space-y-2">
+                                      {/* Agent header row */}
+                                      <div className="grid grid-cols-3 gap-4 py-3 bg-muted/20 rounded-lg px-4">
+                                        <div className="flex items-center gap-2">
+                                          <Brain className="h-5 w-5 text-blue-500" />
+                                          <span className="text-lg font-semibold text-foreground">{agentName}</span>
+                                        </div>
+                                        <div></div>
+                                        <div></div>
+                                      </div>
 
-                                      // Get status color
-                                      const statusColor = result.status === 'PASS' ? 'text-success' :
-                                                         result.status === 'FAIL' ? 'text-destructive' :
-                                                         'text-muted-foreground';
+                                      {/* Model rows */}
+                                      {results.map((result, idx) => {
+                                        console.log(`[AGENT RESULTS] Rendering ${agentName} model ${result.model}:`, result);
 
-                                      return (
-                                        <div key={idx} className="pl-6 pr-3 py-2 bg-muted/30 rounded space-y-1">
-                                          {/* Model name */}
-                                          <div className="text-sm font-medium text-foreground">
-                                            {result.model || 'Default'}
-                                          </div>
+                                        // Get status icon and color
+                                        const statusIcon = result.status === 'PASS' ? (
+                                          <CheckCircle className="h-5 w-5 text-green-500" />
+                                        ) : result.status === 'FAIL' ? (
+                                          <XCircle className="h-5 w-5 text-red-500" />
+                                        ) : (
+                                          <Clock className="h-5 w-5 text-muted-foreground" />
+                                        );
 
-                                          {/* Run Status and Execution Result on same line */}
-                                          <div className="flex items-center justify-between gap-2">
-                                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                              <span>Status:</span>
-                                              <span className={getStatusColor(result.jobStatus, result.conclusion)}>
+                                        const statusColor = result.status === 'PASS' ? 'text-green-500' :
+                                                           result.status === 'FAIL' ? 'text-red-500' :
+                                                           'text-muted-foreground';
+
+                                        return (
+                                          <div key={idx} className="grid grid-cols-3 gap-4 py-3 px-4 pl-12 bg-muted/10 rounded">
+                                            <div className="text-base font-medium text-foreground">
+                                              {result.model || 'Default'}
+                                            </div>
+                                            <div className="flex items-center">
+                                              <span className={`text-base font-medium ${getStatusColor(result.jobStatus, result.conclusion)}`}>
                                                 {result.jobStatus === 'completed' && result.conclusion ?
                                                   result.conclusion.toUpperCase() :
                                                   result.jobStatus.toUpperCase()}
                                               </span>
                                             </div>
-
                                             <div className="flex items-center gap-2">
                                               {statusIcon}
-                                              <span className={`text-sm font-medium ${statusColor}`}>
+                                              <span className={`text-base font-semibold ${statusColor}`}>
                                                 {result.status}
                                               </span>
-                                              {result.source && (
-                                                <Badge variant="outline" className="text-xs px-1.5 py-0">
-                                                  {result.source === 'artifact' ? '📦' : result.source === 'fallback' ? '📝' : '❓'}
-                                                </Badge>
-                                              )}
                                             </div>
                                           </div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                );
-                              } else {
-                                // Agent without models - show inline
-                                const result = results[0];
-                                console.log(`[AGENT RESULTS] Rendering ${agentName} (no model):`, result);
-
-                                const statusIcon = result.status === 'PASS' ? (
-                                  <CheckCircle className="h-4 w-4 text-success" />
-                                ) : result.status === 'FAIL' ? (
-                                  <XCircle className="h-4 w-4 text-destructive" />
-                                ) : (
-                                  <Clock className="h-4 w-4 text-muted-foreground" />
-                                );
-
-                                const statusColor = result.status === 'PASS' ? 'text-success' :
-                                                   result.status === 'FAIL' ? 'text-destructive' :
-                                                   'text-muted-foreground';
-
-                                return (
-                                  <div key={agentName} className="py-2 px-3 bg-muted/30 rounded space-y-1">
-                                    {/* Agent name */}
-                                    <div className="font-semibold text-sm text-foreground">
-                                      {agentName}
+                                        );
+                                      })}
                                     </div>
+                                  );
+                                } else {
+                                  // Agent without models - show inline
+                                  const result = results[0];
+                                  console.log(`[AGENT RESULTS] Rendering ${agentName} (no model):`, result);
 
-                                    {/* Run Status and Execution Result */}
-                                    <div className="flex items-center justify-between gap-2">
-                                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                        <span>Status:</span>
-                                        <span className={getStatusColor(result.jobStatus, result.conclusion)}>
+                                  const statusIcon = result.status === 'PASS' ? (
+                                    <CheckCircle className="h-5 w-5 text-green-500" />
+                                  ) : result.status === 'FAIL' ? (
+                                    <XCircle className="h-5 w-5 text-red-500" />
+                                  ) : (
+                                    <Clock className="h-5 w-5 text-muted-foreground" />
+                                  );
+
+                                  const statusColor = result.status === 'PASS' ? 'text-green-500' :
+                                                     result.status === 'FAIL' ? 'text-red-500' :
+                                                     'text-muted-foreground';
+
+                                  return (
+                                    <div key={agentName} className="grid grid-cols-3 gap-4 py-3 px-4 bg-muted/10 rounded-lg">
+                                      <div className="flex items-center gap-2">
+                                        <Brain className="h-5 w-5 text-blue-500" />
+                                        <span className="text-lg font-semibold text-foreground">{agentName}</span>
+                                      </div>
+                                      <div className="flex items-center">
+                                        <span className={`text-base font-medium ${getStatusColor(result.jobStatus, result.conclusion)}`}>
                                           {result.jobStatus === 'completed' && result.conclusion ?
                                             result.conclusion.toUpperCase() :
                                             result.jobStatus.toUpperCase()}
                                         </span>
                                       </div>
-
                                       <div className="flex items-center gap-2">
                                         {statusIcon}
-                                        <span className={`text-sm font-medium ${statusColor}`}>
+                                        <span className={`text-base font-semibold ${statusColor}`}>
                                           {result.status}
                                         </span>
-                                        {result.source && (
-                                          <Badge variant="outline" className="text-xs px-1.5 py-0">
-                                            {result.source === 'artifact' ? '📦' : result.source === 'fallback' ? '📝' : '❓'}
-                                          </Badge>
-                                        )}
                                       </div>
                                     </div>
-                                  </div>
-                                );
-                              }
-                            });
-                          })()}
-                        </div>
+                                  );
+                                }
+                              });
+                            })()}
+                          </div>
+                        </TooltipProvider>
                       ) : (
                         <p className="text-sm text-muted-foreground">No agent results available</p>
                       )}
