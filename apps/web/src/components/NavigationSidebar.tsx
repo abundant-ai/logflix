@@ -298,7 +298,7 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, or
                 checked={selectedStates.includes('all')}
                 onCheckedChange={() => toggleState('all')}
               >
-                <GitPullRequest className="h-4 w-4 mr-2" />
+                <GitPullRequest className="h-4 w-4 mr-2 text-info" />
                 All ({statsData ? statsData.open + statsData.closed + statsData.merged : 0})
               </DropdownMenuCheckboxItem>
               

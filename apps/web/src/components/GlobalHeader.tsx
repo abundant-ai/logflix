@@ -1,5 +1,5 @@
 import { UserButton, OrganizationSwitcher } from "@clerk/clerk-react";
-import { Activity, GitBranch, GitPullRequest, CheckCircle, XCircle, Clock } from "lucide-react";
+import { Activity, GitBranch, GitPullRequest, CheckCircle, XCircle, Clock, GitCommit, Tag } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 interface GlobalHeaderProps {
@@ -52,11 +52,11 @@ export default function GlobalHeader({
                   <span className="text-sm text-muted-foreground">{prStats?.total ?? 0}</span>
                 </div>
                 <div className="flex items-center gap-1">
-                  <Clock className="h-4 w-4 text-success" />
+                  <CheckCircle className="h-4 w-4 text-success" />
                   <span className="text-sm text-muted-foreground">{prStats?.open ?? 0}</span>
                 </div>
                 <div className="flex items-center gap-1">
-                  <CheckCircle className="h-4 w-4 text-merged" />
+                  <GitCommit className="h-4 w-4 text-merged" />
                   <span className="text-sm text-muted-foreground">{prStats?.merged ?? 0}</span>
                 </div>
                 <div className="flex items-center gap-1">
@@ -64,7 +64,7 @@ export default function GlobalHeader({
                   <span className="text-sm text-muted-foreground">{prStats?.closed ?? 0}</span>
                 </div>
                 <div className="flex items-center gap-1">
-                  <GitPullRequest className="h-4 w-4 text-warning" />
+                  <Tag className="h-4 w-4 text-warning" />
                   <span className="text-sm text-muted-foreground">{prStats?.draft ?? 0}</span>
                 </div>
               </div>
