@@ -1,9 +1,12 @@
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useOrganization } from "@clerk/clerk-react";
-import { GitPullRequest, FolderGit2, ExternalLink, ChevronRight, Loader2, ShieldAlert } from "lucide-react";
+import { GitPullRequest, FolderGit2, ExternalLink, ChevronRight, Loader2, ShieldAlert, Search } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import GlobalHeader from "./GlobalHeader";
 
 interface RepositorySelectorProps {
@@ -14,6 +17,9 @@ interface Repository {
   name: string;
   workflow: string;
   description?: string;
+  created_at?: string;
+  updated_at?: string;
+  pushed_at?: string;
 }
 
 interface UserRepositoriesResponse {
@@ -110,6 +116,10 @@ function RepositoryCard({ repo, organization, onSelect }: { repo: Repository; or
 }
 
 export default function RepositorySelector({ onSelectRepo }: RepositorySelectorProps) {
+  // Search and sort state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortBy, setSortBy] = useState<'recently-updated' | 'recently-created' | 'name-asc' | 'name-desc'>('recently-updated');
+
   // Get current active organization from Clerk - this triggers refetch when org changes
   const { organization: clerkOrg } = useOrganization();
 
@@ -135,12 +145,83 @@ export default function RepositorySelector({ onSelectRepo }: RepositorySelectorP
   const repositories = repoData?.repositories || [];
   const githubOrganization = repoData?.organization || '';
 
+  // Filter and sort repositories based on search query and sort option
+  const filteredAndSortedRepos = useMemo(() => {
+    let result = [...repositories];
+
+    // Filter by search query
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(repo =>
+        repo.name.toLowerCase().includes(query) ||
+        repo.description?.toLowerCase().includes(query)
+      );
+    }
+
+    // Sort based on selected option
+    result.sort((a, b) => {
+      switch (sortBy) {
+        case 'recently-updated':
+          // Use pushed_at if available, otherwise fall back to updated_at
+          return new Date(b.pushed_at || b.updated_at || 0).getTime() -
+                 new Date(a.pushed_at || a.updated_at || 0).getTime();
+        case 'recently-created':
+          return new Date(b.created_at || 0).getTime() -
+                 new Date(a.created_at || 0).getTime();
+        case 'name-asc':
+          return a.name.localeCompare(b.name);
+        case 'name-desc':
+          return b.name.localeCompare(a.name);
+        default:
+          return 0;
+      }
+    });
+
+    return result;
+  }, [repositories, searchQuery, sortBy]);
+
   return (
     <div className="flex-1 flex flex-col bg-background">
       <GlobalHeader
         showRepoStats={true}
         repositoryCount={repositories.length}
       />
+
+      {/* Search and Sort Controls */}
+      <div className="px-6 pt-4 pb-2">
+        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+          {/* Search Input */}
+          <div className="relative w-full sm:w-96">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+            <Input
+              placeholder="Search repositories..."
+              className="pl-9"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+
+          {/* Sort Dropdown */}
+          <Select value={sortBy} onValueChange={(value) => setSortBy(value as typeof sortBy)}>
+            <SelectTrigger className="w-full sm:w-[200px]">
+              <SelectValue placeholder="Sort by" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="recently-updated">Recently Updated</SelectItem>
+              <SelectItem value="recently-created">Recently Created</SelectItem>
+              <SelectItem value="name-asc">Name (A-Z)</SelectItem>
+              <SelectItem value="name-desc">Name (Z-A)</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {/* Results Count */}
+          {searchQuery && (
+            <div className="text-sm text-muted-foreground whitespace-nowrap">
+              {filteredAndSortedRepos.length} of {repositories.length} {repositories.length === 1 ? 'repository' : 'repositories'}
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Repository Cards */}
       <div className="flex-1 overflow-y-auto p-6">
@@ -171,9 +252,19 @@ export default function RepositorySelector({ onSelectRepo }: RepositorySelectorP
               </p>
             </div>
           </div>
+        ) : filteredAndSortedRepos.length === 0 ? (
+          <div className="flex items-center justify-center h-64">
+            <div className="text-center">
+              <FolderGit2 className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
+              <h2 className="text-lg font-semibold mb-2">No Matching Repositories</h2>
+              <p className="text-muted-foreground max-w-md">
+                No repositories match your search criteria. Try adjusting your search query.
+              </p>
+            </div>
+          </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-            {repositories.map((repo) => (
+            {filteredAndSortedRepos.map((repo) => (
               <RepositoryCard
                 key={repo.name}
                 repo={repo}
