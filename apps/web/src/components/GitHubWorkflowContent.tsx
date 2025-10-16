@@ -1191,10 +1191,10 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                   </Card>
 
                   <Card>
-                    <CardHeader>
+                    <CardHeader className="pb-3">
                       <CardTitle>Agent Results</CardTitle>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent className="pt-0">
                       {isAgentResultsLoading ? (
                         <div className="flex items-center justify-center py-8">
                           <div className="animate-spin rounded-full h-6 w-6 border-2 border-primary border-t-transparent"></div>
@@ -1202,31 +1202,31 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                         </div>
                       ) : agentTestResultsData?.agentResults && Object.keys(agentTestResultsData.agentResults).length > 0 ? (
                         <TooltipProvider>
-                          <div className="space-y-4">
+                          <div className="space-y-0">
                             {/* Column Headers */}
-                            <div className="grid grid-cols-3 gap-4 pb-3 border-b">
-                              <div className="flex items-center gap-2">
-                                <span className="text-base font-semibold text-foreground">Agents</span>
+                            <div className="grid grid-cols-[2fr_1.5fr_1.5fr] gap-6 px-4 py-3 border-b border-muted/40">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Agent</span>
                               </div>
-                              <div className="flex items-center gap-2">
-                                <span className="text-base font-semibold text-foreground">Run Status</span>
+                              <div className="flex items-center gap-1.5 text-center">
+                                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Job Status</span>
                                 <Tooltip>
-                                  <TooltipTrigger>
-                                    <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                                  <TooltipTrigger asChild>
+                                    <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
                                   </TooltipTrigger>
                                   <TooltipContent>
-                                    <p>The GitHub Actions workflow job status (e.g., SUCCESS, FAILURE)</p>
+                                    <p className="text-xs">GitHub Actions workflow job completion status</p>
                                   </TooltipContent>
                                 </Tooltip>
                               </div>
-                              <div className="flex items-center gap-2">
-                                <span className="text-base font-semibold text-foreground">Run Result</span>
+                              <div className="flex items-center gap-1.5 text-center">
+                                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Test Result</span>
                                 <Tooltip>
-                                  <TooltipTrigger>
-                                    <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                                  <TooltipTrigger asChild>
+                                    <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
                                   </TooltipTrigger>
                                   <TooltipContent>
-                                    <p>The test execution result (PASS/FAIL) from agent output</p>
+                                    <p className="text-xs">Agent execution result from test output</p>
                                   </TooltipContent>
                                 </Tooltip>
                               </div>
@@ -1256,13 +1256,21 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                                 if (hasModels) {
                                   // Agent with models - show grouped with models beneath
                                   return (
-                                    <div key={agentName} className="space-y-2">
+                                    <div key={agentName} className="border-b border-muted/20">
                                       {/* Agent header row */}
-                                      <div className="grid grid-cols-3 gap-4 py-3 bg-muted/20 rounded-lg px-4">
-                                        <div className="flex items-center gap-2">
-                                          <Brain className="h-5 w-5 text-blue-500" />
-                                          <span className="text-lg font-semibold text-foreground">{agentName}</span>
-                                        </div>
+                                      <div className="grid grid-cols-[2fr_1.5fr_1.5fr] gap-6 px-4 py-3 bg-muted/10">
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <div className="flex items-center gap-2 cursor-help">
+                                              <Brain className="h-4 w-4 text-blue-500 flex-shrink-0" />
+                                              <span className="text-sm font-semibold text-foreground">{agentName}</span>
+                                            </div>
+                                          </TooltipTrigger>
+                                          <TooltipContent side="right">
+                                            <p className="text-xs font-medium">Multi-model AI agent</p>
+                                            <p className="text-xs text-muted-foreground mt-1">Tests with multiple LLM providers</p>
+                                          </TooltipContent>
+                                        </Tooltip>
                                         <div></div>
                                         <div></div>
                                       </div>
@@ -1271,34 +1279,37 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                                       {results.map((result, idx) => {
                                         console.log(`[AGENT RESULTS] Rendering ${agentName} model ${result.model}:`, result);
 
-                                        // Get status icon and color
-                                        const statusIcon = result.status === 'PASS' ? (
-                                          <CheckCircle className="h-5 w-5 text-green-500" />
-                                        ) : result.status === 'FAIL' ? (
-                                          <XCircle className="h-5 w-5 text-red-500" />
-                                        ) : (
-                                          <Clock className="h-5 w-5 text-muted-foreground" />
-                                        );
-
+                                        // Get status text and color
                                         const statusColor = result.status === 'PASS' ? 'text-green-500' :
                                                            result.status === 'FAIL' ? 'text-red-500' :
                                                            'text-muted-foreground';
 
+                                        const statusIcon = result.status === 'PASS' ? (
+                                          <CheckCircle className="h-3.5 w-3.5" />
+                                        ) : result.status === 'FAIL' ? (
+                                          <XCircle className="h-3.5 w-3.5" />
+                                        ) : (
+                                          <Clock className="h-3.5 w-3.5" />
+                                        );
+
+                                        // Get job status color
+                                        const jobStatusColor = result.conclusion === 'success' ? 'text-green-500' :
+                                                              result.conclusion === 'failure' ? 'text-red-500' :
+                                                              'text-muted-foreground';
+
                                         return (
-                                          <div key={idx} className="grid grid-cols-3 gap-4 py-3 px-4 pl-12 bg-muted/10 rounded">
-                                            <div className="text-base font-medium text-foreground">
+                                          <div key={idx} className="grid grid-cols-[2fr_1.5fr_1.5fr] gap-6 px-4 py-3 hover:bg-muted/5 transition-colors">
+                                            <div className="flex items-center text-sm text-foreground pl-6">
                                               {result.model || 'Default'}
                                             </div>
-                                            <div className="flex items-center">
-                                              <span className={`text-base font-medium ${getStatusColor(result.jobStatus, result.conclusion)}`}>
-                                                {result.jobStatus === 'completed' && result.conclusion ?
-                                                  result.conclusion.toUpperCase() :
-                                                  result.jobStatus.toUpperCase()}
+                                            <div className="flex items-center justify-center">
+                                              <span className={`text-sm font-medium ${jobStatusColor}`}>
+                                                {result.conclusion?.toUpperCase() || result.jobStatus.toUpperCase()}
                                               </span>
                                             </div>
-                                            <div className="flex items-center gap-2">
-                                              {statusIcon}
-                                              <span className={`text-base font-semibold ${statusColor}`}>
+                                            <div className="flex items-center justify-center gap-1.5">
+                                              <span className={statusColor}>{statusIcon}</span>
+                                              <span className={`text-sm font-semibold ${statusColor}`}>
                                                 {result.status}
                                               </span>
                                             </div>
@@ -1312,34 +1323,63 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                                   const result = results[0];
                                   console.log(`[AGENT RESULTS] Rendering ${agentName} (no model):`, result);
 
-                                  const statusIcon = result.status === 'PASS' ? (
-                                    <CheckCircle className="h-5 w-5 text-green-500" />
-                                  ) : result.status === 'FAIL' ? (
-                                    <XCircle className="h-5 w-5 text-red-500" />
-                                  ) : (
-                                    <Clock className="h-5 w-5 text-muted-foreground" />
-                                  );
-
+                                  // Get status text and color
                                   const statusColor = result.status === 'PASS' ? 'text-green-500' :
                                                      result.status === 'FAIL' ? 'text-red-500' :
                                                      'text-muted-foreground';
 
+                                  const statusIcon = result.status === 'PASS' ? (
+                                    <CheckCircle className="h-3.5 w-3.5" />
+                                  ) : result.status === 'FAIL' ? (
+                                    <XCircle className="h-3.5 w-3.5" />
+                                  ) : (
+                                    <Clock className="h-3.5 w-3.5" />
+                                  );
+
+                                  // Get job status color
+                                  const jobStatusColor = result.conclusion === 'success' ? 'text-green-500' :
+                                                        result.conclusion === 'failure' ? 'text-red-500' :
+                                                        'text-muted-foreground';
+
+                                  // Get agent-specific tooltip
+                                  const agentTooltip = agentName === 'NOP' ? (
+                                    <>
+                                      <p className="text-xs font-medium">No-Operation Agent (Baseline)</p>
+                                      <p className="text-xs text-muted-foreground mt-1">Designed to always fail - validates test detection</p>
+                                    </>
+                                  ) : agentName === 'Oracle' ? (
+                                    <>
+                                      <p className="text-xs font-medium">Oracle Solution Agent</p>
+                                      <p className="text-xs text-muted-foreground mt-1">Uses reference solution - should always pass</p>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <p className="text-xs font-medium">{agentName} Agent</p>
+                                      <p className="text-xs text-muted-foreground mt-1">Test agent</p>
+                                    </>
+                                  );
+
                                   return (
-                                    <div key={agentName} className="grid grid-cols-3 gap-4 py-3 px-4 bg-muted/10 rounded-lg">
-                                      <div className="flex items-center gap-2">
-                                        <Brain className="h-5 w-5 text-blue-500" />
-                                        <span className="text-lg font-semibold text-foreground">{agentName}</span>
-                                      </div>
-                                      <div className="flex items-center">
-                                        <span className={`text-base font-medium ${getStatusColor(result.jobStatus, result.conclusion)}`}>
-                                          {result.jobStatus === 'completed' && result.conclusion ?
-                                            result.conclusion.toUpperCase() :
-                                            result.jobStatus.toUpperCase()}
+                                    <div key={agentName} className="grid grid-cols-[2fr_1.5fr_1.5fr] gap-6 px-4 py-3 border-b border-muted/20 hover:bg-muted/5 transition-colors">
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <div className="flex items-center gap-2 cursor-help">
+                                            <Brain className="h-4 w-4 text-blue-500 flex-shrink-0" />
+                                            <span className="text-sm font-semibold text-foreground">{agentName}</span>
+                                          </div>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="right">
+                                          {agentTooltip}
+                                        </TooltipContent>
+                                      </Tooltip>
+                                      <div className="flex items-center justify-center">
+                                        <span className={`text-sm font-medium ${jobStatusColor}`}>
+                                          {result.conclusion?.toUpperCase() || result.jobStatus.toUpperCase()}
                                         </span>
                                       </div>
-                                      <div className="flex items-center gap-2">
-                                        {statusIcon}
-                                        <span className={`text-base font-semibold ${statusColor}`}>
+                                      <div className="flex items-center justify-center gap-1.5">
+                                        <span className={statusColor}>{statusIcon}</span>
+                                        <span className={`text-sm font-semibold ${statusColor}`}>
                                           {result.status}
                                         </span>
                                       </div>
