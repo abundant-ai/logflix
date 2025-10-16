@@ -14,7 +14,7 @@
     "build:packages": "pnpm --filter './packages/*' build",
     "build:web": "pnpm --filter @logflix/web build",
     "build:api": "pnpm --filter @logflix/api build",
-    "start": "NODE_ENV=production node dist/index.js",
+    "start": "pnpm --filter @logflix/api start",
     "check": "tsc --build",
     "db:push": "drizzle-kit push",
     "clean": "rm -rf dist apps/*/dist packages/*/dist node_modules/.cache"
