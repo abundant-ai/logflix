@@ -168,8 +168,8 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
       const { githubOrganization, defaultWorkflow } = authContext.organizationMetadata;
       const githubToken = res.locals.githubToken;
 
-      // Create a hash of the token for cache key (first 16 chars for security)
-      const tokenHash = createHash('sha256').update(githubToken).digest('hex').slice(0, 16);
+      // Create a hash of the token to use as a non-sensitive cache key
+      const tokenHash = createHash('sha256').update(githubToken).digest('hex');
 
       // Get or create cached GitHub service instance
       // This reuses the same Octokit client across multiple requests for the same org
