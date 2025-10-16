@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import { cleanAnsiCodes } from "@/lib/ansi";
 
 interface CastEvent {
   timestamp: number;
@@ -145,23 +146,7 @@ export default function CustomTerminalViewer({ castContent, showAgentThinking = 
     
     let content = '';
     for (const event of outputEvents) {
-      let eventContent = event.content;
-      
-      // Clean ANSI escape sequences but preserve natural formatting
-      eventContent = eventContent
-        .replace(/\x1b\[[0-9;]*[mGKJ]/g, '')
-        .replace(/\x1b\[\?[0-9;]*[hl]/g, '')
-        .replace(/\x1b\][0-9;]*.*?\x07/g, '')
-        .replace(/\x1b\][0-9;]*.*?\x1b\\/g, '')
-        .replace(/\x1b[PX^_][^\x1b]*\x1b\\/g, '')
-        .replace(/\x1b[>\=]/g, '')
-        .replace(/\x1b\([AB0]/g, '')
-        .replace(/\x1b\)[AB0]/g, '')
-        .replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, '')
-        .replace(/\r\n/g, '\n')
-        .replace(/\r/g, '\n');
-      
-      content += eventContent;
+      content += cleanAnsiCodes(event.content);
     }
     
     content = content

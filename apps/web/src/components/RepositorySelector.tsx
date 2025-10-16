@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import GlobalHeader from "./GlobalHeader";
+import { CACHE_TIME } from "@/lib/constants";
+import { fetchAPI } from "@/lib/api";
 
 interface RepositorySelectorProps {
   onSelectRepo: (repoName: string) => void;
@@ -47,8 +49,8 @@ function RepositoryCard({ repo, organization, onSelect }: { repo: Repository; or
 
       return response.json();
     },
-    staleTime: 10 * 60 * 1000,
-    gcTime: 30 * 60 * 1000,
+    staleTime: CACHE_TIME.STALE_LONG,
+    gcTime: CACHE_TIME.GC_LONG,
   });
 
   return (
@@ -137,9 +139,9 @@ export default function RepositorySelector({ onSelectRepo }: RepositorySelectorP
 
       return response.json();
     },
-    enabled: !!clerkOrg, // Only fetch when organization is set
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
-    gcTime: 10 * 60 * 1000,
+    enabled: !!clerkOrg,
+    staleTime: CACHE_TIME.STALE_MEDIUM,
+    gcTime: CACHE_TIME.STALE_LONG,
   });
 
   const repositories = repoData?.repositories || [];

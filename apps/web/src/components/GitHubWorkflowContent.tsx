@@ -10,9 +10,6 @@ import {
   ExternalLink,
   Terminal,
   FileCode,
-  CheckCircle,
-  XCircle,
-  Clock,
   GitPullRequest,
   MessageSquare,
   User,
@@ -21,9 +18,12 @@ import {
   Brain,
   Calendar,
   TrendingUp,
-  GitCommit,
   Tag,
-  HelpCircle
+  HelpCircle,
+  XCircle,
+  Clock,
+  CheckCircle,
+  GitCommit
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -39,6 +39,11 @@ import {
   GitHubWorkflowLog,
   GitHubWorkflowArtifact
 } from "@logflix/shared/schema";
+import { createAPIParams, fetchAPI } from "@/lib/api";
+import { CACHE_TIME } from "@/lib/constants";
+import { formatDate, formatDateCompact, formatTime, formatDuration } from "@/lib/date";
+import { cleanAnsiCodes } from "@/lib/ansi";
+import { getWorkflowStatusColor, getWorkflowStatusIcon, getWorkflowStatusLabel } from "@/lib/statusHelpers";
 
 interface GitHubWorkflowContentProps {
   selectedPR: GitHubPRSelection | null;
@@ -66,16 +71,6 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
   const [castType, setCastType] = useState<'agent' | 'tests'>('agent');
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
-  // Helper to create API parameters with consistent base values
-  const createAPIParams = (additionalParams?: Record<string, string>) => {
-    return new URLSearchParams({
-      owner: organization,
-      repo: repoName,
-      workflow: workflow,
-      ...additionalParams
-    });
-  };
-
   // Reset all selections when PR changes
   useEffect(() => {
     setSelectedCommitSha(null);
@@ -92,15 +87,13 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
     queryKey: selectedPR ? ["/api/github/pull-request", selectedPR.prNumber] : [],
     queryFn: async () => {
       if (!selectedPR) throw new Error('No PR selected');
-      
-      const params = createAPIParams();
-      const response = await fetch(`/api/github/pull-request/${selectedPR.prNumber}?${params}`);
-      if (!response.ok) throw new Error(`Failed to fetch PR: ${response.statusText}`);
-      return response.json();
+
+      const params = createAPIParams({ owner: organization, repo: repoName, workflow });
+      return fetchAPI(`/api/github/pull-request/${selectedPR.prNumber}?${params}`);
     },
     enabled: !!selectedPR,
-    staleTime: 0, // Always fresh
-    gcTime: 30 * 60 * 1000,
+    staleTime: CACHE_TIME.NONE,
+    gcTime: CACHE_TIME.GC_LONG,
   });
 
   // Fetch commits for this PR - only when PR is selected (lazy loading)
@@ -108,15 +101,13 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
     queryKey: selectedPR ? ["/api/github/pr-commits", selectedPR.prNumber] : [],
     queryFn: async () => {
       if (!selectedPR) throw new Error('No PR selected');
-      
-      const params = createAPIParams();
-      const response = await fetch(`/api/github/pr-commits/${selectedPR.prNumber}?${params}`);
-      if (!response.ok) throw new Error(`Failed to fetch commits: ${response.statusText}`);
-      return response.json();
+
+      const params = createAPIParams({ owner: organization, repo: repoName, workflow });
+      return fetchAPI(`/api/github/pr-commits/${selectedPR.prNumber}?${params}`);
     },
     enabled: !!selectedPR,
-    staleTime: 0, // Always fresh
-    gcTime: 30 * 60 * 1000,
+    staleTime: CACHE_TIME.NONE,
+    gcTime: CACHE_TIME.GC_LONG,
   });
 
   // Sort commits by date (latest first) and auto-select the latest commit
@@ -140,13 +131,11 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
     queryFn: async () => {
       if (!selectedPR) throw new Error('No PR selected');
       
-      const params = createAPIParams();
-      const response = await fetch(`/api/github/pr-workflow-runs/${selectedPR.prNumber}?${params}`);
-      if (!response.ok) throw new Error(`Failed to fetch workflow runs: ${response.statusText}`);
-      return response.json();
+      const params = createAPIParams({ owner: organization, repo: repoName, workflow });
+      return fetchAPI(`/api/github/pr-workflow-runs/${selectedPR.prNumber}?${params}`);
     },
     enabled: !!selectedPR,
-    staleTime: 0,
+    staleTime: CACHE_TIME.NONE,
   });
 
   // Filter runs by selected commit and analyze run groupings
@@ -220,7 +209,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
     queryFn: async () => {
       if (!selectedRunId) throw new Error('No run selected');
       
-      const params = createAPIParams();
+      const params = createAPIParams({ owner: organization, repo: repoName, workflow });
       const response = await fetch(`/api/github/workflow-run/${selectedRunId}?${params}`);
       if (!response.ok) throw new Error(`Failed to fetch run details: ${response.statusText}`);
       return response.json();
@@ -234,7 +223,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
     queryFn: async () => {
       if (!selectedPR) throw new Error('No PR selected');
       
-      const params = createAPIParams();
+      const params = createAPIParams({ owner: organization, repo: repoName, workflow });
       const response = await fetch(`/api/github/pr-bot-comments/${selectedPR.prNumber}?${params}`);
       if (!response.ok) throw new Error(`Failed to fetch bot comments: ${response.statusText}`);
       return response.json();
@@ -248,14 +237,14 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
     queryFn: async () => {
       if (!selectedPR) throw new Error('No PR selected');
       
-      const params = createAPIParams();
+      const params = createAPIParams({ owner: organization, repo: repoName, workflow });
       const response = await fetch(`/api/github/pr-tasks/${selectedPR.prNumber}?${params}`);
       if (!response.ok) throw new Error(`Failed to fetch tasks: ${response.statusText}`);
       return response.json();
     },
     enabled: !!selectedPR,
-    staleTime: 0,
-    gcTime: 30 * 60 * 1000,
+    staleTime: CACHE_TIME.NONE,
+    gcTime: CACHE_TIME.GC_LONG,
   });
 
   // Auto-select first task when tasks load
@@ -274,12 +263,9 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
     queryKey: selectedPR ? ["/api/github/pr-files", selectedPR.prNumber] : [],
     queryFn: async () => {
       if (!selectedPR) throw new Error('No PR selected');
-      
-      const params = createAPIParams();
-      
-      const response = await fetch(`/api/github/pr-files/${selectedPR.prNumber}?${params}`);
-      if (!response.ok) throw new Error(`Failed to fetch PR files: ${response.statusText}`);
-      return response.json();
+
+      const params = createAPIParams({ owner: organization, repo: repoName, workflow });
+      return fetchAPI(`/api/github/pr-files/${selectedPR.prNumber}?${params}`);
     },
     enabled: !!selectedPR,
   });
@@ -293,12 +279,9 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
     queryKey: selectedCommitSha ? ["/api/github/commit", selectedCommitSha] : [],
     queryFn: async () => {
       if (!selectedCommitSha) throw new Error('No commit selected');
-      
-      const params = createAPIParams();
-      
-      const response = await fetch(`/api/github/commit/${selectedCommitSha}?${params}`);
-      if (!response.ok) throw new Error(`Failed to fetch commit details: ${response.statusText}`);
-      return response.json();
+
+      const params = createAPIParams({ owner: organization, repo: repoName, workflow });
+      return fetchAPI(`/api/github/commit/${selectedCommitSha}?${params}`);
     },
     enabled: !!selectedCommitSha,
   });
@@ -309,11 +292,8 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
     queryFn: async () => {
       if (!selectedRunId) throw new Error('No run selected');
 
-      const params = createAPIParams();
-
-      const response = await fetch(`/api/github/workflow-jobs/${selectedRunId}?${params}`);
-      if (!response.ok) throw new Error(`Failed to fetch workflow jobs: ${response.statusText}`);
-      return response.json();
+      const params = createAPIParams({ owner: organization, repo: repoName, workflow });
+      return fetchAPI(`/api/github/workflow-jobs/${selectedRunId}?${params}`);
     },
     enabled: !!selectedRunId,
   });
@@ -334,20 +314,11 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
     queryFn: async () => {
       if (!selectedRunId) throw new Error('No run selected');
 
-      const params = createAPIParams();
-
-      const response = await fetch(`/api/github/agent-test-results/${selectedRunId}?${params}`);
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch agent test results: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-
-      return data;
+      const params = createAPIParams({ owner: organization, repo: repoName, workflow });
+      return fetchAPI(`/api/github/agent-test-results/${selectedRunId}?${params}`);
     },
     enabled: !!selectedRunId,
-    staleTime: 60 * 1000, // Cache for 1 minute
+    staleTime: CACHE_TIME.STALE_SHORT, // Cache for 1 minute
   });
 
   // Find artifact with logs - prioritize recordings (which contain both .cast and .log)
@@ -365,16 +336,13 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
     queryKey: logArtifact ? ["/api/github/artifact-logs", logArtifact.id] : [],
     queryFn: async () => {
       if (!logArtifact) throw new Error('No log artifact selected');
-      
-      const params = createAPIParams();
-      
-      const response = await fetch(`/api/github/artifact-logs/${logArtifact.id}?${params}`);
-      if (!response.ok) throw new Error(`Failed to fetch artifact logs: ${response.statusText}`);
-      return response.json();
+
+      const params = createAPIParams({ owner: organization, repo: repoName, workflow });
+      return fetchAPI(`/api/github/artifact-logs/${logArtifact.id}?${params}`);
     },
     enabled: !!logArtifact,
-    staleTime: 10 * 60 * 1000,
-    gcTime: 15 * 60 * 1000,
+    staleTime: CACHE_TIME.STALE_LONG,
+    gcTime: CACHE_TIME.GC_MEDIUM,
   });
 
   // Use React Query for log content fetching - REPLACE useEffect for consistency and caching
@@ -389,7 +357,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
         throw new Error('No log artifact or file selected');
       }
       
-      const params = createAPIParams({ path: selectedLogFile });
+      const params = createAPIParams({ owner: organization, repo: repoName, workflow }, { path: selectedLogFile });
       
       const response = await fetch(`/api/github/artifact-log-content/${logArtifact.id}?${params}`);
       
@@ -401,49 +369,15 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
       return await response.json();
     },
     enabled: !!(logArtifact && selectedLogFile),
-    staleTime: 10 * 60 * 1000,
-    gcTime: 15 * 60 * 1000,
+    staleTime: CACHE_TIME.STALE_LONG,
+    gcTime: CACHE_TIME.GC_MEDIUM,
     retry: 1,
     refetchOnWindowFocus: false,
   });
 
-  // Update logContent state from React Query and clean ANSI codes (same logic as CustomTerminalViewer)
+  // Update logContent state from React Query and clean ANSI codes
   const logContent = logContentQuery.data?.content || null;
-  
-  // Process ANSI escape codes with enhanced cleaning for terminal logs
-  const processedLogContent = useMemo(() => {
-    if (!logContent) return null;
-    
-    // Enhanced ANSI cleaning with additional patterns for bracketed paste and cursor codes
-    let cleanContent = logContent
-      // Remove ESC sequences with parameters
-      .replace(/\x1b\[[0-9;]*[mGKJHfABCDsuhl]/g, '') // Standard CSI sequences
-      .replace(/\x1b\[\?[0-9;]*[hl]/g, '') // Private mode sequences (?2004h/l)
-      .replace(/\x1b\[[0-9]*[ABCDEFGHIJKLMNOPQRSTUVWXYZ]/g, '') // Single letter CSI
-      .replace(/\x1b[HJ]/g, '') // Direct cursor positioning (H) and erase (J)
-      // Remove OSC sequences
-      .replace(/\x1b\][0-9;]*.*?\x07/g, '') // OSC with BEL terminator
-      .replace(/\x1b\][0-9;]*.*?\x1b\\/g, '') // OSC with ST terminator
-      // Remove other escape sequences
-      .replace(/\x1b[PX^_][^\x1b]*\x1b\\/g, '') // DCS, SOS, PM, APC
-      .replace(/\x1b[>\=]/g, '') // Application/numeric keypad modes
-      .replace(/\x1b[()][AB012]/g, '') // Character set selection
-      .replace(/\x1b[#-/][0-9A-Za-z]/g, '') // Two character escape sequences
-      .replace(/\x1b[NOPQRSTUVWXYZ[\\\]^_`]/g, '') // C1 control characters
-      // Clean remaining control characters and formatting
-      .replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, '') // Control chars except \n and \t
-      .replace(/\r\n/g, '\n') // Normalize line endings
-      .replace(/\r/g, '\n'); // Convert remaining CRs to LF
-    
-    // Final cleanup for readability
-    cleanContent = cleanContent
-      .replace(/\n{4,}/g, '\n\n\n') // Limit consecutive newlines
-      .replace(/[ \t]+$/gm, '') // Remove trailing whitespace
-      .replace(/^\s*\n/gm, '\n') // Remove empty lines with only whitespace
-      .trimEnd();
-    
-    return cleanContent;
-  }, [logContent]);
+  const processedLogContent = useMemo(() => cleanAnsiCodes(logContent || ''), [logContent]);
 
   const duration = selectedRun ? (() => {
     const startTime = new Date(selectedRun.created_at).getTime();
@@ -469,22 +403,6 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
     
     return 0;
   })() : 0;
-  
-  const formatDuration = (secs: number) => {
-    if (secs <= 0) {
-      return "0m 0s";
-    }
-    
-    const hours = Math.floor(secs / 3600);
-    const mins = Math.floor((secs % 3600) / 60);
-    const remainingSecs = secs % 60;
-    
-    if (hours > 0) {
-      return `${hours}h ${mins}m ${remainingSecs}s`;
-    }
-    return `${mins}m ${remainingSecs}s`;
-  };
-
 
   // Fetch cast list to get all available agents and cast files - PRELOAD for performance
   const { data: castListData } = useQuery<{
@@ -498,18 +416,13 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
     queryKey: selectedRunId ? ["/api/github/cast-list", selectedRunId, selectedCommitSha, selectedPR?.prNumber] : [],
     queryFn: async () => {
       if (!selectedRunId) throw new Error('No run selected');
-      
-      const params = createAPIParams();
 
-      const response = await fetch(`/api/github/cast-list/${selectedRunId}?${params}`);
-      if (!response.ok) throw new Error(`Failed to fetch cast list: ${response.statusText}`);
-      const data = await response.json();
-
-      return data;
+      const params = createAPIParams({ owner: organization, repo: repoName, workflow });
+      return fetchAPI(`/api/github/cast-list/${selectedRunId}?${params}`);
     },
     enabled: !!selectedRunId,
-    staleTime: 60 * 1000, // Cache for 1 minute
-    gcTime: 10 * 60 * 1000, // Keep in memory for 10 minutes
+    staleTime: CACHE_TIME.STALE_SHORT, // Cache for 1 minute
+    gcTime: CACHE_TIME.STALE_LONG, // Keep in memory for 10 minutes
   });
 
   // Filter cast files by selected task (if task is selected) - MUST BE AFTER castListData
@@ -633,7 +546,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
         throw new Error('No agent or cast file selected');
       }
       
-      const params = createAPIParams({ path: selectedCastFile.path });
+      const params = createAPIParams({ owner: organization, repo: repoName, workflow }, { path: selectedCastFile.path });
 
       const response = await fetch(`/api/github/cast-file-by-path/${selectedAgentData.id}?${params}`);
 
@@ -646,86 +559,12 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
 
       return data;
     },
-    enabled: !!(selectedAgentData && selectedCastFile), // Preload immediately when agent/cast selected
-    staleTime: 0, // Force fresh data to avoid caching issues
-    gcTime: 5 * 60 * 1000, // Shorter cache time
+    enabled: !!(selectedAgentData && selectedCastFile),
+    staleTime: CACHE_TIME.NONE,
+    gcTime: CACHE_TIME.STALE_MEDIUM,
     retry: 1,
     refetchOnWindowFocus: false,
   });
-
-  const getWorkflowStatusColor = (status: string, conclusion?: string | null) => {
-    if (status === 'completed') {
-      switch (conclusion) {
-        case 'success': return 'bg-success/20 text-success';
-        case 'failure': return 'bg-destructive/20 text-destructive';
-        default: return 'bg-muted/20 text-muted-foreground';
-      }
-    } else if (status === 'in_progress') {
-      return 'bg-warning/20 text-warning';
-    }
-    return 'bg-primary/20 text-primary';
-  };
-
-  const getWorkflowStatusIcon = (status: string, conclusion?: string | null) => {
-    if (status === 'completed') {
-      switch (conclusion) {
-        case 'success': return <CheckCircle className="h-4 w-4 text-success" />;
-        case 'failure': return <XCircle className="h-4 w-4 text-destructive" />;
-        default: return <XCircle className="h-4 w-4 text-muted-foreground" />;
-      }
-    } else if (status === 'in_progress') {
-      return <Clock className="h-4 w-4 text-warning animate-pulse" />;
-    }
-    return <Clock className="h-4 w-4 text-primary" />;
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString();
-  };
-
-  const getStatusColor = (status: string, conclusion?: string | null) => {
-    if (status === 'completed' && conclusion) {
-      switch (conclusion) {
-        case 'success': return 'text-success';
-        case 'failure': return 'text-destructive';
-        case 'cancelled': return 'text-neutral';
-        case 'timed_out': return 'text-warning';
-        case 'skipped': return 'text-info';
-        case 'neutral': return 'text-neutral';
-        case 'action_required': return 'text-warning';
-        default: return 'text-neutral';
-      }
-    }
-
-    switch (status) {
-      case 'in_progress': return 'text-warning';
-      case 'queued': return 'text-info';
-      case 'requested': case 'waiting': case 'pending': return 'text-neutral';
-      default: return 'text-neutral';
-    }
-  };
-
-  const getStatusIcon = (status: string, conclusion?: string | null) => {
-    if (status === 'completed' && conclusion) {
-      switch (conclusion) {
-        case 'success': return <CheckCircle className="h-5 w-5 text-success" />;
-        case 'failure': return <XCircle className="h-5 w-5 text-destructive" />;
-        case 'cancelled': return <XCircle className="h-5 w-5 text-neutral" />;
-        case 'timed_out': return <Clock className="h-5 w-5 text-warning" />;
-        case 'skipped': return <Clock className="h-5 w-5 text-info" />;
-        case 'neutral': return <Clock className="h-5 w-5 text-neutral" />;
-        case 'action_required': return <Clock className="h-5 w-5 text-warning" />;
-        default: return <Clock className="h-5 w-5 text-neutral" />;
-      }
-    }
-
-    switch (status) {
-      case 'in_progress': return <Clock className="h-5 w-5 animate-pulse text-warning" />;
-      case 'queued': return <Clock className="h-5 w-5 text-info" />;
-      case 'requested': case 'waiting': case 'pending': return <Clock className="h-5 w-5 text-neutral" />;
-      default: return <Clock className="h-5 w-5 text-neutral" />;
-    }
-  };
 
   if (!selectedPR) {
     return (
@@ -818,8 +657,8 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
               setSelectedFile(file);
               // Fetch file content
               try {
-                const params = createAPIParams({ path: file.path });
-                
+                const params = createAPIParams({ owner: organization, repo: repoName, workflow }, { path: file.path });
+
                 const response = await fetch(`/api/github/pr-file-content/${selectedPR.prNumber}?${params}`);
                 const data = await response.json();
                 if (data.content) {
@@ -914,14 +753,10 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                       return b.run_attempt - a.run_attempt;
                     });
                   })().map((run, index) => {
-                    const date = new Date(run.created_at);
-                    const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                    const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-                    
-                    const statusText = run.status === 'in_progress' ? 'IN PROGRESS' :
-                                     run.status === 'completed' ? (run.conclusion === 'success' ? 'COMPLETED' : 'FAILED') :
-                                     run.status?.toUpperCase() || 'PENDING';
-                    
+                    const dateStr = formatDateCompact(run.created_at);
+                    const timeStr = formatTime(run.created_at);
+                    const statusText = getWorkflowStatusLabel(run.status, run.conclusion);
+
                     return (
                       <SelectItem key={run.id} value={run.id.toString()}>
                         <div className="flex items-center gap-2" title={`Run #${run.run_number} Attempt ${run.run_attempt} - ${statusText}`}>
@@ -1186,23 +1021,9 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                           <div>
                             <label className="text-sm text-muted-foreground block mb-1">Workflow Status</label>
                             <p className="text-base flex items-center gap-2">
-                              {getStatusIcon(selectedRun.status, selectedRun.conclusion)}
-                              <span className={`font-medium ${getStatusColor(selectedRun.status, selectedRun.conclusion)}`}>
-                                {selectedRun.status === 'completed' && selectedRun.conclusion ?
-                                  (selectedRun.conclusion === 'success' ? 'COMPLETED' :
-                                   selectedRun.conclusion === 'failure' ? 'FAILED' :
-                                   selectedRun.conclusion === 'cancelled' ? 'CANCELLED' :
-                                   selectedRun.conclusion === 'timed_out' ? 'TIMED OUT' :
-                                   selectedRun.conclusion === 'skipped' ? 'SKIPPED' :
-                                   selectedRun.conclusion === 'neutral' ? 'NEUTRAL' :
-                                   selectedRun.conclusion === 'action_required' ? 'ACTION REQUIRED' :
-                                   String(selectedRun.conclusion || 'completed').toUpperCase()) :
-                                  selectedRun.status === 'in_progress' ? 'IN PROGRESS' :
-                                  selectedRun.status === 'queued' ? 'QUEUED' :
-                                  selectedRun.status === 'requested' ? 'REQUESTED' :
-                                  selectedRun.status === 'waiting' ? 'WAITING' :
-                                  selectedRun.status === 'pending' ? 'PENDING' :
-                                  String(selectedRun.status || 'unknown').toUpperCase()}
+                              {getWorkflowStatusIcon(selectedRun.status, selectedRun.conclusion)}
+                              <span className={`font-medium ${getWorkflowStatusColor(selectedRun.status, selectedRun.conclusion)}`}>
+                                {getWorkflowStatusLabel(selectedRun.status, selectedRun.conclusion)}
                               </span>
                             </p>
                           </div>
@@ -1245,7 +1066,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                             </p>
                             {selectedCommit && (
                               <p className="text-xs text-muted-foreground">
-                                {new Date(selectedCommit.date).toLocaleString()}
+                                {formatDate(selectedCommit.date)}
                               </p>
                             )}
                           </div>
@@ -1542,18 +1363,10 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                       // Format date and time with error handling
                       let dateStr = 'Unknown date';
                       let timeStr = 'Unknown time';
-                      
+
                       try {
-                        dateStr = commentDate.toLocaleDateString('en-US', {
-                          year: 'numeric',
-                          month: 'short',
-                          day: 'numeric'
-                        });
-                        timeStr = commentDate.toLocaleTimeString('en-US', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                          hour12: true
-                        });
+                        dateStr = formatDateCompact(commentDate);
+                        timeStr = formatTime(commentDate);
                       } catch (dateError) {
                         console.warn('Error formatting date for comment:', comment.id, dateError);
                       }
