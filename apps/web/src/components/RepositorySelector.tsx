@@ -80,13 +80,13 @@ function RepositoryCard({ repo, organization, onSelect }: { repo: Repository; or
             </div>
           ) : stats ? (
             <div className="flex items-center gap-1">
-              <Badge variant="default" className="text-xs bg-green-600 hover:bg-green-700">
+              <Badge variant="default" className="text-xs bg-success hover:bg-success/90">
                 {stats.open} open
               </Badge>
               <Badge variant="secondary" className="text-xs">
                 {stats.closed} closed
               </Badge>
-              <Badge variant="outline" className="text-xs text-purple-600">
+              <Badge variant="outline" className="text-xs text-merged">
                 {stats.merged} merged
               </Badge>
             </div>
