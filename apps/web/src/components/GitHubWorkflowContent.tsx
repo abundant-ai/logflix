@@ -1246,10 +1246,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                                       <div className="grid grid-cols-[2fr_1.5fr_1.5fr] gap-6 px-4 py-3 bg-muted/10">
                                         <Tooltip>
                                           <TooltipTrigger asChild>
-                                            <div className="flex items-center gap-2 cursor-help">
-                                              <Brain className="h-4 w-4 text-blue-500 flex-shrink-0" />
-                                              <span className="text-sm font-semibold text-foreground">{agentName}</span>
-                                            </div>
+                                            <span className="text-sm font-semibold text-foreground cursor-help">{agentName}</span>
                                           </TooltipTrigger>
                                           <TooltipContent side="right">
                                             <p className="text-xs font-medium">Multi-model AI agent</p>
@@ -1345,10 +1342,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                                     <div key={agentName} className="grid grid-cols-[2fr_1.5fr_1.5fr] gap-6 px-4 py-3 border-b border-muted/20 hover:bg-muted/5 transition-colors">
                                       <Tooltip>
                                         <TooltipTrigger asChild>
-                                          <div className="flex items-center gap-2 cursor-help">
-                                            <Brain className="h-4 w-4 text-blue-500 flex-shrink-0" />
-                                            <span className="text-sm font-semibold text-foreground">{agentName}</span>
-                                          </div>
+                                          <span className="text-sm font-semibold text-foreground cursor-help">{agentName}</span>
                                         </TooltipTrigger>
                                         <TooltipContent side="right">
                                           {agentTooltip}
