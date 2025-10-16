@@ -1728,6 +1728,44 @@ export class GitHubOctokitService {
   }
 
   /**
+   * Fetches repository metadata including timestamps
+   */
+  async getRepositoryMetadata(owner: string, repo: string): Promise<{
+    created_at: string | null;
+    updated_at: string | null;
+    pushed_at: string | null;
+    description: string | null;
+  }> {
+    try {
+      this.logger.debug({ repo: `${owner}/${repo}` }, 'Fetching repository metadata');
+
+      const { data } = await this.octokit.repos.get({
+        owner,
+        repo,
+      });
+
+      const metadata = {
+        created_at: data.created_at,
+        updated_at: data.updated_at,
+        pushed_at: data.pushed_at,
+        description: data.description,
+      };
+
+      this.logger.debug({ repo: `${owner}/${repo}`, ...metadata }, 'Repository metadata fetched');
+      return metadata;
+    } catch (error) {
+      this.logger.error({ repo: `${owner}/${repo}`, error }, 'Error fetching repository metadata');
+      // Return null for dates on error to prevent incorrect sorting
+      return {
+        created_at: null,
+        updated_at: null,
+        pushed_at: null,
+        description: null,
+      };
+    }
+  }
+
+  /**
    * Lists pull requests with efficient REST API pagination
    */
   async listPullRequests(
