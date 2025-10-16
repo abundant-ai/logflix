@@ -48,23 +48,23 @@ export default function GlobalHeader({
               </span>
               <div className="flex items-center gap-3 flex-shrink-0">
                 <div className="flex items-center gap-1">
-                  <GitPullRequest className="h-4 w-4 text-blue-500" />
+                  <GitPullRequest className="h-4 w-4 text-info" />
                   <span className="text-sm text-muted-foreground">{prStats?.total ?? 0}</span>
                 </div>
                 <div className="flex items-center gap-1">
-                  <Clock className="h-4 w-4 text-green-500" />
+                  <Clock className="h-4 w-4 text-success" />
                   <span className="text-sm text-muted-foreground">{prStats?.open ?? 0}</span>
                 </div>
                 <div className="flex items-center gap-1">
-                  <CheckCircle className="h-4 w-4 text-purple-500" />
+                  <CheckCircle className="h-4 w-4 text-merged" />
                   <span className="text-sm text-muted-foreground">{prStats?.merged ?? 0}</span>
                 </div>
                 <div className="flex items-center gap-1">
-                  <XCircle className="h-4 w-4 text-red-500" />
+                  <XCircle className="h-4 w-4 text-destructive" />
                   <span className="text-sm text-muted-foreground">{prStats?.closed ?? 0}</span>
                 </div>
                 <div className="flex items-center gap-1">
-                  <GitPullRequest className="h-4 w-4 text-yellow-500" />
+                  <GitPullRequest className="h-4 w-4 text-warning" />
                   <span className="text-sm text-muted-foreground">{prStats?.draft ?? 0}</span>
                 </div>
               </div>

@@ -24,7 +24,15 @@
   --input: hsl(220, 13%, 19%);
   --ring: hsl(210, 100%, 45%);
   --success: hsl(142, 76%, 36%);
+  --success-foreground: hsl(0, 0%, 100%);
   --warning: hsl(38, 92%, 50%);
+  --warning-foreground: hsl(0, 0%, 100%);
+  --info: hsl(210, 100%, 45%);
+  --info-foreground: hsl(0, 0%, 100%);
+  --merged: hsl(270, 60%, 55%);
+  --merged-foreground: hsl(0, 0%, 100%);
+  --neutral: hsl(220, 8%, 50%);
+  --neutral-foreground: hsl(0, 0%, 100%);
   --radius: 8px;
   --font-sans: Inter, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', Monaco, Consolas, monospace;
@@ -51,7 +59,15 @@
   --input: hsl(220, 13%, 19%);
   --ring: hsl(210, 100%, 45%);
   --success: hsl(142, 76%, 36%);
+  --success-foreground: hsl(0, 0%, 100%);
   --warning: hsl(38, 92%, 50%);
+  --warning-foreground: hsl(0, 0%, 100%);
+  --info: hsl(210, 100%, 45%);
+  --info-foreground: hsl(0, 0%, 100%);
+  --merged: hsl(270, 60%, 55%);
+  --merged-foreground: hsl(0, 0%, 100%);
+  --neutral: hsl(220, 8%, 50%);
+  --neutral-foreground: hsl(0, 0%, 100%);
 }
 
 @layer base {

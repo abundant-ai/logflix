@@ -50,8 +50,26 @@ export default {
           DEFAULT: "var(--destructive)",
           foreground: "var(--destructive-foreground)",
         },
-        success: "var(--success)",
-        warning: "var(--warning)",
+        success: {
+          DEFAULT: "var(--success)",
+          foreground: "var(--success-foreground)",
+        },
+        warning: {
+          DEFAULT: "var(--warning)",
+          foreground: "var(--warning-foreground)",
+        },
+        info: {
+          DEFAULT: "var(--info)",
+          foreground: "var(--info-foreground)",
+        },
+        merged: {
+          DEFAULT: "var(--merged)",
+          foreground: "var(--merged-foreground)",
+        },
+        neutral: {
+          DEFAULT: "var(--neutral)",
+          foreground: "var(--neutral-foreground)",
+        },
         border: "var(--border)",
         input: "var(--input)",
         ring: "var(--ring)",
