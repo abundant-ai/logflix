@@ -1,11 +1,105 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import type { Logger } from "pino";
+import { createHash } from "crypto";
 import { GitHubOctokitService } from "../../packages/github-client/index.js";
 import { requireAuth, requireAdmin, requireRepositoryAccess } from "./middleware/auth.js";
 import { clerkClient } from "@clerk/express";
 import { UserRole, UserMetadata, AuthContext, canAccessRepository } from "../../packages/shared/auth.js";
 import { GitHubWorkflowArtifact } from "../../packages/shared/schema.js";
+
+/**
+ * GitHub Client Cache
+ * Caches GitHubOctokitService instances per organization to reuse Octokit clients
+ * and avoid creating new instances on every API call
+ */
+interface CachedClient {
+  client: GitHubOctokitService;
+  lastUsed: number;
+  orgId: string;
+}
+
+const githubClientCache = new Map<string, CachedClient>();
+const CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+const MAX_CACHE_SIZE = 100; // Maximum number of cached clients
+
+/**
+ * Get or create a cached GitHub client for an organization
+ */
+function getCachedGitHubClient(
+  orgId: string,
+  orgName: string,
+  tokenHash: string,
+  logger: Logger,
+  githubToken: string
+): GitHubOctokitService {
+  const cacheKey = `${orgId}:${tokenHash}`;
+  const now = Date.now();
+
+  // Check if we have a valid cached client
+  const cached = githubClientCache.get(cacheKey);
+  if (cached && (now - cached.lastUsed) < CACHE_TTL) {
+    cached.lastUsed = now;
+    logger.debug({ orgId, cacheKey: cacheKey.slice(0, 20) }, 'Reusing cached GitHub client');
+    return cached.client;
+  }
+
+  // Create new client
+  logger.debug({ orgId, cacheKey: cacheKey.slice(0, 20) }, 'Creating new GitHub client');
+  const client = new GitHubOctokitService(
+    orgName,
+    'temp', // Placeholder repo name
+    undefined,
+    logger,
+    githubToken
+  );
+
+  // Add to cache
+  githubClientCache.set(cacheKey, {
+    client,
+    lastUsed: now,
+    orgId,
+  });
+
+  // Cleanup old entries if cache is too large
+  if (githubClientCache.size > MAX_CACHE_SIZE) {
+    cleanupGitHubClientCache();
+  }
+
+  return client;
+}
+
+/**
+ * Remove expired entries from the cache
+ */
+function cleanupGitHubClientCache() {
+  const now = Date.now();
+  let removed = 0;
+
+  for (const [key, cached] of githubClientCache.entries()) {
+    if (now - cached.lastUsed > CACHE_TTL) {
+      githubClientCache.delete(key);
+      removed++;
+    }
+  }
+
+  // If still too large, remove oldest entries
+  if (githubClientCache.size > MAX_CACHE_SIZE) {
+    const entries = Array.from(githubClientCache.entries())
+      .sort((a, b) => a[1].lastUsed - b[1].lastUsed);
+
+    const toRemove = entries.slice(0, githubClientCache.size - MAX_CACHE_SIZE);
+    toRemove.forEach(([key]) => githubClientCache.delete(key));
+    removed += toRemove.length;
+  }
+
+  if (removed > 0) {
+    console.log(`Cleaned up ${removed} expired GitHub clients from cache`);
+  }
+}
+
+// Periodic cleanup every 10 minutes
+setInterval(cleanupGitHubClientCache, 10 * 60 * 1000);
 
 export async function registerRoutes(app: Express, logger: Logger): Promise<Server> {
   /**
@@ -66,12 +160,15 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
       const { githubOrganization, defaultWorkflow } = authContext.organizationMetadata;
       const githubToken = res.locals.githubToken;
 
-      // Create a single GitHub service instance to reuse the Octokit client
-      // This prevents creating multiple instances and helps with rate limiting
-      const githubService = new GitHubOctokitService(
+      // Create a hash of the token for cache key (first 16 chars for security)
+      const tokenHash = createHash('sha256').update(githubToken).digest('hex').slice(0, 16);
+
+      // Get or create cached GitHub service instance
+      // This reuses the same Octokit client across multiple requests for the same org
+      const githubService = getCachedGitHubClient(
+        authContext.organizationId,
         githubOrganization,
-        'temp', // Placeholder repo name
-        undefined,
+        tokenHash,
         requestLogger,
         githubToken
       );
