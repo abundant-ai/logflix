@@ -21,13 +21,15 @@ import {
   Calendar,
   TrendingUp,
   GitCommit,
-  Tag
+  Tag,
+  HelpCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   GitHubWorkflowRun,
   GitHubPullRequest,
@@ -36,7 +38,6 @@ import {
   GitHubWorkflowLog,
   GitHubWorkflowArtifact
 } from "@logflix/shared/schema";
-import { parseAgentTestResults } from "@/lib/agentResultsParser";
 
 interface GitHubWorkflowContentProps {
   selectedPR: GitHubPRSelection | null;
@@ -189,41 +190,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
   }, [selectedRunId, runsByNumber, runsData]);
   
   // Debug logging for multi-run analysis
-  useEffect(() => {
-    if (runsData?.runs && selectedCommitSha && filteredRuns.length > 0) {
-      console.log(`[DEBUG] Commit ${selectedCommitSha.substring(0, 7)} has ${filteredRuns.length} runs:`,
-        filteredRuns.map(r => `#${r.run_number} (attempt ${r.run_attempt}, ${r.status})`).join(', ')
-      );
-      
-      // Check all run numbers and their attempts
-      console.log(`[DEBUG] All run groups:`, Object.entries(runsByNumber).map(([runNum, attempts]) =>
-        `#${runNum}: ${attempts.length} attempts`
-      ).join(', '));
-      
-      console.log(`[DEBUG] hasMultipleAttempts: ${hasMultipleAttempts}`);
-      
-      // Check if there are multiple attempts for any run number
-      const runNumbers = new Set(filteredRuns.map(r => r.run_number));
-      runNumbers.forEach(runNum => {
-        const attempts = filteredRuns.filter(r => r.run_number === runNum);
-        if (attempts.length > 1) {
-          console.log(`[DEBUG] Run #${runNum} has ${attempts.length} attempts:`,
-            attempts.map(r => `attempt ${r.run_attempt} (${r.status})`).join(', ')
-          );
-        }
-      });
-      
-      // Log run number groups for current selection
-      if (selectedRunId) {
-        const selectedRun = runsData.runs.find(r => r.id === selectedRunId);
-        if (selectedRun && currentRunAttempts.length > 1) {
-          console.log(`[DEBUG] Run #${selectedRun.run_number} has ${currentRunAttempts.length} total attempts across commits:`,
-            currentRunAttempts.map(r => `attempt ${r.run_attempt} (${r.head_sha.substring(0, 7)}, ${r.status})`).join(', ')
-          );
-        }
-      }
-    }
-  }, [runsData, selectedCommitSha, filteredRuns, selectedRunId, currentRunAttempts, hasMultipleAttempts]);
+  // Debug logging removed - useEffect was only for console.log statements
 
   // Auto-select the latest run for the selected commit, prioritizing highest attempt number
   useEffect(() => {
@@ -343,14 +310,46 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
     queryKey: selectedRunId ? ["/api/github/workflow-jobs", selectedRunId] : [],
     queryFn: async () => {
       if (!selectedRunId) throw new Error('No run selected');
-      
+
       const params = createAPIParams();
-      
+
       const response = await fetch(`/api/github/workflow-jobs/${selectedRunId}?${params}`);
       if (!response.ok) throw new Error(`Failed to fetch workflow jobs: ${response.statusText}`);
       return response.json();
     },
     enabled: !!selectedRunId,
+  });
+
+  // Fetch agent test results from new API endpoint
+  const { data: agentTestResultsData, isLoading: isAgentResultsLoading } = useQuery<{
+    agentResults: {
+      [agentName: string]: Array<{
+        model: string | null;
+        status: 'PASS' | 'FAIL' | 'UNKNOWN';
+        source: 'artifact' | 'fallback' | 'unknown';
+        conclusion: string | null;
+        jobStatus: string;
+      }>;
+    };
+  }>({
+    queryKey: selectedRunId ? ["/api/github/agent-test-results", selectedRunId] : [],
+    queryFn: async () => {
+      if (!selectedRunId) throw new Error('No run selected');
+
+      const params = createAPIParams();
+
+      const response = await fetch(`/api/github/agent-test-results/${selectedRunId}?${params}`);
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch agent test results: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      return data;
+    },
+    enabled: !!selectedRunId,
+    staleTime: 60 * 1000, // Cache for 1 minute
   });
 
   // Find artifact with logs - prioritize recordings (which contain both .cast and .log)
@@ -503,15 +502,11 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
       if (!selectedRunId) throw new Error('No run selected');
       
       const params = createAPIParams();
-      
-      console.log(`[DEBUG] Fetching cast list for run ${selectedRunId} with params:`, params.toString());
-      
+
       const response = await fetch(`/api/github/cast-list/${selectedRunId}?${params}`);
       if (!response.ok) throw new Error(`Failed to fetch cast list: ${response.statusText}`);
       const data = await response.json();
-      
-      console.log(`[DEBUG] Cast list response for run ${selectedRunId}:`, data);
-      
+
       return data;
     },
     enabled: !!selectedRunId,
@@ -641,20 +636,16 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
       }
       
       const params = createAPIParams({ path: selectedCastFile.path });
-      
-      console.log(`[DEBUG] Fetching cast file for artifact ${selectedAgentData.id} from run ${selectedRunId} with path: ${selectedCastFile.path}`);
-      
+
       const response = await fetch(`/api/github/cast-file-by-path/${selectedAgentData.id}?${params}`);
-      
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: response.statusText }));
-        console.error(`[DEBUG] Cast file fetch failed:`, errorData);
         throw new Error(errorData.error || `Failed to fetch cast: ${response.statusText}`);
       }
-      
+
       const data = await response.json();
-      console.log(`[DEBUG] Cast file fetched successfully for artifact ${selectedAgentData.id}`);
-      
+
       return data;
     },
     enabled: !!(selectedAgentData && selectedCastFile), // Preload immediately when agent/cast selected
@@ -736,6 +727,16 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
       case 'requested': case 'waiting': case 'pending': return <Clock className="h-5 w-5 text-gray-600" />;
       default: return <Clock className="h-5 w-5 text-gray-600" />;
     }
+  };
+
+  // Sanitize status strings by removing special characters and formatting
+  const sanitizeStatus = (status: string): string => {
+    // Replace underscores, hyphens, and other special chars with spaces using regex
+    // Then convert to uppercase
+    return status
+      .replace(/[_\-\.]+/g, ' ')  // Replace _, -, . with spaces
+      .trim()
+      .toUpperCase();
   };
 
   if (!selectedPR) {
@@ -837,7 +838,6 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                   setFileContent(data.content);
                 }
               } catch (error) {
-                console.error('Error fetching file:', error);
                 setFileContent('Error loading file content');
               }
             }}
@@ -1146,89 +1146,192 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                   </Card>
 
                   <Card>
-                    <CardHeader>
+                    <CardHeader className="pb-3">
                       <CardTitle>Agent Results</CardTitle>
                     </CardHeader>
-                    <CardContent>
-                      {jobsData && jobsData.jobs.length > 0 ? (
-                        <div className="space-y-3">
-                          {(() => {
-                            // Use utility function for robust job parsing
-                            const sortedAgentEntries = parseAgentTestResults(jobsData.jobs);
-                            
-                            if (sortedAgentEntries.length === 0) {
-                              return <p className="text-sm text-muted-foreground">No agent test results available</p>;
-                            }
-                            
-                            
-                            
-                            return sortedAgentEntries.map(([agentName, tests]) => {
-                              // If all tests have models, show as grouped
-                              const hasModels = tests.some(t => t.model);
-                              
-                              if (hasModels) {
-                                return (
-                                  <div key={agentName} className="space-y-1">
-                                    <div className="font-semibold text-sm text-foreground py-1.5 px-3">
-                                      {agentName}
-                                    </div>
-                                    {tests.map((test, idx) => (
-                                      <div key={idx} className="flex items-center justify-between pl-8 pr-3 py-1.5 bg-muted/30 rounded">
-                                        <span className="text-sm text-muted-foreground">
-                                          {test.model || 'Default'}
-                                        </span>
-                                        <div className="flex items-center gap-2 flex-shrink-0">
-                                          {test.conclusion === 'success' ? (
-                                            <>
-                                              <CheckCircle className="h-4 w-4 text-success" />
-                                              <span className="text-sm text-success font-medium">PASS</span>
-                                            </>
-                                          ) : test.conclusion === 'failure' ? (
-                                            <>
-                                              <XCircle className="h-4 w-4 text-destructive" />
-                                              <span className="text-sm text-destructive font-medium">FAIL</span>
-                                            </>
-                                          ) : (
-                                            <span className="text-sm text-muted-foreground">
-                                              {test.status?.toUpperCase() || 'PENDING'}
-                                            </span>
-                                          )}
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                );
-                              } else {
-                                // Agent without models - show result inline
-                                const test = tests[0];
-                                return (
-                                  <div key={agentName} className="flex items-center justify-between py-1.5 bg-muted/30 rounded px-3">
-                                    <span className="text-sm font-semibold text-foreground">
-                                      {agentName}
-                                    </span>
-                                    <div className="flex items-center gap-2">
-                                      {test.conclusion === 'success' ? (
-                                        <>
-                                          <CheckCircle className="h-4 w-4 text-success" />
-                                          <span className="text-sm text-success font-medium">PASS</span>
-                                        </>
-                                      ) : test.conclusion === 'failure' ? (
-                                        <>
-                                          <XCircle className="h-4 w-4 text-destructive" />
-                                          <span className="text-sm text-destructive font-medium">FAIL</span>
-                                        </>
-                                      ) : (
-                                        <span className="text-sm text-muted-foreground">
-                                          {test.status?.toUpperCase() || 'PENDING'}
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-                                );
-                              }
-                            });
-                          })()}
+                    <CardContent className="pt-0">
+                      {isAgentResultsLoading ? (
+                        <div className="flex items-center justify-center py-8">
+                          <div className="animate-spin rounded-full h-6 w-6 border-2 border-primary border-t-transparent"></div>
+                          <span className="ml-3 text-muted-foreground">Loading agent results...</span>
                         </div>
+                      ) : agentTestResultsData?.agentResults && Object.keys(agentTestResultsData.agentResults).length > 0 ? (
+                        <TooltipProvider>
+                          <div className="space-y-0">
+                            {/* Column Headers */}
+                            <div className="grid grid-cols-[2fr_1.5fr_1.5fr] gap-6 px-4 py-3 border-b border-muted/40">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Agent</span>
+                              </div>
+                              <div className="flex items-center gap-1.5 text-center">
+                                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Job Status</span>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p className="text-xs">GitHub Actions workflow job completion status</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </div>
+                              <div className="flex items-center gap-1.5 text-center">
+                                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Test Result</span>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p className="text-xs">Agent execution result from test output</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </div>
+                            </div>
+
+                            {/* Agent Rows */}
+                            {(() => {
+                              // Define agent display order
+                              const agentOrder = ['NOP', 'Oracle', 'Terminus'];
+                              const sortedAgents = Object.entries(agentTestResultsData.agentResults).sort(([a], [b]) => {
+                                const aIndex = agentOrder.indexOf(a);
+                                const bIndex = agentOrder.indexOf(b);
+                                if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+                                if (aIndex !== -1) return -1;
+                                if (bIndex !== -1) return 1;
+                                return a.localeCompare(b);
+                              });
+
+                              return sortedAgents.map(([agentName, results]) => {
+                                // Check if this agent has models
+                                const hasModels = results.some(r => r.model);
+
+                                if (hasModels) {
+                                  // Agent with models - show grouped with models beneath
+                                  return (
+                                    <div key={agentName} className="border-b border-muted/20">
+                                      {/* Agent header row */}
+                                      <div className="grid grid-cols-[2fr_1.5fr_1.5fr] gap-6 px-4 py-3 bg-muted/10">
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <span className="text-sm font-semibold text-foreground cursor-help">{agentName}</span>
+                                          </TooltipTrigger>
+                                          <TooltipContent side="right">
+                                            <p className="text-xs font-medium">Multi-model AI agent</p>
+                                            <p className="text-xs text-muted-foreground mt-1">Tests with multiple LLM providers</p>
+                                          </TooltipContent>
+                                        </Tooltip>
+                                        <div></div>
+                                        <div></div>
+                                      </div>
+
+                                      {/* Model rows */}
+                                      {results.map((result, idx) => {
+                                        // Get status text and color
+                                        const statusColor = result.status === 'PASS' ? 'text-green-500' :
+                                                           result.status === 'FAIL' ? 'text-red-500' :
+                                                           'text-muted-foreground';
+
+                                        const statusIcon = result.status === 'PASS' ? (
+                                          <CheckCircle className="h-3.5 w-3.5" />
+                                        ) : result.status === 'FAIL' ? (
+                                          <XCircle className="h-3.5 w-3.5" />
+                                        ) : (
+                                          <Clock className="h-3.5 w-3.5" />
+                                        );
+
+                                        // Get job status color
+                                        const jobStatusColor = result.conclusion === 'success' ? 'text-green-500' :
+                                                              result.conclusion === 'failure' ? 'text-red-500' :
+                                                              'text-muted-foreground';
+
+                                        return (
+                                          <div key={idx} className="grid grid-cols-[2fr_1.5fr_1.5fr] gap-6 px-4 py-3 hover:bg-muted/5 transition-colors">
+                                            <div className="flex items-center text-sm text-foreground pl-6">
+                                              {result.model || 'Default'}
+                                            </div>
+                                            <div className="flex items-center justify-center">
+                                              <span className={`text-sm font-medium ${jobStatusColor}`}>
+                                                {sanitizeStatus(result.conclusion || result.jobStatus)}
+                                              </span>
+                                            </div>
+                                            <div className="flex items-center justify-center gap-1.5">
+                                              <span className={statusColor}>{statusIcon}</span>
+                                              <span className={`text-sm font-semibold ${statusColor}`}>
+                                                {result.status}
+                                              </span>
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  );
+                                } else {
+                                  // Agent without models - show inline
+                                  const result = results[0];
+
+                                  // Get status text and color
+                                  const statusColor = result.status === 'PASS' ? 'text-green-500' :
+                                                     result.status === 'FAIL' ? 'text-red-500' :
+                                                     'text-muted-foreground';
+
+                                  const statusIcon = result.status === 'PASS' ? (
+                                    <CheckCircle className="h-3.5 w-3.5" />
+                                  ) : result.status === 'FAIL' ? (
+                                    <XCircle className="h-3.5 w-3.5" />
+                                  ) : (
+                                    <Clock className="h-3.5 w-3.5" />
+                                  );
+
+                                  // Get job status color
+                                  const jobStatusColor = result.conclusion === 'success' ? 'text-green-500' :
+                                                        result.conclusion === 'failure' ? 'text-red-500' :
+                                                        'text-muted-foreground';
+
+                                  // Get agent-specific tooltip
+                                  const agentTooltip = agentName === 'NOP' ? (
+                                    <>
+                                      <p className="text-xs font-medium">No-Operation Agent (Baseline)</p>
+                                      <p className="text-xs text-muted-foreground mt-1">Designed to always fail - validates test detection</p>
+                                    </>
+                                  ) : agentName === 'Oracle' ? (
+                                    <>
+                                      <p className="text-xs font-medium">Oracle Solution Agent</p>
+                                      <p className="text-xs text-muted-foreground mt-1">Uses reference solution - should always pass</p>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <p className="text-xs font-medium">{agentName} Agent</p>
+                                      <p className="text-xs text-muted-foreground mt-1">Test agent</p>
+                                    </>
+                                  );
+
+                                  return (
+                                    <div key={agentName} className="grid grid-cols-[2fr_1.5fr_1.5fr] gap-6 px-4 py-3 border-b border-muted/20 hover:bg-muted/5 transition-colors">
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <span className="text-sm font-semibold text-foreground cursor-help">{agentName}</span>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="right">
+                                          {agentTooltip}
+                                        </TooltipContent>
+                                      </Tooltip>
+                                      <div className="flex items-center justify-center">
+                                        <span className={`text-sm font-medium ${jobStatusColor}`}>
+                                          {sanitizeStatus(result.conclusion || result.jobStatus)}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center justify-center gap-1.5">
+                                        <span className={statusColor}>{statusIcon}</span>
+                                        <span className={`text-sm font-semibold ${statusColor}`}>
+                                          {result.status}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  );
+                                }
+                              });
+                            })()}
+                          </div>
+                        </TooltipProvider>
                       ) : (
                         <p className="text-sm text-muted-foreground">No agent results available</p>
                       )}
@@ -1745,11 +1848,10 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                         </Card>
                       );
                     } catch (renderError) {
-                      console.error('Error rendering comment:', comment.id, renderError);
                       return (
                         <Card key={comment.id || Math.random()} className="border-red-200 bg-red-50/50">
                           <CardContent className="p-4">
-                            <p className="text-red-600 text-sm">Error rendering comment. Check console for details.</p>
+                            <p className="text-red-600 text-sm">Error rendering comment.</p>
                           </CardContent>
                         </Card>
                       );
