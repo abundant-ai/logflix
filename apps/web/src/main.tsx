@@ -17,6 +17,20 @@ if (PUBLISHABLE_KEY) {
       signInUrl="/sign-in"
       signUpUrl="/sign-up"
       appearance={{
+        /**
+         * Clerk Component Styling Strategy
+         *
+         * PRIMARY: This appearance configuration controls all Clerk component styling
+         * - Uses design system tokens for consistency with app theme
+         * - Comprehensive element-level customization
+         *
+         * SECONDARY: Minimal CSS overrides in index.css (ONLY for edge cases)
+         * - GitHub icon SVG filter (appearance API can't control this)
+         * - See index.css for documented exceptions
+         *
+         * When updating Clerk styles, modify THIS object first.
+         * Only add CSS overrides if absolutely necessary.
+         */
         baseTheme: undefined,
         variables: {
           colorPrimary: 'hsl(210, 100%, 45%)',

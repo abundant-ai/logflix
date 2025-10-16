@@ -105,47 +105,22 @@
   border-radius: 8px;
 }
 
-/* Clerk component overrides for better visibility */
-.cl-component,
-.cl-component * {
-  color: inherit;
-}
+/**
+ * Clerk Component CSS Overrides
+ *
+ * NOTE: Most Clerk styling is handled via the appearance prop in ClerkProvider (see main.tsx).
+ * These CSS overrides are ONLY for edge cases that cannot be controlled through the appearance API.
+ *
+ * If you need to change Clerk component styles, check main.tsx first!
+ */
 
-.cl-component {
-  color: var(--foreground);
-}
-
-.cl-internal-icon,
-.cl-providerIcon {
-  filter: brightness(1) invert(0) !important;
-  opacity: 1 !important;
-}
-
-/* Ensure tab counts are visible */
-.cl-tabButton[data-localization-key*="count"],
-.cl-badge {
-  color: var(--muted-foreground) !important;
-}
-
-/* Active tab should be primary color */
-.cl-tabButton[data-active="true"],
-.cl-tabButton:hover {
-  color: var(--primary) !important;
-}
-
-/* Search input placeholder */
-.cl-formFieldInput::placeholder {
-  color: var(--muted-foreground) !important;
-  opacity: 0.7;
-}
-
-/* Table elements */
-.cl-table th,
-.cl-table td {
-  color: var(--foreground) !important;
-}
-
-/* Provider icons - ensure GitHub icon is visible on dark backgrounds */
+/**
+ * GitHub Icon Visibility Fix
+ *
+ * Why needed: The Clerk appearance API doesn't provide control over SVG filter properties.
+ * The GitHub icon SVG is naturally dark/black and becomes invisible on dark backgrounds.
+ * This inversion makes it visible while keeping it normal on light sign-in buttons.
+ */
 .cl-providerIcon__github,
 .cl-socialButtonsProviderIcon__github,
 .cl-connectedAccountProviderIcon__github {
@@ -153,41 +128,8 @@
   opacity: 1 !important;
 }
 
-/* For light backgrounds, don't invert */
+/* Don't invert on light backgrounds (social sign-in buttons) */
 .cl-socialButtonsBlockButton .cl-providerIcon__github,
 .cl-socialButtonsBlockButton .cl-socialButtonsProviderIcon__github {
   filter: invert(0) brightness(1) !important;
-}
-
-/* Connected account text */
-.cl-userProfile-connectedAccount,
-.cl-userProfile-connectedAccount * {
-  color: var(--foreground) !important;
-}
-
-/* Membership role dropdown */
-.cl-selectButton,
-.cl-selectButton__membershipRole {
-  color: var(--foreground) !important;
-}
-
-/* Catch-all for any remaining Clerk text elements */
-.cl-rootBox,
-.cl-card,
-.cl-modalContent,
-.cl-organizationSwitcherPopoverCard,
-.cl-userButtonPopoverCard {
-  color: var(--foreground);
-}
-
-/* Ensure all inputs have proper styling */
-.cl-formFieldInput,
-.cl-formFieldInput:focus {
-  background-color: var(--input) !important;
-  color: var(--foreground) !important;
-  border-color: var(--border) !important;
-}
-
-.cl-formFieldInput:focus {
-  border-color: var(--primary) !important;
 }
