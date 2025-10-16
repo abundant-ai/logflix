@@ -952,7 +952,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                     <SelectItem key={commit.sha} value={commit.sha}>
                       <div className="flex items-center gap-2" title={commit.message}>
                         <code className="text-xs font-mono flex-shrink-0">{commit.sha.substring(0, 7)}</code>
-                        {index === 0 && <Badge variant="default" className="text-xs px-1.5 flex-shrink-0 bg-blue-600 text-white border-blue-600">Latest</Badge>}
+                        {index === 0 && <Badge variant="default" className="text-xs px-1.5 flex-shrink-0 bg-info text-info-foreground border-info">Latest</Badge>}
                         <span className="text-xs text-muted-foreground truncate">
                           {commit.message.split('\n')[0]}
                         </span>
