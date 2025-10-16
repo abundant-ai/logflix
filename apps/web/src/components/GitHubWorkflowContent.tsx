@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import CustomTerminalViewer from "./CustomTerminalViewer";
+import AgentResultsTable from "./AgentResultsTable";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -21,13 +22,15 @@ import {
   Calendar,
   TrendingUp,
   GitCommit,
-  Tag
+  Tag,
+  HelpCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   GitHubWorkflowRun,
   GitHubPullRequest,
@@ -36,7 +39,6 @@ import {
   GitHubWorkflowLog,
   GitHubWorkflowArtifact
 } from "@logflix/shared/schema";
-import { parseAgentTestResults } from "@/lib/agentResultsParser";
 
 interface GitHubWorkflowContentProps {
   selectedPR: GitHubPRSelection | null;
@@ -187,43 +189,6 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
     // Sort by attempt number (latest first for re-runs)
     return allAttempts.sort((a, b) => b.run_attempt - a.run_attempt);
   }, [selectedRunId, runsByNumber, runsData]);
-  
-  // Debug logging for multi-run analysis
-  useEffect(() => {
-    if (runsData?.runs && selectedCommitSha && filteredRuns.length > 0) {
-      console.log(`[DEBUG] Commit ${selectedCommitSha.substring(0, 7)} has ${filteredRuns.length} runs:`,
-        filteredRuns.map(r => `#${r.run_number} (attempt ${r.run_attempt}, ${r.status})`).join(', ')
-      );
-      
-      // Check all run numbers and their attempts
-      console.log(`[DEBUG] All run groups:`, Object.entries(runsByNumber).map(([runNum, attempts]) =>
-        `#${runNum}: ${attempts.length} attempts`
-      ).join(', '));
-      
-      console.log(`[DEBUG] hasMultipleAttempts: ${hasMultipleAttempts}`);
-      
-      // Check if there are multiple attempts for any run number
-      const runNumbers = new Set(filteredRuns.map(r => r.run_number));
-      runNumbers.forEach(runNum => {
-        const attempts = filteredRuns.filter(r => r.run_number === runNum);
-        if (attempts.length > 1) {
-          console.log(`[DEBUG] Run #${runNum} has ${attempts.length} attempts:`,
-            attempts.map(r => `attempt ${r.run_attempt} (${r.status})`).join(', ')
-          );
-        }
-      });
-      
-      // Log run number groups for current selection
-      if (selectedRunId) {
-        const selectedRun = runsData.runs.find(r => r.id === selectedRunId);
-        if (selectedRun && currentRunAttempts.length > 1) {
-          console.log(`[DEBUG] Run #${selectedRun.run_number} has ${currentRunAttempts.length} total attempts across commits:`,
-            currentRunAttempts.map(r => `attempt ${r.run_attempt} (${r.head_sha.substring(0, 7)}, ${r.status})`).join(', ')
-          );
-        }
-      }
-    }
-  }, [runsData, selectedCommitSha, filteredRuns, selectedRunId, currentRunAttempts, hasMultipleAttempts]);
 
   // Auto-select the latest run for the selected commit, prioritizing highest attempt number
   useEffect(() => {
@@ -343,14 +308,46 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
     queryKey: selectedRunId ? ["/api/github/workflow-jobs", selectedRunId] : [],
     queryFn: async () => {
       if (!selectedRunId) throw new Error('No run selected');
-      
+
       const params = createAPIParams();
-      
+
       const response = await fetch(`/api/github/workflow-jobs/${selectedRunId}?${params}`);
       if (!response.ok) throw new Error(`Failed to fetch workflow jobs: ${response.statusText}`);
       return response.json();
     },
     enabled: !!selectedRunId,
+  });
+
+  // Fetch agent test results from new API endpoint
+  const { data: agentTestResultsData, isLoading: isAgentResultsLoading } = useQuery<{
+    agentResults: {
+      [agentName: string]: Array<{
+        model: string | null;
+        status: 'PASS' | 'FAIL' | 'UNKNOWN';
+        source: 'artifact' | 'fallback' | 'unknown';
+        conclusion: string | null;
+        jobStatus: string;
+      }>;
+    };
+  }>({
+    queryKey: selectedRunId ? ["/api/github/agent-test-results", selectedRunId] : [],
+    queryFn: async () => {
+      if (!selectedRunId) throw new Error('No run selected');
+
+      const params = createAPIParams();
+
+      const response = await fetch(`/api/github/agent-test-results/${selectedRunId}?${params}`);
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch agent test results: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      return data;
+    },
+    enabled: !!selectedRunId,
+    staleTime: 60 * 1000, // Cache for 1 minute
   });
 
   // Find artifact with logs - prioritize recordings (which contain both .cast and .log)
@@ -503,15 +500,11 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
       if (!selectedRunId) throw new Error('No run selected');
       
       const params = createAPIParams();
-      
-      console.log(`[DEBUG] Fetching cast list for run ${selectedRunId} with params:`, params.toString());
-      
+
       const response = await fetch(`/api/github/cast-list/${selectedRunId}?${params}`);
       if (!response.ok) throw new Error(`Failed to fetch cast list: ${response.statusText}`);
       const data = await response.json();
-      
-      console.log(`[DEBUG] Cast list response for run ${selectedRunId}:`, data);
-      
+
       return data;
     },
     enabled: !!selectedRunId,
@@ -641,20 +634,16 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
       }
       
       const params = createAPIParams({ path: selectedCastFile.path });
-      
-      console.log(`[DEBUG] Fetching cast file for artifact ${selectedAgentData.id} from run ${selectedRunId} with path: ${selectedCastFile.path}`);
-      
+
       const response = await fetch(`/api/github/cast-file-by-path/${selectedAgentData.id}?${params}`);
-      
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: response.statusText }));
-        console.error(`[DEBUG] Cast file fetch failed:`, errorData);
         throw new Error(errorData.error || `Failed to fetch cast: ${response.statusText}`);
       }
-      
+
       const data = await response.json();
-      console.log(`[DEBUG] Cast file fetched successfully for artifact ${selectedAgentData.id}`);
-      
+
       return data;
     },
     enabled: !!(selectedAgentData && selectedCastFile), // Preload immediately when agent/cast selected
@@ -837,7 +826,6 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                   setFileContent(data.content);
                 }
               } catch (error) {
-                console.error('Error fetching file:', error);
                 setFileContent('Error loading file content');
               }
             }}
@@ -1146,92 +1134,14 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                   </Card>
 
                   <Card>
-                    <CardHeader>
+                    <CardHeader className="pb-3">
                       <CardTitle>Agent Results</CardTitle>
                     </CardHeader>
-                    <CardContent>
-                      {jobsData && jobsData.jobs.length > 0 ? (
-                        <div className="space-y-3">
-                          {(() => {
-                            // Use utility function for robust job parsing
-                            const sortedAgentEntries = parseAgentTestResults(jobsData.jobs);
-                            
-                            if (sortedAgentEntries.length === 0) {
-                              return <p className="text-sm text-muted-foreground">No agent test results available</p>;
-                            }
-                            
-                            
-                            
-                            return sortedAgentEntries.map(([agentName, tests]) => {
-                              // If all tests have models, show as grouped
-                              const hasModels = tests.some(t => t.model);
-                              
-                              if (hasModels) {
-                                return (
-                                  <div key={agentName} className="space-y-1">
-                                    <div className="font-semibold text-sm text-foreground py-1.5 px-3">
-                                      {agentName}
-                                    </div>
-                                    {tests.map((test, idx) => (
-                                      <div key={idx} className="flex items-center justify-between pl-8 pr-3 py-1.5 bg-muted/30 rounded">
-                                        <span className="text-sm text-muted-foreground">
-                                          {test.model || 'Default'}
-                                        </span>
-                                        <div className="flex items-center gap-2 flex-shrink-0">
-                                          {test.conclusion === 'success' ? (
-                                            <>
-                                              <CheckCircle className="h-4 w-4 text-success" />
-                                              <span className="text-sm text-success font-medium">PASS</span>
-                                            </>
-                                          ) : test.conclusion === 'failure' ? (
-                                            <>
-                                              <XCircle className="h-4 w-4 text-destructive" />
-                                              <span className="text-sm text-destructive font-medium">FAIL</span>
-                                            </>
-                                          ) : (
-                                            <span className="text-sm text-muted-foreground">
-                                              {test.status?.toUpperCase() || 'PENDING'}
-                                            </span>
-                                          )}
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                );
-                              } else {
-                                // Agent without models - show result inline
-                                const test = tests[0];
-                                return (
-                                  <div key={agentName} className="flex items-center justify-between py-1.5 bg-muted/30 rounded px-3">
-                                    <span className="text-sm font-semibold text-foreground">
-                                      {agentName}
-                                    </span>
-                                    <div className="flex items-center gap-2">
-                                      {test.conclusion === 'success' ? (
-                                        <>
-                                          <CheckCircle className="h-4 w-4 text-success" />
-                                          <span className="text-sm text-success font-medium">PASS</span>
-                                        </>
-                                      ) : test.conclusion === 'failure' ? (
-                                        <>
-                                          <XCircle className="h-4 w-4 text-destructive" />
-                                          <span className="text-sm text-destructive font-medium">FAIL</span>
-                                        </>
-                                      ) : (
-                                        <span className="text-sm text-muted-foreground">
-                                          {test.status?.toUpperCase() || 'PENDING'}
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-                                );
-                              }
-                            });
-                          })()}
-                        </div>
-                      ) : (
-                        <p className="text-sm text-muted-foreground">No agent results available</p>
-                      )}
+                    <CardContent className="pt-0">
+                      <AgentResultsTable
+                        agentTestResultsData={agentTestResultsData}
+                        isLoading={isAgentResultsLoading}
+                      />
                     </CardContent>
                   </Card>
 
@@ -1745,11 +1655,10 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                         </Card>
                       );
                     } catch (renderError) {
-                      console.error('Error rendering comment:', comment.id, renderError);
                       return (
                         <Card key={comment.id || Math.random()} className="border-red-200 bg-red-50/50">
                           <CardContent className="p-4">
-                            <p className="text-red-600 text-sm">Error rendering comment. Check console for details.</p>
+                            <p className="text-red-600 text-sm">Error rendering comment.</p>
                           </CardContent>
                         </Card>
                       );
