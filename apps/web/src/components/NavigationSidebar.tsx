@@ -121,13 +121,13 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, or
   // Get PR status icon based on state, merged status, and draft (larger size for better visibility)
   const getPRStatusIcon = (pr: GitHubPullRequest) => {
     if (pr.draft) {
-      return <Tag className="h-5 w-5 text-amber-600" />;
+      return <Tag className="h-5 w-5 text-warning" />;
     } else if (pr.state === 'open') {
-      return <CheckCircle className="h-5 w-5 text-green-600" />;
+      return <CheckCircle className="h-5 w-5 text-success" />;
     } else if (pr.state === 'closed' && pr.merged_at) {
-      return <GitCommit className="h-5 w-5 text-purple-600" />;
+      return <GitCommit className="h-5 w-5 text-merged" />;
     } else {
-      return <XCircle className="h-5 w-5 text-red-600" />;
+      return <XCircle className="h-5 w-5 text-destructive" />;
     }
   };
 
@@ -306,31 +306,31 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, or
                 checked={selectedStates.includes('all') || selectedStates.includes('open')}
                 onCheckedChange={() => toggleState('open')}
               >
-                <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
+                <CheckCircle className="h-4 w-4 mr-2 text-success" />
                 Open ({statsData?.open || 0})
               </DropdownMenuCheckboxItem>
-              
+
               <DropdownMenuCheckboxItem
                 checked={selectedStates.includes('all') || selectedStates.includes('merged')}
                 onCheckedChange={() => toggleState('merged')}
               >
-                <GitCommit className="h-4 w-4 mr-2 text-purple-600" />
+                <GitCommit className="h-4 w-4 mr-2 text-merged" />
                 Merged ({statsData?.merged || 0})
               </DropdownMenuCheckboxItem>
-              
+
               <DropdownMenuCheckboxItem
                 checked={selectedStates.includes('all') || selectedStates.includes('closed')}
                 onCheckedChange={() => toggleState('closed')}
               >
-                <XCircle className="h-4 w-4 mr-2 text-red-600" />
+                <XCircle className="h-4 w-4 mr-2 text-destructive" />
                 Closed ({statsData?.closed || 0})
               </DropdownMenuCheckboxItem>
-              
+
               <DropdownMenuCheckboxItem
                 checked={selectedStates.includes('all') || selectedStates.includes('draft')}
                 onCheckedChange={() => toggleState('draft')}
               >
-                <Tag className="h-4 w-4 mr-2 text-amber-600" />
+                <Tag className="h-4 w-4 mr-2 text-warning" />
                 Draft ({statsData?.draft || 0})
               </DropdownMenuCheckboxItem>
               
@@ -416,12 +416,12 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, or
                           </span>
                           <div className="flex items-center gap-2 text-sm text-muted-foreground">
                             <div className="flex items-center gap-1">
-                              <Calendar className="h-4 w-4 text-blue-600" />
+                              <Calendar className="h-4 w-4 text-info" />
                               <span>{new Date(pr.created_at).toLocaleDateString()}</span>
                             </div>
                             <span>•</span>
                             <div className="flex items-center gap-1">
-                              <TrendingUp className="h-4 w-4 text-orange-600" />
+                              <TrendingUp className="h-4 w-4 text-warning" />
                               <span>{new Date(pr.updated_at).toLocaleDateString()}</span>
                             </div>
                           </div>
@@ -441,7 +441,7 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, or
                           {pr.merged_at && (
                             <>
                               <span>•</span>
-                              <div className="flex items-center gap-1 text-purple-600">
+                              <div className="flex items-center gap-1 text-merged">
                                 <GitCommit className="h-5 w-5" />
                                 <span>{new Date(pr.merged_at).toLocaleDateString()}</span>
                               </div>
@@ -450,7 +450,7 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, or
                           {pr.draft && (
                             <>
                               <span>•</span>
-                              <div className="flex items-center gap-1 text-amber-600">
+                              <div className="flex items-center gap-1 text-warning">
                                 <Tag className="h-4 w-4" />
                                 <span>Draft</span>
                               </div>

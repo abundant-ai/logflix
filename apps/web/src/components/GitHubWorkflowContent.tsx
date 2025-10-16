@@ -688,44 +688,44 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
   const getStatusColor = (status: string, conclusion?: string | null) => {
     if (status === 'completed' && conclusion) {
       switch (conclusion) {
-        case 'success': return 'text-green-600';
-        case 'failure': return 'text-red-600';
-        case 'cancelled': return 'text-gray-600';
-        case 'timed_out': return 'text-orange-600';
-        case 'skipped': return 'text-blue-600';
-        case 'neutral': return 'text-gray-600';
-        case 'action_required': return 'text-yellow-600';
-        default: return 'text-gray-600';
+        case 'success': return 'text-success';
+        case 'failure': return 'text-destructive';
+        case 'cancelled': return 'text-neutral';
+        case 'timed_out': return 'text-warning';
+        case 'skipped': return 'text-info';
+        case 'neutral': return 'text-neutral';
+        case 'action_required': return 'text-warning';
+        default: return 'text-neutral';
       }
     }
-    
+
     switch (status) {
-      case 'in_progress': return 'text-orange-600';
-      case 'queued': return 'text-blue-600';
-      case 'requested': case 'waiting': case 'pending': return 'text-gray-600';
-      default: return 'text-gray-600';
+      case 'in_progress': return 'text-warning';
+      case 'queued': return 'text-info';
+      case 'requested': case 'waiting': case 'pending': return 'text-neutral';
+      default: return 'text-neutral';
     }
   };
 
   const getStatusIcon = (status: string, conclusion?: string | null) => {
     if (status === 'completed' && conclusion) {
       switch (conclusion) {
-        case 'success': return <CheckCircle className="h-5 w-5 text-green-600" />;
-        case 'failure': return <XCircle className="h-5 w-5 text-red-600" />;
-        case 'cancelled': return <XCircle className="h-5 w-5 text-gray-600" />;
-        case 'timed_out': return <Clock className="h-5 w-5 text-orange-600" />;
-        case 'skipped': return <Clock className="h-5 w-5 text-blue-600" />;
-        case 'neutral': return <Clock className="h-5 w-5 text-gray-600" />;
-        case 'action_required': return <Clock className="h-5 w-5 text-yellow-600" />;
-        default: return <Clock className="h-5 w-5 text-gray-600" />;
+        case 'success': return <CheckCircle className="h-5 w-5 text-success" />;
+        case 'failure': return <XCircle className="h-5 w-5 text-destructive" />;
+        case 'cancelled': return <XCircle className="h-5 w-5 text-neutral" />;
+        case 'timed_out': return <Clock className="h-5 w-5 text-warning" />;
+        case 'skipped': return <Clock className="h-5 w-5 text-info" />;
+        case 'neutral': return <Clock className="h-5 w-5 text-neutral" />;
+        case 'action_required': return <Clock className="h-5 w-5 text-warning" />;
+        default: return <Clock className="h-5 w-5 text-neutral" />;
       }
     }
-    
+
     switch (status) {
-      case 'in_progress': return <Clock className="h-5 w-5 animate-pulse text-orange-600" />;
-      case 'queued': return <Clock className="h-5 w-5 text-blue-600" />;
-      case 'requested': case 'waiting': case 'pending': return <Clock className="h-5 w-5 text-gray-600" />;
-      default: return <Clock className="h-5 w-5 text-gray-600" />;
+      case 'in_progress': return <Clock className="h-5 w-5 animate-pulse text-warning" />;
+      case 'queued': return <Clock className="h-5 w-5 text-info" />;
+      case 'requested': case 'waiting': case 'pending': return <Clock className="h-5 w-5 text-neutral" />;
+      default: return <Clock className="h-5 w-5 text-neutral" />;
     }
   };
 
@@ -938,7 +938,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                       <SelectItem key={run.id} value={run.id.toString()}>
                         <div className="flex items-center gap-2" title={`Run #${run.run_number} Attempt ${run.run_attempt} - ${statusText}`}>
                           <code className="text-xs font-mono flex-shrink-0">#{run.run_number}.{run.run_attempt}</code>
-                          {index === 0 && <Badge variant="default" className="text-xs px-1.5 flex-shrink-0 bg-blue-600 text-white border-blue-600">Latest</Badge>}
+                          {index === 0 && <Badge variant="default" className="text-xs px-1.5 flex-shrink-0 bg-info text-info-foreground border-info">Latest</Badge>}
                           <span className="text-xs text-muted-foreground truncate">
                             {run.head_sha.substring(0, 7)} • {dateStr} {timeStr}
                           </span>
@@ -1079,11 +1079,11 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                         <div>
                           <label className="text-sm text-muted-foreground block mb-1">Task ID</label>
                           <p className="text-base font-medium flex items-center gap-2">
-                            <Tag className="h-5 w-5 text-blue-600" />
+                            <Tag className="h-5 w-5 text-info" />
                             {taskData?.taskId || 'N/A'}
                           </p>
                           {tasksData && tasksData.tasks.length > 1 && (
-                            <p className="text-xs text-amber-600 mt-1">
+                            <p className="text-xs text-warning mt-1">
                               {tasksData.tasks.length} tasks available
                             </p>
                           )}
@@ -1091,14 +1091,14 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                         <div>
                           <label className="text-sm text-muted-foreground block mb-1">Duration</label>
                           <p className="text-base flex items-center gap-2">
-                            <Clock className="h-5 w-5 text-green-600" />
+                            <Clock className="h-5 w-5 text-success" />
                             {formatDuration(duration)}
                           </p>
                         </div>
                         <div>
                           <label className="text-sm text-muted-foreground block mb-1">Difficulty</label>
                           <p className="text-base capitalize flex items-center gap-2">
-                            <BarChart3 className="h-5 w-5 text-orange-600" />
+                            <BarChart3 className="h-5 w-5 text-warning" />
                             {taskData?.taskYaml?.difficulty || 'N/A'}
                           </p>
                         </div>
@@ -1106,7 +1106,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                           <div>
                             <label className="text-sm text-muted-foreground block mb-1">Category</label>
                             <p className="text-base flex items-center gap-2">
-                              <Tag className="h-5 w-5 text-purple-600" />
+                              <Tag className="h-5 w-5 text-merged" />
                               {taskData.taskYaml.category}
                             </p>
                           </div>
@@ -1115,7 +1115,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                           <div>
                             <label className="text-sm text-muted-foreground block mb-1">Max Agent Timeout</label>
                             <p className="text-base flex items-center gap-2">
-                              <Clock className="h-5 w-5 text-red-600" />
+                              <Clock className="h-5 w-5 text-destructive" />
                               {taskData.taskYaml.max_agent_timeout_sec}s
                             </p>
                           </div>
@@ -1124,7 +1124,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                           <div>
                             <label className="text-sm text-muted-foreground block mb-1">Max Test Timeout</label>
                             <p className="text-base flex items-center gap-2">
-                              <Clock className="h-5 w-5 text-amber-600" />
+                              <Clock className="h-5 w-5 text-warning" />
                               {taskData.taskYaml.max_test_timeout_sec}s
                             </p>
                           </div>
@@ -1347,7 +1347,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                         <div>
                           <label className="text-sm text-muted-foreground block mb-1">Author</label>
                           <p className="text-base flex items-center gap-2">
-                            <User className="h-5 w-5 text-blue-600" />
+                            <User className="h-5 w-5 text-info" />
                             {taskData?.taskYaml?.author_name || commitData?.author || prData.user.login}
                             {(commitData?.email || taskData?.taskYaml?.author_email) && (
                               <span className="text-sm text-muted-foreground"> &lt;{commitData?.email || taskData?.taskYaml?.author_email}&gt;</span>
@@ -1357,21 +1357,21 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                         <div>
                           <label className="text-sm text-muted-foreground block mb-1">Github Username</label>
                           <p className="text-base flex items-center gap-2">
-                            <User className="h-5 w-5 text-purple-600" />
+                            <User className="h-5 w-5 text-merged" />
                             {prData.user.login}
                           </p>
                         </div>
                         <div>
                           <label className="text-sm text-muted-foreground block mb-1">Created At</label>
                           <p className="text-base flex items-center gap-2">
-                            <Calendar className="h-5 w-5 text-blue-600" />
+                            <Calendar className="h-5 w-5 text-info" />
                             {formatDate(prData.created_at)}
                           </p>
                         </div>
                         <div>
                           <label className="text-sm text-muted-foreground block mb-1">Updated At</label>
                           <p className="text-base flex items-center gap-2">
-                            <TrendingUp className="h-5 w-5 text-orange-600" />
+                            <TrendingUp className="h-5 w-5 text-warning" />
                             {formatDate(prData.updated_at)}
                           </p>
                         </div>
@@ -1404,7 +1404,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                           <div>
                             <label className="text-sm text-muted-foreground block mb-1">Merged At</label>
                             <p className="text-base flex items-center gap-2">
-                              <GitCommit className="h-5 w-5 text-purple-600" />
+                              <GitCommit className="h-5 w-5 text-merged" />
                               {formatDate(prData.merged_at)}
                             </p>
                           </div>
@@ -1609,7 +1609,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                 <div className="flex-1 flex flex-col">
                   {selectedFile && fileContent ? (
                     <div className="flex-1 overflow-auto bg-black p-4">
-                      <pre className="text-sm font-mono text-green-400 whitespace-pre-wrap break-words">
+                      <pre className="text-sm font-mono text-success whitespace-pre-wrap break-words">
                         {fileContent}
                       </pre>
                     </div>
@@ -1752,13 +1752,13 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                       }
                       
                       return (
-                        <Card key={comment.id || Math.random()} className={`${isAgentAnalysis ? 'border-blue-200 dark:border-blue-800 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-slate-900 dark:to-blue-950' : 'border-gray-200 dark:border-gray-700'}`}>
+                        <Card key={comment.id || Math.random()} className={`${isAgentAnalysis ? 'border-info/30 bg-info/5' : 'border-gray-200 dark:border-gray-700'}`}>
                           <CardHeader className="pb-3">
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-3">
                                 <Badge
                                   variant={isAgentAnalysis ? "default" : "secondary"}
-                                  className={isAgentAnalysis ? "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white border-none" : ""}
+                                  className={isAgentAnalysis ? "bg-info text-info-foreground border-none" : ""}
                                 >
                                   {isAgentAnalysis ? (
                                     <div className="flex items-center gap-1">
@@ -1770,7 +1770,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                                   )}
                                 </Badge>
                                 {isAgentAnalysis && (
-                                  <Badge variant="outline" className="text-xs border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300">
+                                  <Badge variant="outline" className="text-xs border-info/50 text-info">
                                     Automated Analysis
                                   </Badge>
                                 )}
@@ -1849,9 +1849,9 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                       );
                     } catch (renderError) {
                       return (
-                        <Card key={comment.id || Math.random()} className="border-red-200 bg-red-50/50">
+                        <Card key={comment.id || Math.random()} className="border-destructive/30 bg-destructive/5">
                           <CardContent className="p-4">
-                            <p className="text-red-600 text-sm">Error rendering comment.</p>
+                            <p className="text-destructive text-sm">Error rendering comment.</p>
                           </CardContent>
                         </Card>
                       );
