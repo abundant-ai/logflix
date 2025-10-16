@@ -34,8 +34,8 @@ interface AgentResultsTableProps {
  */
 const StatusDisplay = ({ result }: { result: AgentTestResult }) => {
   // Get status text and color
-  const statusColor = result.status === 'PASS' ? 'text-green-500' :
-                     result.status === 'FAIL' ? 'text-red-500' :
+  const statusColor = result.status === 'PASS' ? 'text-success' :
+                     result.status === 'FAIL' ? 'text-destructive' :
                      'text-muted-foreground';
 
   const statusIcon = result.status === 'PASS' ? (
@@ -47,8 +47,8 @@ const StatusDisplay = ({ result }: { result: AgentTestResult }) => {
   );
 
   // Get job status color
-  const jobStatusColor = result.conclusion === 'success' ? 'text-green-500' :
-                        result.conclusion === 'failure' ? 'text-red-500' :
+  const jobStatusColor = result.conclusion === 'success' ? 'text-success' :
+                        result.conclusion === 'failure' ? 'text-destructive' :
                         'text-muted-foreground';
 
   return (
