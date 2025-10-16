@@ -215,7 +215,9 @@ export default function AgentResultsTable({ agentTestResultsData, isLoading }: A
               <div key={agentName} className="grid grid-cols-[2fr_1.5fr_1.5fr] gap-6 px-4 py-3 border-b border-muted/20 hover:bg-muted/5 transition-colors">
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <span className="text-sm font-semibold text-foreground cursor-help">{agentName}</span>
+                    <div className="text-sm font-semibold text-foreground cursor-help inline-block">
+                      {agentName}
+                    </div>
                   </TooltipTrigger>
                   <TooltipContent side="right">
                     {agentTooltip}
