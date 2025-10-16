@@ -189,12 +189,12 @@ export default function RepositorySelector({ onSelectRepo }: RepositorySelectorP
 
       {/* Search and Sort Controls */}
       <div className="px-6 pt-4 pb-2">
-        <div className="flex flex-col sm:flex-row gap-3">
+        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
           {/* Search Input */}
-          <div className="relative flex-1">
+          <div className="relative w-full sm:w-96">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
             <Input
-              placeholder="Search repositories by name..."
+              placeholder="Search repositories..."
               className="pl-9"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -213,6 +213,13 @@ export default function RepositorySelector({ onSelectRepo }: RepositorySelectorP
               <SelectItem value="name-desc">Name (Z-A)</SelectItem>
             </SelectContent>
           </Select>
+
+          {/* Results Count */}
+          {searchQuery && (
+            <div className="text-sm text-muted-foreground whitespace-nowrap">
+              {filteredAndSortedRepos.length} of {repositories.length} {repositories.length === 1 ? 'repository' : 'repositories'}
+            </div>
+          )}
         </div>
       </div>
 
