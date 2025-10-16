@@ -64,19 +64,47 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
       }
 
       const { githubOrganization, defaultWorkflow } = authContext.organizationMetadata;
+      const githubToken = res.locals.githubToken;
 
       // Build repository objects from user's assigned repositories
       // These come from GitHub OAuth token and include all repos the user has access to
-      const userRepos = authContext.assignedRepositories.map(fullName => {
-        const repoName = fullName.split('/')[1];
+      // Fetch metadata from GitHub API for each repository
+      const userRepos = await Promise.all(
+        authContext.assignedRepositories.map(async (fullName) => {
+          const [owner, repoName] = fullName.split('/');
 
-        return {
-          name: repoName,
-          full_name: fullName,
-          workflow: defaultWorkflow || 'test-tasks.yaml', // Use org default or fallback
-          description: '',
-        };
-      });
+          // Fetch metadata from GitHub API
+          let metadata = {
+            description: '',
+            created_at: undefined as string | undefined,
+            updated_at: undefined as string | undefined,
+            pushed_at: undefined as string | undefined,
+          };
+
+          try {
+            const githubService = new GitHubOctokitService(owner, repoName, undefined, requestLogger, githubToken);
+            const repoMetadata = await githubService.getRepositoryMetadata(owner, repoName);
+            metadata = {
+              description: repoMetadata.description || '',
+              created_at: repoMetadata.created_at,
+              updated_at: repoMetadata.updated_at,
+              pushed_at: repoMetadata.pushed_at,
+            };
+          } catch (error) {
+            requestLogger.warn({ repo: fullName, error }, 'Failed to fetch repository metadata, using defaults');
+          }
+
+          return {
+            name: repoName,
+            full_name: fullName,
+            workflow: defaultWorkflow || 'test-tasks.yaml', // Use org default or fallback
+            description: metadata.description,
+            created_at: metadata.created_at,
+            updated_at: metadata.updated_at,
+            pushed_at: metadata.pushed_at,
+          };
+        })
+      );
 
       if (authContext.role === UserRole.ADMIN) {
         requestLogger.info({
