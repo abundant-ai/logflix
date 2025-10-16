@@ -259,6 +259,97 @@ export class GitHubOctokitService {
   }
 
   /**
+   * Normalizes a name by removing spaces, hyphens, and other separators
+   * Used for fuzzy matching between job names and artifact names
+   */
+  private normalizeForMatching(name: string): string {
+    return name.toLowerCase().replace(/[\s\-_\.]+/g, '');
+  }
+
+  /**
+   * Checks if an artifact suffix matches the agent name (fuzzy)
+   * Handles cases like:
+   * - "gemini-cli" matches agent "Gemini CLI"
+   * - "terminus2" matches agent "Terminus 2"
+   * - "terminus2-gemini" starts with agent "Terminus 2"
+   */
+  private artifactMatchesAgent(artifactSuffix: string, agentName: string): boolean {
+    const normalizedArtifact = this.normalizeForMatching(artifactSuffix);
+    const normalizedAgent = this.normalizeForMatching(agentName);
+
+    // Exact match after normalization
+    if (normalizedArtifact === normalizedAgent) {
+      return true;
+    }
+
+    // Artifact starts with agent name (for cases like "terminus2gemini" vs "terminus2")
+    if (normalizedArtifact.startsWith(normalizedAgent)) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Extracts the potential model suffix from artifact name after removing agent portion
+   * Returns null if no model suffix can be determined
+   *
+   * Examples:
+   * - extractModelSuffix("terminus2-gemini", "Terminus 2") → "gemini"
+   * - extractModelSuffix("gemini-cli", "Gemini CLI") → null (no model, just agent)
+   * - extractModelSuffix("terminus-gpt4", "Terminus") → "gpt4"
+   */
+  private extractModelSuffix(artifactSuffix: string, agentName: string): string | null {
+    const normalizedArtifact = this.normalizeForMatching(artifactSuffix);
+    const normalizedAgent = this.normalizeForMatching(agentName);
+
+    // If artifact exactly matches agent, no model suffix
+    if (normalizedArtifact === normalizedAgent) {
+      return null;
+    }
+
+    // If artifact starts with agent, the rest is the model suffix
+    if (normalizedArtifact.startsWith(normalizedAgent)) {
+      // Get the remaining part from the normalized artifact
+      const normalizedModelSuffix = normalizedArtifact.substring(normalizedAgent.length);
+
+      if (!normalizedModelSuffix) {
+        return null;
+      }
+
+      // Return the normalized model suffix (we'll do fuzzy matching on it anyway)
+      return normalizedModelSuffix;
+    }
+
+    return null;
+  }
+
+  /**
+   * Fuzzy matches job model name to artifact model suffix
+   * Examples:
+   * - matchJobModelToArtifact("GPT-4.1", "gpt4") → true
+   * - matchJobModelToArtifact("Claude 4 Sonnet", "claude") → true
+   * - matchJobModelToArtifact("Gemini 2.5 Pro", "gemini") → true
+   */
+  private matchJobModelToArtifact(jobModel: string, artifactSuffix: string): boolean {
+    const normalizedJob = jobModel.toLowerCase().replace(/[\s\-\.]+/g, '');
+    const normalizedArtifact = artifactSuffix.toLowerCase().replace(/[\s\-\.]+/g, '');
+
+    // Direct substring match
+    if (normalizedJob.includes(normalizedArtifact) || normalizedArtifact.includes(normalizedJob)) {
+      return true;
+    }
+
+    // Model family matching: check if artifact suffix starts with job's first word
+    const jobFirstWord = jobModel.toLowerCase().split(/[\s\-]/)[0];
+    if (artifactSuffix.toLowerCase().startsWith(jobFirstWord)) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
    * Retrieves all artifacts for a workflow run with pagination
    */
   async getWorkflowRunArtifacts(runId: number): Promise<GitHubWorkflowArtifact[]> {
@@ -1167,32 +1258,43 @@ export class GitHubOctokitService {
     try {
       // Normalize agent name for artifact matching
       // Examples: "Oracle" -> "oracle", "NOP" -> "nop", "Terminus" -> "terminus"
-      const normalizedAgent = agentName.toLowerCase();
-
-      this.logger.debug({ runId, agentName, modelName, normalizedAgent }, 'Searching for test result artifact');
+      this.logger.debug({ runId, agentName, modelName }, 'Searching for test result artifact');
 
       // Fetch all artifacts for the run
       const artifacts = await this.getWorkflowRunArtifacts(runId);
 
-      // Find matching artifact using flexible strategy
+      // Find matching artifact using fuzzy agent matching
       let artifact;
 
       if (!modelName) {
-        // For agents without models (Oracle, NOP): exact match "test-result-{agent}"
-        artifact = artifacts.find(a =>
-          a.name.toLowerCase() === `test-result-${normalizedAgent}`
-        );
-      } else {
-        // For agents with models (Terminus): match "test-result-{agent}-" + model family
-        // Extract model family identifier from model name
-        // "GPT-4.1" -> "gpt", "Claude 4 Sonnet" -> "claude", "Gemini 2.5 Pro" -> "gemini"
-        const modelFamily = modelName.toLowerCase().split(/[\s-]/)[0];
-
-        // Find artifact starting with "test-result-{agent}-" and containing model family
+        // For agents without models (Oracle, NOP): fuzzy match on agent name only
         artifact = artifacts.find(a => {
-          const artifactLower = a.name.toLowerCase();
-          return artifactLower.startsWith(`test-result-${normalizedAgent}-`) &&
-                 artifactLower.includes(modelFamily);
+          if (!a.name.startsWith('test-result-')) return false;
+          const suffix = a.name.replace('test-result-', '');
+          return this.artifactMatchesAgent(suffix, agentName);
+        });
+      } else {
+        // For agents with models: match agent name and then fuzzy match model
+        artifact = artifacts.find(a => {
+          if (!a.name.startsWith('test-result-')) return false;
+
+          const suffix = a.name.replace('test-result-', '');
+
+          // First check if artifact matches the agent
+          if (!this.artifactMatchesAgent(suffix, agentName)) return false;
+
+          // Extract potential model suffix
+          const modelSuffix = this.extractModelSuffix(suffix, agentName);
+
+          // If no model suffix found, the artifact name is just the agent name
+          // This can happen when agent name includes the model (e.g., "Gemini CLI" with model "Gemini 2.5 Pro")
+          // In this case, accept the match if agent name matches exactly
+          if (!modelSuffix) {
+            return this.normalizeForMatching(suffix) === this.normalizeForMatching(agentName);
+          }
+
+          // Use fuzzy matching for model
+          return this.matchJobModelToArtifact(modelName, modelSuffix);
         });
       }
 
@@ -1200,13 +1302,12 @@ export class GitHubOctokitService {
         runId,
         agentName,
         modelName,
-        normalizedAgent,
         foundArtifact: artifact ? { id: artifact.id, name: artifact.name } : null,
         availableArtifacts: artifacts.filter(a => a.name.startsWith('test-result')).map(a => a.name)
       }, 'Artifact search result');
 
       if (!artifact) {
-        this.logger.warn({ runId, agentName, modelName, normalizedAgent, availableArtifacts: artifacts.map(a => a.name) }, 'Test result artifact not found');
+        this.logger.warn({ runId, agentName, modelName, availableArtifacts: artifacts.map(a => a.name) }, 'Test result artifact not found');
         return { status: 'UNKNOWN', source: 'unknown', expired: false };
       }
 
