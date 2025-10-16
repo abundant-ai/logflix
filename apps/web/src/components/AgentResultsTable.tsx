@@ -5,7 +5,7 @@ import {
   HelpCircle
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { sanitizeStatus } from "@/lib/utils";
+import { sanitizeStatus } from "@/lib/statusHelpers";
 
 interface AgentTestResult {
   model: string | null;

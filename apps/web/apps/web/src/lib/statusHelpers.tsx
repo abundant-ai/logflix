@@ -132,15 +132,3 @@ export function getPRStatusIcon(pr: GitHubPullRequest): JSX.Element {
     return <XCircle className="h-5 w-5 text-destructive" />;
   }
 }
-
-/**
- * Sanitize status strings by removing special characters and formatting
- */
-export function sanitizeStatus(status: string): string {
-  // Replace underscores, hyphens, and other special chars with spaces using regex
-  // Then convert to uppercase
-  return status
-    .replace(/[_\-\.]+/g, ' ')  // Replace _, -, . with spaces
-    .trim()
-    .toUpperCase();
-}
