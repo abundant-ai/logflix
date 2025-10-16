@@ -1247,14 +1247,25 @@ export class GitHubOctokitService {
       this.logger.debug({ runId, agentName, modelName, artifactId: artifact.id, content }, 'Read test result content from artifact');
 
       // Parse content: "success" or "failure"
+      let status: 'PASS' | 'FAIL' | 'UNKNOWN';
+
       if (content === 'success') {
-        return { status: 'PASS', source: 'artifact', expired: false };
+        status = 'PASS';
       } else if (content === 'failure') {
-        return { status: 'FAIL', source: 'artifact', expired: false };
+        status = 'FAIL';
       } else {
         this.logger.warn({ runId, agentName, modelName, artifactId: artifact.id, content }, 'Unexpected content in test result artifact');
         return { status: 'UNKNOWN', source: 'unknown', expired: false };
       }
+
+      // Special handling for NOP Agent: NOP is designed to always fail, so invert the result
+      if (agentName === 'NOP') {
+        const invertedStatus = status === 'PASS' ? 'FAIL' : 'PASS';
+        this.logger.debug({ runId, agentName, modelName, content, originalStatus: status, invertedStatus }, 'NOP Agent detected - inverting result (NOP is designed to fail)');
+        return { status: invertedStatus, source: 'artifact', expired: false };
+      }
+
+      return { status, source: 'artifact', expired: false };
     } catch (error: any) {
       if (error.status === 410 || error.message?.includes('Artifact has expired')) {
         this.logger.warn({ runId, agentName, modelName }, 'Test result artifact expired during download');
