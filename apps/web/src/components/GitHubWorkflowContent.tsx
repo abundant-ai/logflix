@@ -191,41 +191,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
   }, [selectedRunId, runsByNumber, runsData]);
   
   // Debug logging for multi-run analysis
-  useEffect(() => {
-    if (runsData?.runs && selectedCommitSha && filteredRuns.length > 0) {
-      console.log(`[DEBUG] Commit ${selectedCommitSha.substring(0, 7)} has ${filteredRuns.length} runs:`,
-        filteredRuns.map(r => `#${r.run_number} (attempt ${r.run_attempt}, ${r.status})`).join(', ')
-      );
-      
-      // Check all run numbers and their attempts
-      console.log(`[DEBUG] All run groups:`, Object.entries(runsByNumber).map(([runNum, attempts]) =>
-        `#${runNum}: ${attempts.length} attempts`
-      ).join(', '));
-      
-      console.log(`[DEBUG] hasMultipleAttempts: ${hasMultipleAttempts}`);
-      
-      // Check if there are multiple attempts for any run number
-      const runNumbers = new Set(filteredRuns.map(r => r.run_number));
-      runNumbers.forEach(runNum => {
-        const attempts = filteredRuns.filter(r => r.run_number === runNum);
-        if (attempts.length > 1) {
-          console.log(`[DEBUG] Run #${runNum} has ${attempts.length} attempts:`,
-            attempts.map(r => `attempt ${r.run_attempt} (${r.status})`).join(', ')
-          );
-        }
-      });
-      
-      // Log run number groups for current selection
-      if (selectedRunId) {
-        const selectedRun = runsData.runs.find(r => r.id === selectedRunId);
-        if (selectedRun && currentRunAttempts.length > 1) {
-          console.log(`[DEBUG] Run #${selectedRun.run_number} has ${currentRunAttempts.length} total attempts across commits:`,
-            currentRunAttempts.map(r => `attempt ${r.run_attempt} (${r.head_sha.substring(0, 7)}, ${r.status})`).join(', ')
-          );
-        }
-      }
-    }
-  }, [runsData, selectedCommitSha, filteredRuns, selectedRunId, currentRunAttempts, hasMultipleAttempts]);
+  // Debug logging removed - useEffect was only for console.log statements
 
   // Auto-select the latest run for the selected commit, prioritizing highest attempt number
   useEffect(() => {
@@ -537,15 +503,11 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
       if (!selectedRunId) throw new Error('No run selected');
       
       const params = createAPIParams();
-      
-      console.log(`[DEBUG] Fetching cast list for run ${selectedRunId} with params:`, params.toString());
-      
+
       const response = await fetch(`/api/github/cast-list/${selectedRunId}?${params}`);
       if (!response.ok) throw new Error(`Failed to fetch cast list: ${response.statusText}`);
       const data = await response.json();
-      
-      console.log(`[DEBUG] Cast list response for run ${selectedRunId}:`, data);
-      
+
       return data;
     },
     enabled: !!selectedRunId,
@@ -675,20 +637,16 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
       }
       
       const params = createAPIParams({ path: selectedCastFile.path });
-      
-      console.log(`[DEBUG] Fetching cast file for artifact ${selectedAgentData.id} from run ${selectedRunId} with path: ${selectedCastFile.path}`);
-      
+
       const response = await fetch(`/api/github/cast-file-by-path/${selectedAgentData.id}?${params}`);
-      
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: response.statusText }));
-        console.error(`[DEBUG] Cast file fetch failed:`, errorData);
         throw new Error(errorData.error || `Failed to fetch cast: ${response.statusText}`);
       }
-      
+
       const data = await response.json();
-      console.log(`[DEBUG] Cast file fetched successfully for artifact ${selectedAgentData.id}`);
-      
+
       return data;
     },
     enabled: !!(selectedAgentData && selectedCastFile), // Preload immediately when agent/cast selected
@@ -881,7 +839,6 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                   setFileContent(data.content);
                 }
               } catch (error) {
-                console.error('Error fetching file:', error);
                 setFileContent('Error loading file content');
               }
             }}
@@ -1892,11 +1849,10 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                         </Card>
                       );
                     } catch (renderError) {
-                      console.error('Error rendering comment:', comment.id, renderError);
                       return (
                         <Card key={comment.id || Math.random()} className="border-red-200 bg-red-50/50">
                           <CardContent className="p-4">
-                            <p className="text-red-600 text-sm">Error rendering comment. Check console for details.</p>
+                            <p className="text-red-600 text-sm">Error rendering comment.</p>
                           </CardContent>
                         </Card>
                       );
