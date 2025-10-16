@@ -92,10 +92,6 @@ function cleanupGitHubClientCache() {
     toRemove.forEach(([key]) => githubClientCache.delete(key));
     removed += toRemove.length;
   }
-
-  if (removed > 0) {
-    console.log(`Cleaned up ${removed} expired GitHub clients from cache`);
-  }
 }
 
 // Periodic cleanup every 10 minutes
