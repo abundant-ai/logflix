@@ -99,7 +99,19 @@ function cleanupGitHubClientCache() {
 }
 
 // Periodic cleanup every 10 minutes
-setInterval(cleanupGitHubClientCache, 10 * 60 * 1000);
+// Store the interval ID so we can clear it on shutdown
+const cleanupInterval = setInterval(cleanupGitHubClientCache, 10 * 60 * 1000);
+
+// Cleanup on process termination to prevent memory leaks
+process.on('SIGTERM', () => {
+  clearInterval(cleanupInterval);
+  githubClientCache.clear();
+});
+
+process.on('SIGINT', () => {
+  clearInterval(cleanupInterval);
+  githubClientCache.clear();
+});
 
 export async function registerRoutes(app: Express, logger: Logger): Promise<Server> {
   /**
