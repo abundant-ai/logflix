@@ -1731,9 +1731,9 @@ export class GitHubOctokitService {
    * Fetches repository metadata including timestamps
    */
   async getRepositoryMetadata(owner: string, repo: string): Promise<{
-    created_at: string;
-    updated_at: string;
-    pushed_at: string;
+    created_at: string | null;
+    updated_at: string | null;
+    pushed_at: string | null;
     description: string | null;
   }> {
     try {
@@ -1755,11 +1755,11 @@ export class GitHubOctokitService {
       return metadata;
     } catch (error) {
       this.logger.error({ repo: `${owner}/${repo}`, error }, 'Error fetching repository metadata');
-      // Return default values on error
+      // Return null for dates on error to prevent incorrect sorting
       return {
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        pushed_at: new Date().toISOString(),
+        created_at: null,
+        updated_at: null,
+        pushed_at: null,
         description: null,
       };
     }

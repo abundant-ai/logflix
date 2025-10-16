@@ -48,7 +48,7 @@ function getCachedGitHubClient(
   logger.debug({ orgId, cacheKey: cacheKey.slice(0, 20) }, 'Creating new GitHub client');
   const client = new GitHubOctokitService(
     orgName,
-    'temp', // Placeholder repo name
+    undefined, // Not repo-specific for this operation
     undefined,
     logger,
     githubToken
@@ -204,9 +204,9 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
             const repoMetadata = await githubService.getRepositoryMetadata(owner, repoName);
             metadata = {
               description: repoMetadata.description || '',
-              created_at: repoMetadata.created_at,
-              updated_at: repoMetadata.updated_at,
-              pushed_at: repoMetadata.pushed_at,
+              created_at: repoMetadata.created_at ?? undefined,
+              updated_at: repoMetadata.updated_at ?? undefined,
+              pushed_at: repoMetadata.pushed_at ?? undefined,
             };
           } catch (error) {
             requestLogger.warn({ repo: fullName, error }, 'Failed to fetch repository metadata, using defaults');
