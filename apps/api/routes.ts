@@ -66,9 +66,19 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
       const { githubOrganization, defaultWorkflow } = authContext.organizationMetadata;
       const githubToken = res.locals.githubToken;
 
+      // Create a single GitHub service instance to reuse the Octokit client
+      // This prevents creating multiple instances and helps with rate limiting
+      const githubService = new GitHubOctokitService(
+        githubOrganization,
+        'temp', // Placeholder repo name
+        undefined,
+        requestLogger,
+        githubToken
+      );
+
       // Build repository objects from user's assigned repositories
       // These come from GitHub OAuth token and include all repos the user has access to
-      // Fetch metadata from GitHub API for each repository
+      // Fetch metadata from GitHub API for each repository in parallel (limited by GitHub rate limiting)
       const userRepos = await Promise.all(
         authContext.assignedRepositories.map(async (fullName) => {
           const [owner, repoName] = fullName.split('/');
@@ -82,7 +92,6 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
           };
 
           try {
-            const githubService = new GitHubOctokitService(owner, repoName, undefined, requestLogger, githubToken);
             const repoMetadata = await githubService.getRepositoryMetadata(owner, repoName);
             metadata = {
               description: repoMetadata.description || '',
