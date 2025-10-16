@@ -1529,8 +1529,8 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                         {(castFileQuery.error as Error)?.message || 'Failed to load cast file'}
                       </p>
                       {selectedAgentData?.expired && (
-                        <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg">
-                          <p className="text-sm text-amber-700 dark:text-amber-300">
+                        <div className="mt-4 p-3 bg-warning/10 border border-warning/30 rounded-lg">
+                          <p className="text-sm text-warning">
                             📦 This artifact has expired and is no longer available for download
                           </p>
                         </div>
@@ -1548,8 +1548,8 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                         }
                       </p>
                       {selectedAgentData?.expired && (
-                        <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg">
-                          <p className="text-sm text-amber-700 dark:text-amber-300">
+                        <div className="mt-4 p-3 bg-warning/10 border border-warning/30 rounded-lg">
+                          <p className="text-sm text-warning">
                             📦 This artifact has expired and is no longer available for download
                           </p>
                         </div>
@@ -1576,8 +1576,8 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                       <Terminal className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                       <p className="text-muted-foreground">No cast content available</p>
                       {selectedAgentData?.expired && (
-                        <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg">
-                          <p className="text-sm text-amber-700 dark:text-amber-300">
+                        <div className="mt-4 p-3 bg-warning/10 border border-warning/30 rounded-lg">
+                          <p className="text-sm text-warning">
                             📦 This artifact has expired and is no longer available for download
                           </p>
                         </div>
@@ -1671,14 +1671,14 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                 </div>
                 <div className="flex-1 overflow-auto bg-black p-4">
                   {logContentQuery.error ? (
-                    <div className="text-center text-red-400 p-8">
+                    <div className="text-center text-destructive p-8">
                       <p>Error loading log file</p>
                       <p className="text-sm mt-2">
                         {(logContentQuery.error as Error)?.message || 'Failed to load log file'}
                       </p>
                     </div>
                   ) : processedLogContent ? (
-                    <pre className="text-sm font-mono text-green-400 whitespace-pre-wrap break-words leading-relaxed">
+                    <pre className="text-sm font-mono text-success whitespace-pre-wrap break-words leading-relaxed">
                       {processedLogContent}
                     </pre>
                   ) : (
