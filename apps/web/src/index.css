@@ -24,7 +24,15 @@
   --input: hsl(220, 13%, 19%);
   --ring: hsl(210, 100%, 45%);
   --success: hsl(142, 76%, 36%);
+  --success-foreground: hsl(0, 0%, 100%);
   --warning: hsl(38, 92%, 50%);
+  --warning-foreground: hsl(0, 0%, 100%);
+  --info: hsl(210, 100%, 45%);
+  --info-foreground: hsl(0, 0%, 100%);
+  --merged: hsl(270, 60%, 55%);
+  --merged-foreground: hsl(0, 0%, 100%);
+  --neutral: hsl(220, 8%, 50%);
+  --neutral-foreground: hsl(0, 0%, 100%);
   --radius: 8px;
   --font-sans: Inter, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', Monaco, Consolas, monospace;
@@ -51,7 +59,15 @@
   --input: hsl(220, 13%, 19%);
   --ring: hsl(210, 100%, 45%);
   --success: hsl(142, 76%, 36%);
+  --success-foreground: hsl(0, 0%, 100%);
   --warning: hsl(38, 92%, 50%);
+  --warning-foreground: hsl(0, 0%, 100%);
+  --info: hsl(210, 100%, 45%);
+  --info-foreground: hsl(0, 0%, 100%);
+  --merged: hsl(270, 60%, 55%);
+  --merged-foreground: hsl(0, 0%, 100%);
+  --neutral: hsl(220, 8%, 50%);
+  --neutral-foreground: hsl(0, 0%, 100%);
 }
 
 @layer base {
@@ -87,4 +103,33 @@
   height: 400px;
   background: #000;
   border-radius: 8px;
+}
+
+/**
+ * Clerk Component CSS Overrides
+ *
+ * NOTE: Most Clerk styling is handled via the appearance prop in ClerkProvider (see main.tsx).
+ * These CSS overrides are ONLY for edge cases that cannot be controlled through the appearance API.
+ *
+ * If you need to change Clerk component styles, check main.tsx first!
+ */
+
+/**
+ * GitHub Icon Visibility Fix
+ *
+ * Why needed: The Clerk appearance API doesn't provide control over SVG filter properties.
+ * The GitHub icon SVG is naturally dark/black and becomes invisible on dark backgrounds.
+ * This inversion makes it visible while keeping it normal on light sign-in buttons.
+ */
+.cl-providerIcon__github,
+.cl-socialButtonsProviderIcon__github,
+.cl-connectedAccountProviderIcon__github {
+  filter: invert(1) brightness(1) !important;
+  opacity: 1 !important;
+}
+
+/* Don't invert on light backgrounds (social sign-in buttons) */
+.cl-socialButtonsBlockButton .cl-providerIcon__github,
+.cl-socialButtonsBlockButton .cl-socialButtonsProviderIcon__github {
+  filter: invert(0) brightness(1) !important;
 }
