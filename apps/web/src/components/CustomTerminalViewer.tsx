@@ -82,6 +82,7 @@ export default function CustomTerminalViewer({ castContent, showAgentThinking = 
                 ...thinking
               });
             } catch (error) {
+              console.log('Could not parse agent thinking:', content, error);
               agentThoughts.push({
                 timestamp: timestamp - startTime,
                 raw_content: content
