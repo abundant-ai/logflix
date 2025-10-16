@@ -373,24 +373,13 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
 
       const params = createAPIParams();
 
-      console.log(`[AGENT RESULTS] Fetching agent test results for run ${selectedRunId}`);
-      console.log(`[AGENT RESULTS] API URL: /api/github/agent-test-results/${selectedRunId}?${params}`);
-
       const response = await fetch(`/api/github/agent-test-results/${selectedRunId}?${params}`);
 
       if (!response.ok) {
-        console.error(`[AGENT RESULTS] API request failed: ${response.status} ${response.statusText}`);
         throw new Error(`Failed to fetch agent test results: ${response.statusText}`);
       }
 
       const data = await response.json();
-      console.log(`[AGENT RESULTS] Received data:`, data);
-      console.log(`[AGENT RESULTS] Agent count: ${Object.keys(data.agentResults || {}).length}`);
-
-      // Log each agent's results
-      Object.entries(data.agentResults || {}).forEach(([agentName, results]) => {
-        console.log(`[AGENT RESULTS] ${agentName}:`, results);
-      });
 
       return data;
     },
@@ -1234,8 +1223,6 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
 
                             {/* Agent Rows */}
                             {(() => {
-                              console.log('[AGENT RESULTS] Rendering agent results:', agentTestResultsData.agentResults);
-
                               // Define agent display order
                               const agentOrder = ['NOP', 'Oracle', 'Terminus'];
                               const sortedAgents = Object.entries(agentTestResultsData.agentResults).sort(([a], [b]) => {
@@ -1248,8 +1235,6 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                               });
 
                               return sortedAgents.map(([agentName, results]) => {
-                                console.log(`[AGENT RESULTS] Rendering agent: ${agentName}`, results);
-
                                 // Check if this agent has models
                                 const hasModels = results.some(r => r.model);
 
@@ -1277,8 +1262,6 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
 
                                       {/* Model rows */}
                                       {results.map((result, idx) => {
-                                        console.log(`[AGENT RESULTS] Rendering ${agentName} model ${result.model}:`, result);
-
                                         // Get status text and color
                                         const statusColor = result.status === 'PASS' ? 'text-green-500' :
                                                            result.status === 'FAIL' ? 'text-red-500' :
@@ -1321,7 +1304,6 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                                 } else {
                                   // Agent without models - show inline
                                   const result = results[0];
-                                  console.log(`[AGENT RESULTS] Rendering ${agentName} (no model):`, result);
 
                                   // Get status text and color
                                   const statusColor = result.status === 'PASS' ? 'text-green-500' :
