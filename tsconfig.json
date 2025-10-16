@@ -21,7 +21,6 @@
     "baseUrl": ".",
     "types": ["node", "vite/client"],
     "paths": {
-      "@/*": ["./apps/web/src/*"],
       "@logflix/shared": ["./packages/shared"],
       "@logflix/github-client": ["./packages/github-client"]
     }

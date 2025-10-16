@@ -10,7 +10,6 @@ export default defineConfig({
     alias: {
       "@": path.resolve(import.meta.dirname, "src"),
       "@logflix/shared": path.resolve(import.meta.dirname, "../../packages/shared"),
-      "@assets": path.resolve(import.meta.dirname, "../../attached_assets"),
     },
   },
   root: import.meta.dirname,

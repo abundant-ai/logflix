@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import app from '../apps/api/vercel.js';
+import app from '../apps/api/vercel.ts';
 
 // Vercel serverless function handler
 export default function handler(req: VercelRequest, res: VercelResponse) {
