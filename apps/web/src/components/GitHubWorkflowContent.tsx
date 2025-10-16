@@ -738,6 +738,16 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
     }
   };
 
+  // Sanitize status strings by removing special characters and formatting
+  const sanitizeStatus = (status: string): string => {
+    // Replace underscores, hyphens, and other special chars with spaces using regex
+    // Then convert to uppercase
+    return status
+      .replace(/[_\-\.]+/g, ' ')  // Replace _, -, . with spaces
+      .trim()
+      .toUpperCase();
+  };
+
   if (!selectedPR) {
     return (
       <div className="flex-1 flex items-center justify-center bg-background">
@@ -1190,7 +1200,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                                             </>
                                           ) : (
                                             <span className="text-sm text-muted-foreground">
-                                              {test.status?.toUpperCase() || 'PENDING'}
+                                              {test.status ? sanitizeStatus(test.status) : 'PENDING'}
                                             </span>
                                           )}
                                         </div>
@@ -1219,7 +1229,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                                         </>
                                       ) : (
                                         <span className="text-sm text-muted-foreground">
-                                          {test.status?.toUpperCase() || 'PENDING'}
+                                          {test.status ? sanitizeStatus(test.status) : 'PENDING'}
                                         </span>
                                       )}
                                     </div>
