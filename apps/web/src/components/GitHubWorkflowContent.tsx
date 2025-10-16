@@ -38,7 +38,6 @@ import {
   GitHubWorkflowLog,
   GitHubWorkflowArtifact
 } from "@logflix/shared/schema";
-import { parseAgentTestResults } from "@/lib/agentResultsParser";
 
 interface GitHubWorkflowContentProps {
   selectedPR: GitHubPRSelection | null;
