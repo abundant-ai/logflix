@@ -772,6 +772,16 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
     }
   };
 
+  // Sanitize status strings by removing special characters and formatting
+  const sanitizeStatus = (status: string): string => {
+    // Replace underscores, hyphens, and other special chars with spaces using regex
+    // Then convert to uppercase
+    return status
+      .replace(/[_\-\.]+/g, ' ')  // Replace _, -, . with spaces
+      .trim()
+      .toUpperCase();
+  };
+
   if (!selectedPR) {
     return (
       <div className="flex-1 flex items-center justify-center bg-background">
@@ -1284,7 +1294,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                                             </div>
                                             <div className="flex items-center justify-center">
                                               <span className={`text-sm font-medium ${jobStatusColor}`}>
-                                                {result.conclusion?.toUpperCase() || result.jobStatus.toUpperCase()}
+                                                {sanitizeStatus(result.conclusion || result.jobStatus)}
                                               </span>
                                             </div>
                                             <div className="flex items-center justify-center gap-1.5">
@@ -1350,7 +1360,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                                       </Tooltip>
                                       <div className="flex items-center justify-center">
                                         <span className={`text-sm font-medium ${jobStatusColor}`}>
-                                          {result.conclusion?.toUpperCase() || result.jobStatus.toUpperCase()}
+                                          {sanitizeStatus(result.conclusion || result.jobStatus)}
                                         </span>
                                       </div>
                                       <div className="flex items-center justify-center gap-1.5">
