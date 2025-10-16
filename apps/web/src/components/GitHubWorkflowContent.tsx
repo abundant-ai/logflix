@@ -189,9 +189,6 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
     // Sort by attempt number (latest first for re-runs)
     return allAttempts.sort((a, b) => b.run_attempt - a.run_attempt);
   }, [selectedRunId, runsByNumber, runsData]);
-  
-  // Debug logging for multi-run analysis
-  // Debug logging removed - useEffect was only for console.log statements
 
   // Auto-select the latest run for the selected commit, prioritizing highest attempt number
   useEffect(() => {

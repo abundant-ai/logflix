@@ -1248,6 +1248,121 @@ export class GitHubOctokitService {
   }
 
   /**
+   * Helper: Finds the matching test result artifact for a given agent and model
+   * @private
+   */
+  private async _findTestResultArtifact(
+    runId: number,
+    agentName: string,
+    modelName: string | null,
+    artifacts: any[]
+  ): Promise<any | null> {
+    let artifact;
+
+    if (!modelName) {
+      // For agents without models (Oracle, NOP): fuzzy match on agent name only
+      artifact = artifacts.find(a => {
+        if (!a.name.startsWith('test-result-')) return false;
+        const suffix = a.name.replace('test-result-', '');
+        return this.artifactMatchesAgent(suffix, agentName);
+      });
+    } else {
+      // For agents with models: match agent name and then fuzzy match model
+      artifact = artifacts.find(a => {
+        if (!a.name.startsWith('test-result-')) return false;
+
+        const suffix = a.name.replace('test-result-', '');
+
+        // First check if artifact matches the agent
+        if (!this.artifactMatchesAgent(suffix, agentName)) return false;
+
+        // Extract potential model suffix
+        const modelSuffix = this.extractModelSuffix(suffix, agentName);
+
+        // If no model suffix found, the artifact name is just the agent name
+        // This can happen when agent name includes the model (e.g., "Gemini CLI" with model "Gemini 2.5 Pro")
+        // In this case, accept the match if agent name matches exactly
+        if (!modelSuffix) {
+          return this.normalizeForMatching(suffix) === this.normalizeForMatching(agentName);
+        }
+
+        // Use fuzzy matching for model
+        return this.matchJobModelToArtifact(modelName, modelSuffix);
+      });
+    }
+
+    this.logger.debug({
+      runId,
+      agentName,
+      modelName,
+      foundArtifact: artifact ? { id: artifact.id, name: artifact.name } : null,
+      availableArtifacts: artifacts.filter(a => a.name.startsWith('test-result')).map(a => a.name)
+    }, 'Artifact search result');
+
+    return artifact || null;
+  }
+
+  /**
+   * Helper: Downloads and parses test result from artifact
+   * @private
+   */
+  private async _parseResultFromArtifact(
+    runId: number,
+    agentName: string,
+    modelName: string | null,
+    artifact: any
+  ): Promise<{ status: 'PASS' | 'FAIL' | 'UNKNOWN'; source: 'artifact' | 'unknown' }> {
+    // Download and extract artifact
+    const response = await this.octokit.actions.downloadArtifact({
+      owner: this.repositoryOwner,
+      repo: this.repositoryName,
+      artifact_id: artifact.id,
+      archive_format: 'zip',
+    });
+
+    const zipResponse = await fetch(response.url);
+    const zipBuffer = Buffer.from(await zipResponse.arrayBuffer());
+
+    const zip = new AdmZip(zipBuffer);
+    const entries = zip.getEntries();
+
+    // Find the .txt file (e.g., nop.txt, oracle.txt, terminus.txt)
+    const txtEntry = entries.find(entry =>
+      !entry.isDirectory && entry.entryName.endsWith('.txt')
+    );
+
+    if (!txtEntry) {
+      this.logger.error({ runId, agentName, modelName, artifactId: artifact.id }, 'No .txt file found in test result artifact');
+      return { status: 'UNKNOWN', source: 'unknown' };
+    }
+
+    const content = zip.readAsText(txtEntry).trim().toLowerCase();
+
+    this.logger.debug({ runId, agentName, modelName, artifactId: artifact.id, content }, 'Read test result content from artifact');
+
+    // Parse content: "success" or "failure"
+    let status: 'PASS' | 'FAIL' | 'UNKNOWN';
+
+    if (content === 'success') {
+      status = 'PASS';
+    } else if (content === 'failure') {
+      status = 'FAIL';
+    } else {
+      this.logger.warn({ runId, agentName, modelName, artifactId: artifact.id, content }, 'Unexpected content in test result artifact');
+      return { status: 'UNKNOWN', source: 'unknown' };
+    }
+
+    // Special handling for NOP Agent: NOP is designed to always fail, so invert the result
+    if (agentName === 'NOP') {
+      const invertedStatus = status === 'PASS' ? 'FAIL' : 'PASS';
+      this.logger.debug({ runId, agentName, modelName, content, originalStatus: status, invertedStatus }, 'NOP Agent detected - inverting result (NOP is designed to fail)');
+      return { status: invertedStatus, source: 'artifact' };
+    }
+
+    return { status, source: 'artifact' };
+  }
+
+  /**
    * Gets test result from artifact (primary logic)
    */
   async getTestResultFromArtifact(
@@ -1256,55 +1371,13 @@ export class GitHubOctokitService {
     modelName: string | null
   ): Promise<{ status: 'PASS' | 'FAIL' | 'UNKNOWN'; source: 'artifact' | 'unknown'; expired: boolean }> {
     try {
-      // Normalize agent name for artifact matching
-      // Examples: "Oracle" -> "oracle", "NOP" -> "nop", "Terminus" -> "terminus"
       this.logger.debug({ runId, agentName, modelName }, 'Searching for test result artifact');
 
       // Fetch all artifacts for the run
       const artifacts = await this.getWorkflowRunArtifacts(runId);
 
       // Find matching artifact using fuzzy agent matching
-      let artifact;
-
-      if (!modelName) {
-        // For agents without models (Oracle, NOP): fuzzy match on agent name only
-        artifact = artifacts.find(a => {
-          if (!a.name.startsWith('test-result-')) return false;
-          const suffix = a.name.replace('test-result-', '');
-          return this.artifactMatchesAgent(suffix, agentName);
-        });
-      } else {
-        // For agents with models: match agent name and then fuzzy match model
-        artifact = artifacts.find(a => {
-          if (!a.name.startsWith('test-result-')) return false;
-
-          const suffix = a.name.replace('test-result-', '');
-
-          // First check if artifact matches the agent
-          if (!this.artifactMatchesAgent(suffix, agentName)) return false;
-
-          // Extract potential model suffix
-          const modelSuffix = this.extractModelSuffix(suffix, agentName);
-
-          // If no model suffix found, the artifact name is just the agent name
-          // This can happen when agent name includes the model (e.g., "Gemini CLI" with model "Gemini 2.5 Pro")
-          // In this case, accept the match if agent name matches exactly
-          if (!modelSuffix) {
-            return this.normalizeForMatching(suffix) === this.normalizeForMatching(agentName);
-          }
-
-          // Use fuzzy matching for model
-          return this.matchJobModelToArtifact(modelName, modelSuffix);
-        });
-      }
-
-      this.logger.debug({
-        runId,
-        agentName,
-        modelName,
-        foundArtifact: artifact ? { id: artifact.id, name: artifact.name } : null,
-        availableArtifacts: artifacts.filter(a => a.name.startsWith('test-result')).map(a => a.name)
-      }, 'Artifact search result');
+      const artifact = await this._findTestResultArtifact(runId, agentName, modelName, artifacts);
 
       if (!artifact) {
         this.logger.warn({ runId, agentName, modelName, availableArtifacts: artifacts.map(a => a.name) }, 'Test result artifact not found');
@@ -1319,54 +1392,10 @@ export class GitHubOctokitService {
         return { status: 'UNKNOWN', source: 'unknown', expired: true };
       }
 
-      // Download and extract artifact
-      const response = await this.octokit.actions.downloadArtifact({
-        owner: this.repositoryOwner,
-        repo: this.repositoryName,
-        artifact_id: artifact.id,
-        archive_format: 'zip',
-      });
+      // Download and parse the artifact content
+      const result = await this._parseResultFromArtifact(runId, agentName, modelName, artifact);
 
-      const zipResponse = await fetch(response.url);
-      const zipBuffer = Buffer.from(await zipResponse.arrayBuffer());
-
-      const zip = new AdmZip(zipBuffer);
-      const entries = zip.getEntries();
-
-      // Find the .txt file (e.g., nop.txt, oracle.txt, terminus.txt)
-      const txtEntry = entries.find(entry =>
-        !entry.isDirectory && entry.entryName.endsWith('.txt')
-      );
-
-      if (!txtEntry) {
-        this.logger.error({ runId, agentName, modelName, artifactId: artifact.id }, 'No .txt file found in test result artifact');
-        return { status: 'UNKNOWN', source: 'unknown', expired: false };
-      }
-
-      const content = zip.readAsText(txtEntry).trim().toLowerCase();
-
-      this.logger.debug({ runId, agentName, modelName, artifactId: artifact.id, content }, 'Read test result content from artifact');
-
-      // Parse content: "success" or "failure"
-      let status: 'PASS' | 'FAIL' | 'UNKNOWN';
-
-      if (content === 'success') {
-        status = 'PASS';
-      } else if (content === 'failure') {
-        status = 'FAIL';
-      } else {
-        this.logger.warn({ runId, agentName, modelName, artifactId: artifact.id, content }, 'Unexpected content in test result artifact');
-        return { status: 'UNKNOWN', source: 'unknown', expired: false };
-      }
-
-      // Special handling for NOP Agent: NOP is designed to always fail, so invert the result
-      if (agentName === 'NOP') {
-        const invertedStatus = status === 'PASS' ? 'FAIL' : 'PASS';
-        this.logger.debug({ runId, agentName, modelName, content, originalStatus: status, invertedStatus }, 'NOP Agent detected - inverting result (NOP is designed to fail)');
-        return { status: invertedStatus, source: 'artifact', expired: false };
-      }
-
-      return { status, source: 'artifact', expired: false };
+      return { ...result, expired: false };
     } catch (error: any) {
       if (error.status === 410 || error.message?.includes('Artifact has expired')) {
         this.logger.warn({ runId, agentName, modelName }, 'Test result artifact expired during download');
@@ -1402,6 +1431,72 @@ export class GitHubOctokitService {
     const modelName = isModelName ? parenthesesContent : null;
 
     return { agentName, modelName };
+  }
+
+  /**
+   * Helper: Processes a single test job to extract test results
+   * Implements primary (artifact) and fallback (logs) strategy
+   * @private
+   */
+  private async _processTestJob(
+    job: any,
+    runId: number
+  ): Promise<{
+    agentName: string;
+    model: string | null;
+    status: 'PASS' | 'FAIL' | 'UNKNOWN';
+    source: 'artifact' | 'fallback' | 'unknown';
+    conclusion: string | null;
+    jobStatus: string;
+  } | null> {
+    const parsed = this.parseAgentJobName(job.name);
+
+    if (!parsed) {
+      this.logger.warn({ runId, jobName: job.name }, 'Could not parse agent job name');
+      return null;
+    }
+
+    const { agentName, modelName } = parsed;
+
+    this.logger.debug({ runId, jobId: job.id, agentName, modelName, jobName: job.name }, 'Processing agent test job');
+
+    let status: 'PASS' | 'FAIL' | 'UNKNOWN' = 'UNKNOWN';
+    let source: 'artifact' | 'fallback' | 'unknown' = 'unknown';
+
+    // PRIMARY LOGIC: Try to fetch from artifact
+    const artifactResult = await this.getTestResultFromArtifact(runId, agentName, modelName);
+
+    if (artifactResult.status !== 'UNKNOWN' && !artifactResult.expired) {
+      // Successfully got result from artifact
+      status = artifactResult.status;
+      source = 'artifact';
+      this.logger.info({ runId, jobId: job.id, agentName, modelName, status, source }, 'Got test result from artifact');
+    } else if (artifactResult.expired || artifactResult.source === 'unknown') {
+      // FALLBACK LOGIC: Try to fetch from job logs
+      this.logger.debug({ runId, jobId: job.id, agentName, modelName }, 'Artifact unavailable/expired, trying fallback to job logs');
+
+      const logs = await this.getJobLogs(job.id);
+
+      if (logs) {
+        const logResult = this.parseJobLogsForSummary(logs);
+        status = logResult.status;
+        source = logResult.status !== 'UNKNOWN' ? 'fallback' : 'unknown';
+        this.logger.info({ runId, jobId: job.id, agentName, modelName, status, source }, 'Got test result from job logs (fallback)');
+      } else {
+        this.logger.warn({ runId, jobId: job.id, agentName, modelName }, 'Could not fetch job logs for fallback');
+      }
+    }
+
+    this.logger.debug({ runId, agentName, modelName, status, source }, 'Processed test job result');
+
+    return {
+      agentName,
+      model: modelName,
+      status,
+      source,
+      conclusion: job.conclusion,
+      jobStatus: job.status,
+    };
   }
 
   /**
@@ -1441,58 +1536,20 @@ export class GitHubOctokitService {
 
       // Process each test job
       for (const job of testJobs) {
-        const parsed = this.parseAgentJobName(job.name);
+        const jobResult = await this._processTestJob(job, runId);
 
-        if (!parsed) {
-          this.logger.warn({ runId, jobName: job.name }, 'Could not parse agent job name');
+        if (!jobResult) {
           continue;
         }
 
-        const { agentName, modelName } = parsed;
-
-        this.logger.debug({ runId, jobId: job.id, agentName, modelName, jobName: job.name }, 'Processing agent test job');
-
-        let status: 'PASS' | 'FAIL' | 'UNKNOWN' = 'UNKNOWN';
-        let source: 'artifact' | 'fallback' | 'unknown' = 'unknown';
-
-        // PRIMARY LOGIC: Try to fetch from artifact
-        const artifactResult = await this.getTestResultFromArtifact(runId, agentName, modelName);
-
-        if (artifactResult.status !== 'UNKNOWN' && !artifactResult.expired) {
-          // Successfully got result from artifact
-          status = artifactResult.status;
-          source = 'artifact';
-          this.logger.info({ runId, jobId: job.id, agentName, modelName, status, source }, 'Got test result from artifact');
-        } else if (artifactResult.expired || artifactResult.source === 'unknown') {
-          // FALLBACK LOGIC: Try to fetch from job logs
-          this.logger.debug({ runId, jobId: job.id, agentName, modelName }, 'Artifact unavailable/expired, trying fallback to job logs');
-
-          const logs = await this.getJobLogs(job.id);
-
-          if (logs) {
-            const logResult = this.parseJobLogsForSummary(logs);
-            status = logResult.status;
-            source = logResult.status !== 'UNKNOWN' ? 'fallback' : 'unknown';
-            this.logger.info({ runId, jobId: job.id, agentName, modelName, status, source }, 'Got test result from job logs (fallback)');
-          } else {
-            this.logger.warn({ runId, jobId: job.id, agentName, modelName }, 'Could not fetch job logs for fallback');
-          }
-        }
+        const { agentName, ...testResult } = jobResult;
 
         // Add to results grouped by agent
         if (!results[agentName]) {
           results[agentName] = [];
         }
 
-        results[agentName].push({
-          model: modelName,
-          status,
-          source,
-          conclusion: job.conclusion,
-          jobStatus: job.status,
-        });
-
-        this.logger.debug({ runId, agentName, modelName, status, source }, 'Added test result to grouped results');
+        results[agentName].push(testResult);
       }
 
       this.logger.info({

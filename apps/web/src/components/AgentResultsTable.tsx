@@ -5,6 +5,7 @@ import {
   HelpCircle
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { sanitizeStatus } from "@/lib/utils";
 
 interface AgentTestResult {
   model: string | null;
@@ -26,13 +27,45 @@ interface AgentResultsTableProps {
 }
 
 /**
- * Sanitizes status strings by removing special characters and formatting
+ * StatusDisplay Component
+ *
+ * Renders the Job Status and Test Result columns for an agent result.
+ * Extracted to avoid code duplication between single-model and multi-model agent displays.
  */
-const sanitizeStatus = (status: string): string => {
-  return status
-    .replace(/[_\-\.]+/g, ' ')  // Replace _, -, . with spaces
-    .trim()
-    .toUpperCase();
+const StatusDisplay = ({ result }: { result: AgentTestResult }) => {
+  // Get status text and color
+  const statusColor = result.status === 'PASS' ? 'text-green-500' :
+                     result.status === 'FAIL' ? 'text-red-500' :
+                     'text-muted-foreground';
+
+  const statusIcon = result.status === 'PASS' ? (
+    <CheckCircle className="h-3.5 w-3.5" />
+  ) : result.status === 'FAIL' ? (
+    <XCircle className="h-3.5 w-3.5" />
+  ) : (
+    <Clock className="h-3.5 w-3.5" />
+  );
+
+  // Get job status color
+  const jobStatusColor = result.conclusion === 'success' ? 'text-green-500' :
+                        result.conclusion === 'failure' ? 'text-red-500' :
+                        'text-muted-foreground';
+
+  return (
+    <>
+      <div className="flex items-center justify-center">
+        <span className={`text-sm font-medium ${jobStatusColor}`}>
+          {sanitizeStatus(result.conclusion || result.jobStatus || 'PENDING')}
+        </span>
+      </div>
+      <div className="flex items-center justify-center gap-1.5">
+        <span className={statusColor}>{statusIcon}</span>
+        <span className={`text-sm font-semibold ${statusColor}`}>
+          {result.status}
+        </span>
+      </div>
+    </>
+  );
 };
 
 /**
@@ -131,67 +164,19 @@ export default function AgentResultsTable({ agentTestResultsData, isLoading }: A
                 </div>
 
                 {/* Model rows */}
-                {results.map((result, idx) => {
-                  // Get status text and color
-                  const statusColor = result.status === 'PASS' ? 'text-green-500' :
-                                     result.status === 'FAIL' ? 'text-red-500' :
-                                     'text-muted-foreground';
-
-                  const statusIcon = result.status === 'PASS' ? (
-                    <CheckCircle className="h-3.5 w-3.5" />
-                  ) : result.status === 'FAIL' ? (
-                    <XCircle className="h-3.5 w-3.5" />
-                  ) : (
-                    <Clock className="h-3.5 w-3.5" />
-                  );
-
-                  // Get job status color
-                  const jobStatusColor = result.conclusion === 'success' ? 'text-green-500' :
-                                        result.conclusion === 'failure' ? 'text-red-500' :
-                                        'text-muted-foreground';
-
-                  return (
-                    <div key={idx} className="grid grid-cols-[2fr_1.5fr_1.5fr] gap-6 px-4 py-3 hover:bg-muted/5 transition-colors">
-                      <div className="flex items-center text-sm text-foreground pl-6">
-                        {result.model || 'Default'}
-                      </div>
-                      <div className="flex items-center justify-center">
-                        <span className={`text-sm font-medium ${jobStatusColor}`}>
-                          {sanitizeStatus(result.conclusion || result.jobStatus || 'PENDING')}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-center gap-1.5">
-                        <span className={statusColor}>{statusIcon}</span>
-                        <span className={`text-sm font-semibold ${statusColor}`}>
-                          {result.status}
-                        </span>
-                      </div>
+                {results.map((result, idx) => (
+                  <div key={`${agentName}-${result.model || idx}`} className="grid grid-cols-[2fr_1.5fr_1.5fr] gap-6 px-4 py-3 hover:bg-muted/5 transition-colors">
+                    <div className="flex items-center text-sm text-foreground pl-6">
+                      {result.model || 'Default'}
                     </div>
-                  );
-                })}
+                    <StatusDisplay result={result} />
+                  </div>
+                ))}
               </div>
             );
           } else {
             // Agent without models - show inline
             const result = results[0];
-
-            // Get status text and color
-            const statusColor = result.status === 'PASS' ? 'text-green-500' :
-                               result.status === 'FAIL' ? 'text-red-500' :
-                               'text-muted-foreground';
-
-            const statusIcon = result.status === 'PASS' ? (
-              <CheckCircle className="h-3.5 w-3.5" />
-            ) : result.status === 'FAIL' ? (
-              <XCircle className="h-3.5 w-3.5" />
-            ) : (
-              <Clock className="h-3.5 w-3.5" />
-            );
-
-            // Get job status color
-            const jobStatusColor = result.conclusion === 'success' ? 'text-green-500' :
-                                  result.conclusion === 'failure' ? 'text-red-500' :
-                                  'text-muted-foreground';
 
             // Get agent-specific tooltip
             const agentTooltip = agentName === 'NOP' ? (
@@ -223,17 +208,7 @@ export default function AgentResultsTable({ agentTestResultsData, isLoading }: A
                     {agentTooltip}
                   </TooltipContent>
                 </Tooltip>
-                <div className="flex items-center justify-center">
-                  <span className={`text-sm font-medium ${jobStatusColor}`}>
-                    {sanitizeStatus(result.conclusion || result.jobStatus || 'PENDING')}
-                  </span>
-                </div>
-                <div className="flex items-center justify-center gap-1.5">
-                  <span className={statusColor}>{statusIcon}</span>
-                  <span className={`text-sm font-semibold ${statusColor}`}>
-                    {result.status}
-                  </span>
-                </div>
+                <StatusDisplay result={result} />
               </div>
             );
           }
