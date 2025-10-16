@@ -10,6 +10,7 @@ const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const root = createRoot(document.getElementById("root")!);
 
 if (PUBLISHABLE_KEY) {
+  console.log("Clerk authentication enabled");
   root.render(
     <ClerkProvider
       publishableKey={PUBLISHABLE_KEY}

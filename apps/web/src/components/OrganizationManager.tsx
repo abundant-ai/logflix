@@ -17,6 +17,8 @@ export function OrganizationManager() {
     // If user is not in an active organization but has memberships, activate the first one
     if (!organization && userMemberships?.data && userMemberships.data.length > 0) {
       const firstOrg = userMemberships.data[0].organization;
+      console.log("Auto-activating organization:", firstOrg.id, firstOrg.name);
+
       setActive?.({ organization: firstOrg.id });
     }
   }, [organization, userMemberships, setActive]);
