@@ -80,7 +80,9 @@ export default function AgentResultsTable({ agentTestResultsData, isLoading }: A
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Job Status</span>
             <Tooltip>
               <TooltipTrigger asChild>
-                <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
+                <button type="button" className="inline-flex items-center">
+                  <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
+                </button>
               </TooltipTrigger>
               <TooltipContent>
                 <p className="text-xs">GitHub Actions workflow job completion status</p>
@@ -91,7 +93,9 @@ export default function AgentResultsTable({ agentTestResultsData, isLoading }: A
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Test Result</span>
             <Tooltip>
               <TooltipTrigger asChild>
-                <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
+                <button type="button" className="inline-flex items-center">
+                  <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
+                </button>
               </TooltipTrigger>
               <TooltipContent>
                 <p className="text-xs">Agent execution result from test output</p>
@@ -113,7 +117,9 @@ export default function AgentResultsTable({ agentTestResultsData, isLoading }: A
                 <div className="grid grid-cols-[2fr_1.5fr_1.5fr] gap-6 px-4 py-3 bg-muted/10">
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <span className="text-sm font-semibold text-foreground cursor-help">{agentName}</span>
+                      <div className="text-sm font-semibold text-foreground cursor-help inline-block">
+                        {agentName}
+                      </div>
                     </TooltipTrigger>
                     <TooltipContent side="right">
                       <p className="text-xs font-medium">Multi-model AI agent</p>
