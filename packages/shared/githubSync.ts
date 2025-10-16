@@ -74,6 +74,8 @@ export async function fetchAllUserAccessibleRepositories(
 
     const repoFullNames = accessibleRepos.map((repo) => repo.full_name);
 
+    console.log(`User has access to ${repoFullNames.length} repositories${organization ? ` in ${organization}` : ''}:`, repoFullNames);
+
     return repoFullNames;
   } catch (error) {
     console.error("Error fetching GitHub repositories:", error);
@@ -113,6 +115,8 @@ export async function fetchUserOrgMembership(
 
     const membership = await response.json() as { role: string };
     const role = membership.role === "admin" ? "admin" : "member";
+
+    console.log(`User ${username} is ${role} in ${organization}`);
 
     return { role };
   } catch (error) {
