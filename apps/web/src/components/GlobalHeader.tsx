@@ -46,24 +46,24 @@ export default function GlobalHeader({
               <span className="text-sm text-muted-foreground truncate">
                 {organization}/{repository}
               </span>
-              <div className="flex items-center gap-3 flex-shrink-0">
-                <div className="flex items-center gap-1">
+              <div className="flex items-center gap-4 flex-shrink-0">
+                <div className="flex items-center gap-1.5">
                   <GitPullRequest className="h-4 w-4 text-info" />
                   <span className="text-sm text-muted-foreground">{prStats?.total ?? 0}</span>
                 </div>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1.5">
                   <CheckCircle className="h-4 w-4 text-success" />
                   <span className="text-sm text-muted-foreground">{prStats?.open ?? 0}</span>
                 </div>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1.5">
                   <GitCommit className="h-4 w-4 text-merged" />
                   <span className="text-sm text-muted-foreground">{prStats?.merged ?? 0}</span>
                 </div>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1.5">
                   <XCircle className="h-4 w-4 text-destructive" />
                   <span className="text-sm text-muted-foreground">{prStats?.closed ?? 0}</span>
                 </div>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1.5">
                   <Tag className="h-4 w-4 text-warning" />
                   <span className="text-sm text-muted-foreground">{prStats?.draft ?? 0}</span>
                 </div>
