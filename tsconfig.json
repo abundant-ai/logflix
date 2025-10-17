@@ -1,16 +1,10 @@
 {
-  "files": [],
-  "references": [
-    { "path": "./apps/web" },
-    { "path": "./apps/api" },
-    { "path": "./packages/shared" },
-    { "path": "./packages/github-client" }
-  ],
   "compilerOptions": {
     "incremental": true,
     "tsBuildInfoFile": "./node_modules/typescript/tsbuildinfo",
     "noEmit": true,
     "module": "ESNext",
+    "target": "ESNext",
     "strict": true,
     "lib": ["esnext", "dom", "dom.iterable"],
     "jsx": "preserve",
@@ -21,8 +15,14 @@
     "baseUrl": ".",
     "types": ["node", "vite/client"],
     "paths": {
-      "@logflix/shared": ["./packages/shared"],
-      "@logflix/github-client": ["./packages/github-client"]
+      "@/*": ["./apps/web/src/*"],
+      "@logflix/shared/*": ["./packages/shared/*"],
+      "@logflix/shared/schema": ["./packages/shared/schema.ts"],
+      "@logflix/shared/auth": ["./packages/shared/auth.ts"],
+      "@logflix/shared/githubSync": ["./packages/shared/githubSync.ts"],
+      "@logflix/github-client": ["./packages/github-client/index.ts"]
     }
-  }
+  },
+  "include": ["**/*"],
+  "exclude": ["node_modules", "**/dist", "**/node_modules"]
 }

@@ -2,11 +2,11 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import type { Logger } from "pino";
 import { createHash } from "crypto";
-import { GitHubOctokitService } from "../../packages/github-client/index.js";
+import { GitHubOctokitService } from "@logflix/github-client";
 import { requireAuth, requireAdmin, requireRepositoryAccess } from "./middleware/auth.js";
 import { clerkClient } from "@clerk/express";
-import { UserRole, UserMetadata, AuthContext, canAccessRepository } from "../../packages/shared/auth.js";
-import { GitHubWorkflowArtifact } from "../../packages/shared/schema.js";
+import { UserRole, UserMetadata, AuthContext, canAccessRepository } from "@logflix/shared/auth";
+import { GitHubWorkflowArtifact } from "@logflix/shared/schema";
 
 /**
  * GitHub Client Cache
@@ -76,7 +76,7 @@ function cleanupGitHubClientCache() {
   const now = Date.now();
   let removed = 0;
 
-  for (const [key, cached] of githubClientCache.entries()) {
+  for (const [key, cached] of Array.from(githubClientCache.entries())) {
     if (now - cached.lastUsed > CACHE_TTL) {
       githubClientCache.delete(key);
       removed++;
