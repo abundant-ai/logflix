@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search, GitPullRequest, User, Clock, Tag, Calendar, TrendingUp, SortAsc, Filter, ChevronDown, CheckCircle, XCircle, AlertCircle, GitCommit, FileText, ArrowLeft, BarChart3 } from "lucide-react";
+import { Search, User, Calendar, TrendingUp, Filter, ChevronDown, ArrowLeft, GitPullRequest, CheckCircle, XCircle, GitCommit, Tag } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,6 +13,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { GitHubPullRequest, GitHubPRSelection } from "@logflix/shared/schema";
 import { logger } from "@/lib/logger";
+import { createAPIParams, fetchAPI } from "@/lib/api";
+import { CACHE_TIME, API_LIMITS } from "@/lib/constants";
+import { formatDateShort } from "@/lib/date";
+import { getPRStatusIcon } from "@/lib/statusHelpers";
 
 interface NavigationSidebarProps {
   onSelectPR: (selection: GitHubPRSelection) => void;
@@ -30,26 +34,12 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, or
   const [selectedStates, setSelectedStates] = useState<string[]>(['all']);
   const [timeRange, setTimeRange] = useState<'all' | 'week' | 'month'>('all');
 
-  // Helper to create API parameters with consistent base values
-  const createAPIParams = (additionalParams?: Record<string, string>) => {
-    return new URLSearchParams({
-      owner: organization,
-      repo: repoName,
-      workflow: workflow,
-      ...additionalParams
-    });
-  };
-
   // Fetch repository stats for counts and display
   const { data: statsData } = useQuery<{ open: number; closed: number; merged: number; draft: number }>({
     queryKey: ["/api/github/repo-stats", organization, repoName],
-    queryFn: async () => {
-      const response = await fetch(`/api/github/repo-stats/${organization}/${repoName}`);
-      if (!response.ok) throw new Error(`Failed to fetch repo stats: ${response.statusText}`);
-      return response.json();
-    },
-    staleTime: 10 * 60 * 1000, // 10 minutes cache for counts
-    gcTime: 30 * 60 * 1000,
+    queryFn: () => fetchAPI(`/api/github/repo-stats/${organization}/${repoName}`),
+    staleTime: CACHE_TIME.STALE_LONG,
+    gcTime: CACHE_TIME.GC_LONG,
   });
 
   // Get sort display text
@@ -86,50 +76,33 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, or
   };
 
   const { data: prData, isLoading, error } = useQuery<{ pullRequests: GitHubPullRequest[]; total_count: number }>({
-    queryKey: ["/api/github/pull-requests", organization, repoName, workflow, "v2"], // Cache bust
+    queryKey: ["/api/github/pull-requests", organization, repoName, workflow, "v2"],
     queryFn: async () => {
-      const params = createAPIParams({
-        state: 'all',
-        limit: '5000', // Fetch all available PRs using GraphQL cursor pagination (server handles pagination automatically)
-        sort: 'created',
-        direction: 'desc'
-      });
-      
+      const params = createAPIParams(
+        { owner: organization, repo: repoName, workflow },
+        {
+          state: 'all',
+          limit: String(API_LIMITS.MAX_PRS),
+          sort: 'created',
+          direction: 'desc'
+        }
+      );
+
       const url = `/api/github/pull-requests?${params}`;
       logger.debug('Fetching PRs for repo', { repoName, url });
 
-      const response = await fetch(url);
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch PRs: ${response.statusText}`);
-      }
-
-      const result = await response.json();
+      const result = await fetchAPI<{ pullRequests: GitHubPullRequest[]; total_count: number }>(url);
       logger.info('Received PRs for repo', { repoName, count: result.pullRequests?.length || 0 });
-      
+
       return result;
     },
-    // Aggressive background refetching for real-time updates
-    refetchInterval: 45 * 1000, // Slightly longer interval for larger dataset
-    refetchOnWindowFocus: true, // Refetch when user returns to tab
-    refetchIntervalInBackground: true, // Continue refetching even when tab is not active
-    staleTime: 0, // Always consider data stale to force refetch
-    gcTime: 0, // Force cache invalidation for fresh data
-    retry: 3, // More retries for reliability with larger data
+    refetchInterval: CACHE_TIME.REFETCH_INTERVAL,
+    refetchOnWindowFocus: true,
+    refetchIntervalInBackground: true,
+    staleTime: CACHE_TIME.NONE,
+    gcTime: CACHE_TIME.NONE,
+    retry: 3,
   });
-
-  // Get PR status icon based on state, merged status, and draft (larger size for better visibility)
-  const getPRStatusIcon = (pr: GitHubPullRequest) => {
-    if (pr.draft) {
-      return <Tag className="h-5 w-5 text-amber-600" />;
-    } else if (pr.state === 'open') {
-      return <CheckCircle className="h-5 w-5 text-green-600" />;
-    } else if (pr.state === 'closed' && pr.merged_at) {
-      return <GitCommit className="h-5 w-5 text-purple-600" />;
-    } else {
-      return <XCircle className="h-5 w-5 text-red-600" />;
-    }
-  };
 
   const isSelected = (prNumber: number) => {
     return selectedPR?.prNumber === prNumber;
@@ -298,7 +271,7 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, or
                 checked={selectedStates.includes('all')}
                 onCheckedChange={() => toggleState('all')}
               >
-                <GitPullRequest className="h-4 w-4 mr-2" />
+                <GitPullRequest className="h-4 w-4 mr-2 text-info" />
                 All ({statsData ? statsData.open + statsData.closed + statsData.merged : 0})
               </DropdownMenuCheckboxItem>
               
@@ -306,31 +279,31 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, or
                 checked={selectedStates.includes('all') || selectedStates.includes('open')}
                 onCheckedChange={() => toggleState('open')}
               >
-                <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
+                <CheckCircle className="h-4 w-4 mr-2 text-success" />
                 Open ({statsData?.open || 0})
               </DropdownMenuCheckboxItem>
-              
+
               <DropdownMenuCheckboxItem
                 checked={selectedStates.includes('all') || selectedStates.includes('merged')}
                 onCheckedChange={() => toggleState('merged')}
               >
-                <GitCommit className="h-4 w-4 mr-2 text-purple-600" />
+                <GitCommit className="h-4 w-4 mr-2 text-merged" />
                 Merged ({statsData?.merged || 0})
               </DropdownMenuCheckboxItem>
-              
+
               <DropdownMenuCheckboxItem
                 checked={selectedStates.includes('all') || selectedStates.includes('closed')}
                 onCheckedChange={() => toggleState('closed')}
               >
-                <XCircle className="h-4 w-4 mr-2 text-red-600" />
+                <XCircle className="h-4 w-4 mr-2 text-destructive" />
                 Closed ({statsData?.closed || 0})
               </DropdownMenuCheckboxItem>
-              
+
               <DropdownMenuCheckboxItem
                 checked={selectedStates.includes('all') || selectedStates.includes('draft')}
                 onCheckedChange={() => toggleState('draft')}
               >
-                <Tag className="h-4 w-4 mr-2 text-amber-600" />
+                <Tag className="h-4 w-4 mr-2 text-warning" />
                 Draft ({statsData?.draft || 0})
               </DropdownMenuCheckboxItem>
               
@@ -416,13 +389,13 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, or
                           </span>
                           <div className="flex items-center gap-2 text-sm text-muted-foreground">
                             <div className="flex items-center gap-1">
-                              <Calendar className="h-4 w-4 text-blue-600" />
-                              <span>{new Date(pr.created_at).toLocaleDateString()}</span>
+                              <Calendar className="h-4 w-4 text-info" />
+                              <span>{formatDateShort(pr.created_at)}</span>
                             </div>
                             <span>•</span>
                             <div className="flex items-center gap-1">
-                              <TrendingUp className="h-4 w-4 text-orange-600" />
-                              <span>{new Date(pr.updated_at).toLocaleDateString()}</span>
+                              <TrendingUp className="h-4 w-4 text-warning" />
+                              <span>{formatDateShort(pr.updated_at)}</span>
                             </div>
                           </div>
                         </div>
@@ -441,16 +414,15 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, or
                           {pr.merged_at && (
                             <>
                               <span>•</span>
-                              <div className="flex items-center gap-1 text-purple-600">
-                                <GitCommit className="h-5 w-5" />
-                                <span>{new Date(pr.merged_at).toLocaleDateString()}</span>
+                              <div className="flex items-center gap-1 text-merged">
+                                <span>{formatDateShort(pr.merged_at)}</span>
                               </div>
                             </>
                           )}
                           {pr.draft && (
                             <>
                               <span>•</span>
-                              <div className="flex items-center gap-1 text-amber-600">
+                              <div className="flex items-center gap-1 text-warning">
                                 <Tag className="h-4 w-4" />
                                 <span>Draft</span>
                               </div>

@@ -8,6 +8,8 @@ import NavigationSidebar from "@/components/NavigationSidebar";
 import GitHubWorkflowContent from "@/components/GitHubWorkflowContent";
 import GlobalHeader from "@/components/GlobalHeader";
 import { GitHubPRSelection } from "@logflix/shared/schema";
+import { CACHE_TIME } from "@/lib/constants";
+import { fetchAPI } from "@/lib/api";
 
 interface HomeProps {
   repoName: string;
@@ -45,9 +47,9 @@ export default function Home({ repoName }: HomeProps) {
       }
       return response.json();
     },
-    enabled: !!clerkOrg, // Only fetch when organization is set
-    staleTime: 5 * 60 * 1000,
-    gcTime: 10 * 60 * 1000,
+    enabled: !!clerkOrg,
+    staleTime: CACHE_TIME.STALE_MEDIUM,
+    gcTime: CACHE_TIME.STALE_LONG,
   });
 
   // Validate repository access
@@ -63,8 +65,8 @@ export default function Home({ repoName }: HomeProps) {
       return response.json();
     },
     enabled: !!organization && !!repoName && !!repo,
-    staleTime: 10 * 60 * 1000,
-    gcTime: 30 * 60 * 1000,
+    staleTime: CACHE_TIME.STALE_LONG,
+    gcTime: CACHE_TIME.GC_LONG,
   });
 
   // Initialize from URL parameters - MUST be before any conditional returns
