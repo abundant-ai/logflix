@@ -4,6 +4,8 @@ import CustomTerminalViewer from "./CustomTerminalViewer";
 import AgentResultsTable from "./AgentResultsTable";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import {
   ChevronRight,
   Download,
@@ -1236,10 +1238,51 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                 {/* File Content Viewer */}
                 <div className="flex-1 flex flex-col">
                   {selectedFile && fileContent ? (
-                    <div className="flex-1 overflow-auto bg-black p-4">
-                      <pre className="text-sm font-mono text-success whitespace-pre-wrap break-words">
+                    <div className="flex-1 overflow-auto bg-[#282c34] p-4">
+                      <SyntaxHighlighter
+                        language={(() => {
+                          // Detect language from file extension
+                          const ext = selectedFile.path.split('.').pop()?.toLowerCase();
+                          const langMap: Record<string, string> = {
+                            'py': 'python',
+                            'js': 'javascript',
+                            'jsx': 'jsx',
+                            'ts': 'typescript',
+                            'tsx': 'tsx',
+                            'json': 'json',
+                            'yaml': 'yaml',
+                            'yml': 'yaml',
+                            'md': 'markdown',
+                            'sh': 'bash',
+                            'bash': 'bash',
+                            'java': 'java',
+                            'cpp': 'cpp',
+                            'c': 'c',
+                            'go': 'go',
+                            'rs': 'rust',
+                            'rb': 'ruby',
+                            'php': 'php',
+                            'html': 'html',
+                            'css': 'css',
+                            'sql': 'sql',
+                            'xml': 'xml'
+                          };
+                          return langMap[ext || ''] || 'text';
+                        })()}
+                        style={oneDark}
+                        customStyle={{
+                          margin: 0,
+                          padding: '1rem',
+                          background: 'transparent',
+                          fontSize: '0.875rem',
+                          lineHeight: '1.6'
+                        }}
+                        showLineNumbers={true}
+                        wrapLines={true}
+                        wrapLongLines={true}
+                      >
                         {fileContent}
-                      </pre>
+                      </SyntaxHighlighter>
                     </div>
                   ) : (
                     <div className="flex-1 flex items-center justify-center">
@@ -1297,7 +1340,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                     )}
                   </div>
                 </div>
-                <div className="flex-1 overflow-auto bg-black p-4">
+                <div className="flex-1 overflow-auto bg-[#282c34] p-4">
                   {logContentQuery.error ? (
                     <div className="text-center text-destructive p-8">
                       <p>Error loading log file</p>
@@ -1306,9 +1349,21 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                       </p>
                     </div>
                   ) : processedLogContent ? (
-                    <pre className="text-sm font-mono text-success whitespace-pre-wrap break-words leading-relaxed">
+                    <SyntaxHighlighter
+                      language="bash"
+                      style={oneDark}
+                      customStyle={{
+                        margin: 0,
+                        padding: 0,
+                        background: 'transparent',
+                        fontSize: '0.875rem',
+                        lineHeight: '1.6'
+                      }}
+                      wrapLines={true}
+                      wrapLongLines={true}
+                    >
                       {processedLogContent}
-                    </pre>
+                    </SyntaxHighlighter>
                   ) : (
                     <div className="flex items-center justify-center h-full">
                       <div className="animate-spin rounded-full h-6 w-6 border-2 border-primary border-t-transparent"></div>
