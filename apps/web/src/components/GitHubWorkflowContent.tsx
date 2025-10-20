@@ -59,6 +59,12 @@ interface WorkflowRunDetails {
   hasData: boolean;
 }
 
+interface AgentFile {
+  name: string;
+  path: string;
+  size: number;
+}
+
 interface AgentData {
   id: number;
   name: string;
@@ -66,7 +72,7 @@ interface AgentData {
   model: string;
   displayName: string;
   artifact_name: string;
-  files: Array<{ name: string; path: string; size: number }>;
+  files: AgentFile[];
   expired: boolean;
   sortOrder: number;
 }
@@ -397,8 +403,8 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
     if (!taskFilteredCastFiles) return [];
 
     const agents: AgentData[] = taskFilteredCastFiles
-      .filter((cf: any) => cf.files.length > 0) // Only include artifacts that have .cast files
-      .map((cf: any): AgentData => {
+      .filter((cf) => cf.files.length > 0) // Only include artifacts that have .cast files
+      .map((cf): AgentData => {
         // Parse agent name: recordings-nop → NOP, recordings-terminus-gpt4 → Terminus (GPT-4)
         const name = cf.artifact_name.replace(/^recordings-/i, '');
         
@@ -470,7 +476,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
 
   const selectedCastFile = useMemo(() => {
     // Only look for agent.cast file (no more tests)
-    return selectedAgentData?.files.find((f: any) => f.name === 'agent.cast');
+    return selectedAgentData?.files.find((f) => f.name === 'agent.cast');
   }, [selectedAgentData]);
 
   // Use React Query for cast file caching with custom queryFn - PRELOAD first agent
