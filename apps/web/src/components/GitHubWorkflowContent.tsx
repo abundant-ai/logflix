@@ -47,6 +47,40 @@ import { formatDate, formatDateCompact, formatTime, formatDuration } from "@/lib
 import { cleanAnsiCodes } from "@/lib/ansi";
 import { getWorkflowStatusColor, getWorkflowStatusIcon, getWorkflowStatusLabel } from "@/lib/statusHelpers";
 
+// Language mapping for syntax highlighting
+const LANGUAGE_MAP: Record<string, string> = {
+  'py': 'python',
+  'js': 'javascript',
+  'jsx': 'jsx',
+  'ts': 'typescript',
+  'tsx': 'tsx',
+  'json': 'json',
+  'yaml': 'yaml',
+  'yml': 'yaml',
+  'md': 'markdown',
+  'sh': 'bash',
+  'bash': 'bash',
+  'java': 'java',
+  'cpp': 'cpp',
+  'c': 'c',
+  'go': 'go',
+  'rs': 'rust',
+  'rb': 'ruby',
+  'php': 'php',
+  'html': 'html',
+  'css': 'css',
+  'sql': 'sql',
+  'xml': 'xml'
+};
+
+/**
+ * Detects programming language from file path extension
+ */
+const getLanguageFromFile = (filePath: string): string => {
+  const ext = filePath.split('.').pop()?.toLowerCase() || '';
+  return LANGUAGE_MAP[ext] || 'text';
+};
+
 interface GitHubWorkflowContentProps {
   selectedPR: GitHubPRSelection | null;
   organization: string;
@@ -591,6 +625,12 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
   // Update logContent state from React Query and clean ANSI codes
   const logContent = logContentQuery.data?.content || null;
   const processedLogContent = useMemo(() => cleanAnsiCodes(logContent || ''), [logContent]);
+
+  // Compute language for selected file
+  const fileLanguage = useMemo(() => {
+    if (!selectedFile?.path) return 'text';
+    return getLanguageFromFile(selectedFile.path);
+  }, [selectedFile?.path]);
 
   if (!selectedPR) {
     return (
@@ -1248,35 +1288,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                   {selectedFile && fileContent ? (
                     <div className="flex-1 overflow-auto bg-[#282c34] p-4">
                       <SyntaxHighlighter
-                        language={(() => {
-                          // Detect language from file extension
-                          const ext = selectedFile.path.split('.').pop()?.toLowerCase();
-                          const langMap: Record<string, string> = {
-                            'py': 'python',
-                            'js': 'javascript',
-                            'jsx': 'jsx',
-                            'ts': 'typescript',
-                            'tsx': 'tsx',
-                            'json': 'json',
-                            'yaml': 'yaml',
-                            'yml': 'yaml',
-                            'md': 'markdown',
-                            'sh': 'bash',
-                            'bash': 'bash',
-                            'java': 'java',
-                            'cpp': 'cpp',
-                            'c': 'c',
-                            'go': 'go',
-                            'rs': 'rust',
-                            'rb': 'ruby',
-                            'php': 'php',
-                            'html': 'html',
-                            'css': 'css',
-                            'sql': 'sql',
-                            'xml': 'xml'
-                          };
-                          return langMap[ext || ''] || 'text';
-                        })()}
+                        language={fileLanguage}
                         style={oneDark}
                         customStyle={{
                           margin: 0,
