@@ -66,9 +66,8 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
   const [selectedFile, setSelectedFile] = useState<any | null>(null);
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [selectedLogFile, setSelectedLogFile] = useState<string | null>(null);
-  const [logType, setLogType] = useState<'agent' | 'tests'>('agent');
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
-  const [castType, setCastType] = useState<'agent' | 'tests'>('agent');
+  const [selectedAgentForLogs, setSelectedAgentForLogs] = useState<string | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
   // Reset all selections when PR changes
@@ -76,6 +75,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
     setSelectedCommitSha(null);
     setSelectedRunId(null);
     setSelectedAgent(null);
+    setSelectedAgentForLogs(null);
     setSelectedLogFile(null);
     setSelectedTaskId(null);
     setSelectedFile(null);
@@ -321,63 +321,6 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
     staleTime: CACHE_TIME.STALE_SHORT, // Cache for 1 minute
   });
 
-  // Find artifact with logs - prioritize recordings (which contain both .cast and .log)
-  // Then fall back to dedicated log/session/test-result artifacts
-  const logArtifact = runDetails?.artifacts.find(a =>
-    a.name.toLowerCase().includes('recording')
-  ) || runDetails?.artifacts.find(a =>
-    a.name.toLowerCase().includes('log') ||
-    a.name.toLowerCase().includes('session') ||
-    a.name.toLowerCase().includes('test-result')
-  );
-
-  // Fetch log files from artifact - PRELOAD for performance
-  const { data: logFilesData } = useQuery<{ logFiles: Array<{ name: string; path: string }> }>({
-    queryKey: logArtifact ? ["/api/github/artifact-logs", logArtifact.id] : [],
-    queryFn: async () => {
-      if (!logArtifact) throw new Error('No log artifact selected');
-
-      const params = createAPIParams({ owner: organization, repo: repoName, workflow });
-      return fetchAPI(`/api/github/artifact-logs/${logArtifact.id}?${params}`);
-    },
-    enabled: !!logArtifact,
-    staleTime: CACHE_TIME.STALE_LONG,
-    gcTime: CACHE_TIME.GC_MEDIUM,
-  });
-
-  // Use React Query for log content fetching - REPLACE useEffect for consistency and caching
-  const logContentQuery = useQuery<{ content: string }>({
-    queryKey: logArtifact && selectedLogFile ? [
-      "log-content",
-      logArtifact.id,
-      selectedLogFile
-    ] : [],
-    queryFn: async () => {
-      if (!logArtifact || !selectedLogFile) {
-        throw new Error('No log artifact or file selected');
-      }
-      
-      const params = createAPIParams({ owner: organization, repo: repoName, workflow }, { path: selectedLogFile });
-      
-      const response = await fetch(`/api/github/artifact-log-content/${logArtifact.id}?${params}`);
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: response.statusText }));
-        throw new Error(errorData.error || `Failed to fetch log: ${response.statusText}`);
-      }
-      
-      return await response.json();
-    },
-    enabled: !!(logArtifact && selectedLogFile),
-    staleTime: CACHE_TIME.STALE_LONG,
-    gcTime: CACHE_TIME.GC_MEDIUM,
-    retry: 1,
-    refetchOnWindowFocus: false,
-  });
-
-  // Update logContent state from React Query and clean ANSI codes
-  const logContent = logContentQuery.data?.content || null;
-  const processedLogContent = useMemo(() => cleanAnsiCodes(logContent || ''), [logContent]);
 
   const duration = selectedRun ? (() => {
     const startTime = new Date(selectedRun.created_at).getTime();
@@ -436,14 +379,6 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
     })).filter((cf: any) => cf.files.length > 0);
   }, [castListData, selectedTaskId]);
 
-  // Filter log files by selected task - MUST BE AFTER logFilesData
-  const taskFilteredLogFiles = useMemo(() => {
-    if (!logFilesData?.logFiles || !selectedTaskId) return logFilesData?.logFiles || [];
-    
-    return logFilesData.logFiles.filter((lf: any) =>
-      lf.path.startsWith(`tasks/${selectedTaskId}/`) || lf.path.includes(`/${selectedTaskId}/`)
-    );
-  }, [logFilesData, selectedTaskId]);
 
   // Parse available agents from cast list - filter out artifacts with no .cast files and apply task filter
   const availableAgents = useMemo(() => {
@@ -508,12 +443,6 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
     return agents;
   }, [taskFilteredCastFiles]);
 
-  // Auto-select first log file from task-filtered list
-  useEffect(() => {
-    if (taskFilteredLogFiles && taskFilteredLogFiles.length > 0 && !selectedLogFile) {
-      setSelectedLogFile(taskFilteredLogFiles[0].path);
-    }
-  }, [taskFilteredLogFiles, selectedLogFile]);
 
   // Auto-select first agent
   useEffect(() => {
@@ -526,10 +455,11 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
   const selectedAgentData = useMemo(() => {
     return availableAgents.find((a: any) => a.artifact_name === selectedAgent);
   }, [availableAgents, selectedAgent]);
-  
+
   const selectedCastFile = useMemo(() => {
-    return selectedAgentData?.files.find((f: any) => f.name === `${castType}.cast`);
-  }, [selectedAgentData, castType]);
+    // Only look for agent.cast file (no more tests)
+    return selectedAgentData?.files.find((f: any) => f.name === 'agent.cast');
+  }, [selectedAgentData]);
 
   // Use React Query for cast file caching with custom queryFn - PRELOAD first agent
   const castFileQuery = useQuery<{ content: string }>({
@@ -545,7 +475,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
       if (!selectedAgentData || !selectedCastFile) {
         throw new Error('No agent or cast file selected');
       }
-      
+
       const params = createAPIParams({ owner: organization, repo: repoName, workflow }, { path: selectedCastFile.path });
 
       const response = await fetch(`/api/github/cast-file-by-path/${selectedAgentData.id}?${params}`);
@@ -565,6 +495,87 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
     retry: 1,
     refetchOnWindowFocus: false,
   });
+
+  // === LOGS TAB LOGIC - Must be AFTER availableAgents is defined ===
+
+  // Reuse available agents list for logs tab
+  const availableAgentsForLogs = useMemo(() => {
+    return availableAgents;
+  }, [availableAgents]);
+
+  // Auto-select first agent for logs
+  useEffect(() => {
+    if (availableAgentsForLogs.length > 0 && !selectedAgentForLogs) {
+      setSelectedAgentForLogs(availableAgentsForLogs[0].artifact_name);
+    }
+  }, [availableAgentsForLogs, selectedAgentForLogs]);
+
+  // Get selected agent data for logs
+  const selectedAgentDataForLogs = useMemo(() => {
+    return availableAgentsForLogs.find((a: any) => a.artifact_name === selectedAgentForLogs);
+  }, [availableAgentsForLogs, selectedAgentForLogs]);
+
+  // Get log files for the selected agent (look for agent.log in the recordings artifact)
+  const { data: logFilesDataForAgent } = useQuery<{ logFiles: Array<{ name: string; path: string }> }>({
+    queryKey: selectedAgentDataForLogs ? ["/api/github/artifact-logs", selectedAgentDataForLogs.id] : [],
+    queryFn: async () => {
+      if (!selectedAgentDataForLogs) throw new Error('No agent selected for logs');
+
+      const params = createAPIParams({ owner: organization, repo: repoName, workflow });
+      return fetchAPI(`/api/github/artifact-logs/${selectedAgentDataForLogs.id}?${params}`);
+    },
+    enabled: !!selectedAgentDataForLogs,
+    staleTime: CACHE_TIME.STALE_LONG,
+    gcTime: CACHE_TIME.GC_MEDIUM,
+  });
+
+  // Auto-select agent.log file when log files are loaded
+  useEffect(() => {
+    if (logFilesDataForAgent?.logFiles && logFilesDataForAgent.logFiles.length > 0 && !selectedLogFile) {
+      // Look for agent.log file first
+      const agentLog = logFilesDataForAgent.logFiles.find(f => f.name === 'agent.log');
+      if (agentLog) {
+        setSelectedLogFile(agentLog.path);
+      } else {
+        // Fallback to first log file
+        setSelectedLogFile(logFilesDataForAgent.logFiles[0].path);
+      }
+    }
+  }, [logFilesDataForAgent, selectedLogFile]);
+
+  // Use React Query for log content fetching
+  const logContentQuery = useQuery<{ content: string }>({
+    queryKey: selectedAgentDataForLogs && selectedLogFile ? [
+      "log-content",
+      selectedAgentDataForLogs.id,
+      selectedLogFile
+    ] : [],
+    queryFn: async () => {
+      if (!selectedAgentDataForLogs || !selectedLogFile) {
+        throw new Error('No agent or log file selected');
+      }
+
+      const params = createAPIParams({ owner: organization, repo: repoName, workflow }, { path: selectedLogFile });
+
+      const response = await fetch(`/api/github/artifact-log-content/${selectedAgentDataForLogs.id}?${params}`);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: response.statusText }));
+        throw new Error(errorData.error || `Failed to fetch log: ${response.statusText}`);
+      }
+
+      return await response.json();
+    },
+    enabled: !!(selectedAgentDataForLogs && selectedLogFile),
+    staleTime: CACHE_TIME.STALE_LONG,
+    gcTime: CACHE_TIME.GC_MEDIUM,
+    retry: 1,
+    refetchOnWindowFocus: false,
+  });
+
+  // Update logContent state from React Query and clean ANSI codes
+  const logContent = logContentQuery.data?.content || null;
+  const processedLogContent = useMemo(() => cleanAnsiCodes(logContent || ''), [logContent]);
 
   if (!selectedPR) {
     return (
@@ -1116,22 +1127,6 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                         ))}
                       </SelectContent>
                     </Select>
-                    <div className="flex gap-2">
-                      <Button
-                        variant={castType === 'agent' ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => setCastType('agent')}
-                      >
-                        Agent
-                      </Button>
-                      <Button
-                        variant={castType === 'tests' ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => setCastType('tests')}
-                      >
-                        Tests
-                      </Button>
-                    </div>
                     {selectedAgentData && (
                       <Button
                         variant="secondary"
@@ -1171,7 +1166,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                       <Terminal className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                       <p className="text-muted-foreground">
                         {availableAgents.length > 0 ?
-                          `No ${castType} recording found for this agent` :
+                          'No agent recording found for this agent' :
                           'No terminal recordings available'
                         }
                       </p>
@@ -1195,7 +1190,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                   <div className="h-full">
                     <CustomTerminalViewer
                       castContent={castFileQuery.data.content}
-                      showAgentThinking={castType === 'agent'}
+                      showAgentThinking={true}
                     />
                   </div>
                 ) : (
@@ -1262,38 +1257,38 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
           </TabsContent>
 
           <TabsContent value="logs" className="p-0 m-0 h-full">
-            {logFilesData && logFilesData.logFiles.length > 0 ? (
+            {availableAgentsForLogs.length > 0 ? (
               <div className="flex flex-col h-full">
-                <div className="bg-card border-b border-border p-4 flex items-center justify-between">
+                <div className="bg-card border-b border-border p-4 flex-shrink-0">
                   <div className="flex items-center gap-3">
-                    <div className="flex gap-2">
+                    <Select
+                      value={selectedAgentForLogs || ""}
+                      onValueChange={(value) => {
+                        setSelectedAgentForLogs(value);
+                        // Reset log file selection when agent changes
+                        setSelectedLogFile(null);
+                      }}
+                    >
+                      <SelectTrigger className="w-64">
+                        <SelectValue placeholder="Select Agent" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableAgentsForLogs.map((agent: any) => (
+                          <SelectItem key={agent.artifact_name} value={agent.artifact_name}>
+                            {agent.displayName}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {selectedAgentDataForLogs && (
                       <Button
-                        variant={logType === 'agent' ? 'default' : 'outline'}
+                        variant="secondary"
                         size="sm"
-                        onClick={() => {
-                          setLogType('agent');
-                          const agentLog = logFilesData.logFiles.find(f => f.name.includes('agent'));
-                          if (agentLog) setSelectedLogFile(agentLog.path);
-                        }}
+                        onClick={() => window.open(`/api/github/download-artifact/${selectedRunId}/${selectedAgentDataForLogs.artifact_name}`, '_blank')}
                       >
-                        Agent
+                        <Download className="h-4 w-4 mr-1" />
+                        Download
                       </Button>
-                      <Button
-                        variant={logType === 'tests' ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => {
-                          setLogType('tests');
-                          const testsLog = logFilesData.logFiles.find(f => f.name.includes('tests'));
-                          if (testsLog) setSelectedLogFile(testsLog.path);
-                        }}
-                      >
-                        Tests
-                      </Button>
-                    </div>
-                    {selectedLogFile && (
-                      <span className="text-sm text-muted-foreground">
-                        {logFilesData.logFiles.find(f => f.path === selectedLogFile)?.name}
-                      </span>
                     )}
                   </div>
                 </div>
