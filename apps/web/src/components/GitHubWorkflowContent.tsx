@@ -59,6 +59,18 @@ interface WorkflowRunDetails {
   hasData: boolean;
 }
 
+interface AgentData {
+  id: number;
+  name: string;
+  baseName: string;
+  model: string;
+  displayName: string;
+  artifact_name: string;
+  files: Array<{ name: string; path: string; size: number }>;
+  expired: boolean;
+  sortOrder: number;
+}
+
 export default function GitHubWorkflowContent({ selectedPR, organization, repoName, workflow }: GitHubWorkflowContentProps) {
   const [activeTab, setActiveTab] = useState("overview");
   const [selectedCommitSha, setSelectedCommitSha] = useState<string | null>(null);
@@ -381,12 +393,12 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
 
 
   // Parse available agents from cast list - filter out artifacts with no .cast files and apply task filter
-  const availableAgents = useMemo(() => {
+  const availableAgents: AgentData[] = useMemo(() => {
     if (!taskFilteredCastFiles) return [];
-    
-    const agents = taskFilteredCastFiles
+
+    const agents: AgentData[] = taskFilteredCastFiles
       .filter((cf: any) => cf.files.length > 0) // Only include artifacts that have .cast files
-      .map((cf: any) => {
+      .map((cf: any): AgentData => {
         // Parse agent name: recordings-nop → NOP, recordings-terminus-gpt4 → Terminus (GPT-4)
         const name = cf.artifact_name.replace(/^recordings-/i, '');
         
@@ -431,7 +443,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
           sortOrder: baseName === 'NOP' ? 0 : baseName === 'Oracle' ? 1 : baseName === 'Terminus' ? 2 : 999
         };
       })
-      .sort((a: any, b: any) => {
+      .sort((a: AgentData, b: AgentData) => {
         // Sort by defined order: NOP first, Oracle second, then Terminus, then others
         if (a.sortOrder !== b.sortOrder) {
           return a.sortOrder - b.sortOrder;
@@ -439,7 +451,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
         // Within same agent type (like multiple Terminus), sort alphabetically by model
         return a.displayName.localeCompare(b.displayName);
       });
-    
+
     return agents;
   }, [taskFilteredCastFiles]);
 
@@ -452,8 +464,8 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
   }, [availableAgents, selectedAgent]);
 
   // Memoize selected agent data to prevent constant re-renders
-  const selectedAgentData = useMemo(() => {
-    return availableAgents.find((a: any) => a.artifact_name === selectedAgent);
+  const selectedAgentData = useMemo<AgentData | undefined>(() => {
+    return availableAgents.find((a) => a.artifact_name === selectedAgent);
   }, [availableAgents, selectedAgent]);
 
   const selectedCastFile = useMemo(() => {
@@ -498,22 +510,17 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
 
   // === LOGS TAB LOGIC - Must be AFTER availableAgents is defined ===
 
-  // Reuse available agents list for logs tab
-  const availableAgentsForLogs = useMemo(() => {
-    return availableAgents;
-  }, [availableAgents]);
-
   // Auto-select first agent for logs
   useEffect(() => {
-    if (availableAgentsForLogs.length > 0 && !selectedAgentForLogs) {
-      setSelectedAgentForLogs(availableAgentsForLogs[0].artifact_name);
+    if (availableAgents.length > 0 && !selectedAgentForLogs) {
+      setSelectedAgentForLogs(availableAgents[0].artifact_name);
     }
-  }, [availableAgentsForLogs, selectedAgentForLogs]);
+  }, [availableAgents, selectedAgentForLogs]);
 
   // Get selected agent data for logs
-  const selectedAgentDataForLogs = useMemo(() => {
-    return availableAgentsForLogs.find((a: any) => a.artifact_name === selectedAgentForLogs);
-  }, [availableAgentsForLogs, selectedAgentForLogs]);
+  const selectedAgentDataForLogs = useMemo<AgentData | undefined>(() => {
+    return availableAgents.find((a) => a.artifact_name === selectedAgentForLogs);
+  }, [availableAgents, selectedAgentForLogs]);
 
   // Get log files for the selected agent (look for agent.log in the recordings artifact)
   const { data: logFilesDataForAgent } = useQuery<{ logFiles: Array<{ name: string; path: string }> }>({
@@ -1257,7 +1264,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
           </TabsContent>
 
           <TabsContent value="logs" className="p-0 m-0 h-full">
-            {availableAgentsForLogs.length > 0 ? (
+            {availableAgents.length > 0 ? (
               <div className="flex flex-col h-full">
                 <div className="bg-card border-b border-border p-4 flex-shrink-0">
                   <div className="flex items-center gap-3">
@@ -1273,7 +1280,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                         <SelectValue placeholder="Select Agent" />
                       </SelectTrigger>
                       <SelectContent>
-                        {availableAgentsForLogs.map((agent: any) => (
+                        {availableAgents.map((agent) => (
                           <SelectItem key={agent.artifact_name} value={agent.artifact_name}>
                             {agent.displayName}
                           </SelectItem>
