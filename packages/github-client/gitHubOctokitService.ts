@@ -419,11 +419,13 @@ export class GitHubOctokitService {
 
   /**
    * Lists all cast files within an artifact
+   * Handles nested directory structures like:
+   * github-action-{date}-{task}/task-name/task-name.1-of-1.{timestamp}/sessions/agent.cast
    */
   async getCastFilesList(artifactId: number): Promise<Array<{ name: string; path: string; size: number }>> {
     try {
       this.logger.debug({ artifactId }, 'Listing cast files in artifact');
-      
+
       const response = await this.octokit.actions.downloadArtifact({
         owner: this.repositoryOwner,
         repo: this.repositoryName,
@@ -433,22 +435,30 @@ export class GitHubOctokitService {
 
       const zipResponse = await fetch(response.url);
       const zipBuffer = Buffer.from(await zipResponse.arrayBuffer());
-      
+
       const zip = new AdmZip(zipBuffer);
       const zipEntries = zip.getEntries();
-      
+
       const castFiles: Array<{ name: string; path: string; size: number }> = [];
-      zipEntries.forEach((entry: any) => {
+      zipEntries.forEach((entry) => {
+        // Search recursively for all .cast files in nested directories
         if (!entry.isDirectory && entry.entryName.endsWith('.cast')) {
+          // Extract just the filename (e.g., "agent.cast" or "tests.cast")
+          const fileName = entry.entryName.split('/').pop() || entry.entryName;
+
           castFiles.push({
-            name: entry.entryName.split('/').pop() || entry.entryName,
-            path: entry.entryName,
+            name: fileName,
+            path: entry.entryName, // Keep full path for extraction
             size: entry.header.size
           });
         }
       });
-      
-      this.logger.debug({ artifactId, castFileCount: castFiles.length }, 'Found cast files in artifact');
+
+      this.logger.debug({
+        artifactId,
+        castFileCount: castFiles.length,
+        castFiles: castFiles.map(f => ({ name: f.name, path: f.path }))
+      }, 'Found cast files in artifact');
       return castFiles;
     } catch (error: any) {
       if (error.status === 410 || error.message?.includes('Artifact has expired')) {
@@ -1510,11 +1520,13 @@ export class GitHubOctokitService {
 
   /**
    * Extracts log file listings from artifact archive
+   * Handles nested directory structures like:
+   * github-action-{date}-{task}/task-name/task-name.1-of-1.{timestamp}/sessions/agent.log
    */
   async getArtifactLogFiles(artifactId: number): Promise<Array<{ name: string; path: string }>> {
     try {
       this.logger.debug({ artifactId }, 'Extracting log files from artifact');
-      
+
       const response = await this.octokit.actions.downloadArtifact({
         owner: this.repositoryOwner,
         repo: this.repositoryName,
@@ -1524,21 +1536,29 @@ export class GitHubOctokitService {
 
       const zipResponse = await fetch(response.url);
       const zipBuffer = Buffer.from(await zipResponse.arrayBuffer());
-      
+
       const zip = new AdmZip(zipBuffer);
       const zipEntries = zip.getEntries();
-      
+
       const logFiles: Array<{ name: string; path: string }> = [];
-      zipEntries.forEach((entry: any) => {
+      zipEntries.forEach((entry) => {
+        // Search recursively for all .log files in nested directories
         if (!entry.isDirectory && entry.entryName.endsWith('.log')) {
+          // Extract just the filename (e.g., "agent.log" or "tests.log")
+          const fileName = entry.entryName.split('/').pop() || entry.entryName;
+
           logFiles.push({
-            name: entry.entryName.split('/').pop() || entry.entryName,
-            path: entry.entryName
+            name: fileName,
+            path: entry.entryName // Keep full path for extraction
           });
         }
       });
-      
-      this.logger.debug({ artifactId, logFileCount: logFiles.length }, 'Log files extracted from artifact');
+
+      this.logger.debug({
+        artifactId,
+        logFileCount: logFiles.length,
+        logFiles: logFiles.map(f => ({ name: f.name, path: f.path }))
+      }, 'Log files extracted from artifact');
       return logFiles;
     } catch (error: any) {
       if (error.status === 410 || error.message?.includes('Artifact has expired')) {
