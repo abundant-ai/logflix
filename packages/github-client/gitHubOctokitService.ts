@@ -440,7 +440,7 @@ export class GitHubOctokitService {
       const zipEntries = zip.getEntries();
 
       const castFiles: Array<{ name: string; path: string; size: number }> = [];
-      zipEntries.forEach((entry: any) => {
+      zipEntries.forEach((entry) => {
         // Search recursively for all .cast files in nested directories
         if (!entry.isDirectory && entry.entryName.endsWith('.cast')) {
           // Extract just the filename (e.g., "agent.cast" or "tests.cast")
@@ -1541,7 +1541,7 @@ export class GitHubOctokitService {
       const zipEntries = zip.getEntries();
 
       const logFiles: Array<{ name: string; path: string }> = [];
-      zipEntries.forEach((entry: any) => {
+      zipEntries.forEach((entry) => {
         // Search recursively for all .log files in nested directories
         if (!entry.isDirectory && entry.entryName.endsWith('.log')) {
           // Extract just the filename (e.g., "agent.log" or "tests.log")
