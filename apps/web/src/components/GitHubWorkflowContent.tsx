@@ -403,86 +403,84 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
   }, [castListData, selectedTaskId]);
 
 
-  // Parse available agents from cast list - filter out artifacts with no .cast files and apply task filter
+  // Build available agents from API test results - matches Overview tab Agent Results
   const availableAgents: AgentData[] = useMemo(() => {
-    if (!taskFilteredCastFiles) return [];
+    if (!agentTestResultsData?.agentResults) return [];
 
-    const agents: AgentData[] = taskFilteredCastFiles
-      .filter((cf) => cf.files.length > 0) // Only include artifacts that have .cast files
-      .map((cf): AgentData => {
-        // Parse agent name: recordings-nop → NOP, recordings-terminus-gpt4 → Terminus (GPT-4)
-        const name = cf.artifact_name.replace(/^recordings-/i, '');
-        
-        // Parse agent and model from artifact name
-        let baseName = '';
-        let model = '';
-        
-        if (name === 'nop') {
-          baseName = 'NOP';
-        } else if (name === 'oracle') {
-          baseName = 'Oracle';
-        } else if (name.startsWith('terminus2')) {
-          baseName = 'Terminus 2';
-          // Extract model from name: terminus2-gemini → Gemini 2.5 Pro
-          const modelPart = name.replace('terminus2-', '').replace('terminus2', '');
-          if (modelPart) {
-            if (modelPart.includes('gpt')) model = 'GPT-4.1';
-            else if (modelPart.includes('claude')) model = 'Claude 4 Sonnet';
-            else if (modelPart.includes('gemini')) model = 'Gemini 2.5 Pro';
-            else model = modelPart.toUpperCase();
-          }
-        } else if (name.startsWith('terminus')) {
-          baseName = 'Terminus';
-          // Extract model from name: terminus-gpt4 → GPT-4.1
-          const modelPart = name.replace('terminus-', '').replace('terminus', '');
-          if (modelPart) {
-            if (modelPart.includes('gpt')) model = 'GPT-4.1';
-            else if (modelPart.includes('claude')) model = 'Claude 4 Sonnet';
-            else if (modelPart.includes('gemini')) model = 'Gemini 2.5 Pro';
-            else model = modelPart.toUpperCase();
-          }
-        } else if (name.startsWith('claude-sonnet')) {
-          baseName = 'Claude Sonnet';
-          model = '4.5';
-        } else if (name.startsWith('codex')) {
-          baseName = 'Codex';
-          const modelPart = name.replace('codex-', '').replace('codex', '');
-          if (modelPart) {
-            if (modelPart.includes('gpt5')) model = 'GPT-5';
-            else model = modelPart.toUpperCase();
-          }
-        } else if (name.startsWith('gemini-cli')) {
-          baseName = 'Gemini CLI';
-          model = '2.5 Pro';
-        } else {
-          baseName = name.charAt(0).toUpperCase() + name.slice(1);
-        }
+    const agents: AgentData[] = [];
 
-        const displayName = model ? `${baseName} (${model})` : baseName;
-        
-        return {
-          id: cf.artifact_id,
-          name: name,
-          baseName: baseName,
-          model: model,
+    // Iterate through each agent in the API results
+    for (const [agentName, results] of Object.entries(agentTestResultsData.agentResults)) {
+      // For each model of this agent
+      for (const result of results) {
+        // Try to find matching cast file artifact
+        const matchingCastFile = taskFilteredCastFiles?.find((cf) => {
+          const artifactBaseName = cf.artifact_name.replace(/^recordings-/i, '');
+          const artifactLower = artifactBaseName.toLowerCase();
+          const agentLower = agentName.toLowerCase();
+          const agentAlphaNum = agentLower.replace(/[^a-z0-9]/g, '');
+          const artifactAlphaNum = artifactLower.replace(/[^a-z0-9]/g, '');
+
+          // Strategy 1: Check if artifact matches agent name
+          const matchesAgentName =
+            artifactLower === agentLower ||
+            artifactLower.startsWith(agentLower + '-') ||
+            artifactAlphaNum === agentAlphaNum ||
+            artifactAlphaNum.startsWith(agentAlphaNum) ||
+            artifactLower === agentLower.replace(/\s+/g, '-') ||
+            artifactLower.startsWith(agentLower.replace(/\s+/g, '-') + '-');
+
+          // Strategy 2: Check if artifact matches model name (e.g., "claude-sonnet-4-5" for Claude Code)
+          let matchesModelName = false;
+          if (result.model) {
+            const modelLower = result.model.toLowerCase();
+            const modelAlphaNum = modelLower.replace(/[^a-z0-9]/g, '');
+            const modelWithDashes = modelLower.replace(/\s+/g, '-').replace(/\./g, '-');
+
+            matchesModelName =
+              artifactLower === modelLower ||
+              artifactLower === modelWithDashes ||
+              artifactAlphaNum === modelAlphaNum ||
+              artifactLower.replace(/\./g, '-') === modelWithDashes;
+          }
+
+          // Must match either agent name or model name
+          if (!matchesAgentName && !matchesModelName) return false;
+
+          // If this agent has multiple models, verify artifact matches this specific model
+          if (results.length > 1 && result.model) {
+            const modelNormalized = result.model.toLowerCase().replace(/[^a-z0-9]/g, '');
+            const artifactSearch = artifactLower.replace(/[^a-z0-9]/g, '');
+            return artifactSearch.includes(modelNormalized);
+          }
+
+          return true;
+        });
+
+        const displayName = result.model ? `${agentName} (${result.model})` : agentName;
+
+        agents.push({
+          id: matchingCastFile?.artifact_id || 0,
+          name: agentName.toLowerCase().replace(/\s+/g, '-'),
+          baseName: agentName,
+          model: result.model || '',
           displayName: displayName,
-          artifact_name: cf.artifact_name,
-          files: cf.files,
-          expired: cf.expired,
-          sortOrder: baseName === 'NOP' ? 0 : baseName === 'Oracle' ? 1 : baseName === 'Terminus' ? 2 : 999
-        };
-      })
-      .sort((a: AgentData, b: AgentData) => {
-        // Sort by defined order: NOP first, Oracle second, then Terminus, then others
-        if (a.sortOrder !== b.sortOrder) {
-          return a.sortOrder - b.sortOrder;
-        }
-        // Within same agent type (like multiple Terminus), sort alphabetically by model
-        return a.displayName.localeCompare(b.displayName);
-      });
+          artifact_name: matchingCastFile?.artifact_name || `recordings-${agentName.toLowerCase().replace(/\s+/g, '-')}`,
+          files: matchingCastFile?.files || [],
+          expired: matchingCastFile?.expired || false,
+          sortOrder: agentName === 'NOP' ? 0 : agentName === 'Oracle' ? 1 : agentName.startsWith('Terminus') ? 2 : 999
+        });
+      }
+    }
 
-    return agents;
-  }, [taskFilteredCastFiles]);
+    // Sort agents
+    return agents.sort((a: AgentData, b: AgentData) => {
+      if (a.sortOrder !== b.sortOrder) {
+        return a.sortOrder - b.sortOrder;
+      }
+      return a.displayName.localeCompare(b.displayName);
+    });
+  }, [agentTestResultsData, taskFilteredCastFiles]);
 
 
   // Auto-select first agent
