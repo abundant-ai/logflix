@@ -70,23 +70,41 @@ export default function CustomTerminalViewer({ castContent, showAgentThinking = 
           
           // Parse agent thinking from 'm' events
           if (type === 'm') {
-            try {
-              let thinking;
-              if (typeof content === 'string') {
-                thinking = JSON.parse(content);
+            // New format: "Episode N: X commands" (string)
+            // Old format: JSON object with thinking data
+            if (typeof content === 'string') {
+              // Check if it's an episode marker
+              const episodeMatch = content.match(/^Episode (\d+): (\d+) commands?$/);
+              if (episodeMatch) {
+                const [, episodeNum, commandCount] = episodeMatch;
+                agentThoughts.push({
+                  timestamp: timestamp - startTime,
+                  type: 'episode',
+                  episodeNumber: parseInt(episodeNum),
+                  commandCount: parseInt(commandCount),
+                  raw_content: content
+                });
               } else {
-                thinking = content;
+                // Try to parse as JSON
+                try {
+                  const thinking = JSON.parse(content);
+                  agentThoughts.push({
+                    timestamp: timestamp - startTime,
+                    ...thinking
+                  });
+                } catch {
+                  // Plain text metadata
+                  agentThoughts.push({
+                    timestamp: timestamp - startTime,
+                    raw_content: content
+                  });
+                }
               }
-              
+            } else {
+              // Object format
               agentThoughts.push({
                 timestamp: timestamp - startTime,
-                ...thinking
-              });
-            } catch (error) {
-              console.log('Could not parse agent thinking:', content, error);
-              agentThoughts.push({
-                timestamp: timestamp - startTime,
-                raw_content: content
+                ...content
               });
             }
           }
@@ -141,20 +159,16 @@ export default function CustomTerminalViewer({ castContent, showAgentThinking = 
     return [];
   }, [events, maxTime]);
 
-  // Terminal content with progressive display and better ANSI handling
+  // Terminal content with progressive display - preserve ANSI codes and newlines
   const terminalContent = useMemo(() => {
     const outputEvents = visibleEvents.filter(event => event.type === 'o');
-    
+
     let content = '';
     for (const event of outputEvents) {
-      content += cleanAnsiCodes(event.content);
+      // Keep ANSI codes for color, convert \r\n to \n for proper display
+      content += event.content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     }
-    
-    content = content
-      .replace(/\n{4,}/g, '\n\n\n')
-      .replace(/[ \t]+$/gm, '')
-      .trimEnd();
-    
+
     return content;
   }, [visibleEvents]);
 
@@ -317,15 +331,41 @@ export default function CustomTerminalViewer({ castContent, showAgentThinking = 
           </CardHeader>
           
           <CardContent className="p-0">
-            <div className="h-[700px] bg-black text-green-400 font-mono text-sm overflow-hidden">
+            <div className="h-[700px] bg-[#282c34] text-gray-100 font-mono text-sm overflow-hidden">
               <div 
                 ref={terminalRef}
                 className="h-full p-4 overflow-y-auto scrollbar-thin scrollbar-track-gray-800 scrollbar-thumb-gray-600"
               >
                 {terminalContent ? (
-                  <pre className="whitespace-pre-wrap break-words font-mono leading-relaxed">
-                    {terminalContent}
-                  </pre>
+                  <pre
+                    className="whitespace-pre font-mono leading-relaxed"
+                    style={{
+                      fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
+                      fontSize: '13px',
+                      lineHeight: '1.4'
+                    }}
+                    dangerouslySetInnerHTML={{
+                      __html: terminalContent
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/\u001b\[([0-9;]+)m/g, (match, codes) => {
+                          // Basic ANSI color mapping
+                          const colorMap: Record<string, string> = {
+                            '0': '</span>',
+                            '1': '<span style="font-weight:bold">',
+                            '32': '<span style="color:#5af78e">',  // Green
+                            '33': '<span style="color:#f3f99d">',  // Yellow
+                            '34': '<span style="color:#57c7ff">',  // Blue
+                            '31': '<span style="color:#ff6b6b">',  // Red
+                            '36': '<span style="color:#9aedfe">',  // Cyan
+                            '0;32': '<span style="color:#5af78e">',
+                            '0;33': '<span style="color:#f3f99d">',
+                          };
+                          return colorMap[codes] || '';
+                        })
+                    }}
+                  />
                 ) : (
                   <div className="text-gray-500">No terminal session yet... Press play to start</div>
                 )}
@@ -350,6 +390,18 @@ export default function CustomTerminalViewer({ castContent, showAgentThinking = 
               <ScrollArea className="h-[700px]">
                 {currentThinking ? (
                   <div className="space-y-4">
+                    {/* Episode Information (New Format) */}
+                    {currentThinking.type === 'episode' && (
+                      <div>
+                        <Badge variant="outline" className="mb-2">
+                          Episode {currentThinking.episodeNumber}
+                        </Badge>
+                        <p className="text-xs text-muted-foreground">
+                          {currentThinking.commandCount} command{currentThinking.commandCount !== 1 ? 's' : ''} executed
+                        </p>
+                      </div>
+                    )}
+
                     {/* Task Completion Status */}
                     {currentThinking.is_task_complete !== undefined && (
                       <div>
