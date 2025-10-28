@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { cleanAnsiCodes } from "@/lib/ansi";
+import AnsiToHtml from "ansi-to-html";
 
 interface CastEvent {
   timestamp: number;
@@ -169,7 +170,46 @@ export default function CustomTerminalViewer({ castContent, showAgentThinking = 
       content += event.content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     }
 
-    return content;
+    // Remove cursor control sequences and bracketed paste mode that ansi-to-html doesn't handle
+    content = content
+      .replace(/\x1b\[\?2004[hl]/g, '')  // Remove bracketed paste mode
+      .replace(/\x1b\[([0-9;]*)[HfABCDKJsuhl]/g, '')  // Remove cursor movement and clear sequences
+      .replace(/\x1b\[\?[0-9;]*[hl]/g, '')  // Remove mode changes
+      .replace(/\x1b\][0-9];[^\x07]*\x07/g, '')  // Remove OSC sequences
+      .replace(/\x1b\[[0-9;]*[mGK]/g, (match) => {
+        // Keep only SGR (color) sequences, remove others
+        if (match.endsWith('m')) return match;
+        return '';
+      });
+
+    // Convert ANSI color codes to HTML using ansi-to-html library
+    const converter = new AnsiToHtml({
+      fg: '#d0d0d0',
+      bg: '#282c34',
+      newline: true,
+      escapeXML: true,
+      stream: false,
+      colors: {
+        0: '#2e3436',   // Black
+        1: '#ff6b6b',   // Red
+        2: '#5af78e',   // Green
+        3: '#f3f99d',   // Yellow
+        4: '#57c7ff',   // Blue
+        5: '#ff79c6',   // Magenta
+        6: '#9aedfe',   // Cyan
+        7: '#d0d0d0',   // White
+        8: '#808080',   // Bright Black (Gray)
+        9: '#ff8787',   // Bright Red
+        10: '#90ee90',  // Bright Green
+        11: '#ffff87',  // Bright Yellow
+        12: '#87ceeb',  // Bright Blue
+        13: '#ffb3ff',  // Bright Magenta
+        14: '#b0e0e6',  // Bright Cyan
+        15: '#ffffff'   // Bright White
+      }
+    });
+
+    return converter.toHtml(content);
   }, [visibleEvents]);
 
 
@@ -346,24 +386,6 @@ export default function CustomTerminalViewer({ castContent, showAgentThinking = 
                     }}
                     dangerouslySetInnerHTML={{
                       __html: terminalContent
-                        .replace(/&/g, '&amp;')
-                        .replace(/</g, '&lt;')
-                        .replace(/>/g, '&gt;')
-                        .replace(/\u001b\[([0-9;]+)m/g, (match, codes) => {
-                          // Basic ANSI color mapping
-                          const colorMap: Record<string, string> = {
-                            '0': '</span>',
-                            '1': '<span style="font-weight:bold">',
-                            '32': '<span style="color:#5af78e">',  // Green
-                            '33': '<span style="color:#f3f99d">',  // Yellow
-                            '34': '<span style="color:#57c7ff">',  // Blue
-                            '31': '<span style="color:#ff6b6b">',  // Red
-                            '36': '<span style="color:#9aedfe">',  // Cyan
-                            '0;32': '<span style="color:#5af78e">',
-                            '0;33': '<span style="color:#f3f99d">',
-                          };
-                          return colorMap[codes] || '';
-                        })
                     }}
                   />
                 ) : (
