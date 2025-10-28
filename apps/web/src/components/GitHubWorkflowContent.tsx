@@ -90,6 +90,8 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [selectedAgentForLogs, setSelectedAgentForLogs] = useState<string | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [fileSource, setFileSource] = useState<'agent' | 'tests'>('agent'); // Toggle between agent and tests files
+  const [fileSourceForLogs, setFileSourceForLogs] = useState<'agent' | 'tests'>('agent'); // Toggle for logs tab
 
   // Reset all selections when PR changes
   useEffect(() => {
@@ -401,68 +403,84 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
   }, [castListData, selectedTaskId]);
 
 
-  // Parse available agents from cast list - filter out artifacts with no .cast files and apply task filter
+  // Build available agents from API test results - matches Overview tab Agent Results
   const availableAgents: AgentData[] = useMemo(() => {
-    if (!taskFilteredCastFiles) return [];
+    if (!agentTestResultsData?.agentResults) return [];
 
-    const agents: AgentData[] = taskFilteredCastFiles
-      .filter((cf) => cf.files.length > 0) // Only include artifacts that have .cast files
-      .map((cf): AgentData => {
-        // Parse agent name: recordings-nop → NOP, recordings-terminus-gpt4 → Terminus (GPT-4)
-        const name = cf.artifact_name.replace(/^recordings-/i, '');
-        
-        // Parse agent and model from artifact name
-        let baseName = '';
-        let model = '';
-        
-        if (name === 'nop') {
-          baseName = 'NOP';
-        } else if (name === 'oracle') {
-          baseName = 'Oracle';
-        } else if (name.startsWith('terminus')) {
-          baseName = 'Terminus';
-          // Extract model from name: terminus-gpt4 → GPT-4.1
-          const modelPart = name.replace('terminus-', '').replace('terminus', '');
-          if (modelPart) {
-            if (modelPart.includes('gpt')) {
-              model = 'GPT-4.1';
-            } else if (modelPart.includes('claude')) {
-              model = 'Claude 4 Sonnet';
-            } else if (modelPart.includes('gemini')) {
-              model = 'Gemini 2.5 Pro';
-            } else {
-              model = modelPart.toUpperCase();
-            }
+    const agents: AgentData[] = [];
+
+    // Iterate through each agent in the API results
+    for (const [agentName, results] of Object.entries(agentTestResultsData.agentResults)) {
+      // For each model of this agent
+      for (const result of results) {
+        // Try to find matching cast file artifact
+        const matchingCastFile = taskFilteredCastFiles?.find((cf) => {
+          const artifactBaseName = cf.artifact_name.replace(/^recordings-/i, '');
+          const artifactLower = artifactBaseName.toLowerCase();
+          const agentLower = agentName.toLowerCase();
+          const agentAlphaNum = agentLower.replace(/[^a-z0-9]/g, '');
+          const artifactAlphaNum = artifactLower.replace(/[^a-z0-9]/g, '');
+
+          // Strategy 1: Check if artifact matches agent name
+          const matchesAgentName =
+            artifactLower === agentLower ||
+            artifactLower.startsWith(agentLower + '-') ||
+            artifactAlphaNum === agentAlphaNum ||
+            artifactAlphaNum.startsWith(agentAlphaNum) ||
+            artifactLower === agentLower.replace(/\s+/g, '-') ||
+            artifactLower.startsWith(agentLower.replace(/\s+/g, '-') + '-');
+
+          // Strategy 2: Check if artifact matches model name (e.g., "claude-sonnet-4-5" for Claude Code)
+          let matchesModelName = false;
+          if (result.model) {
+            const modelLower = result.model.toLowerCase();
+            const modelAlphaNum = modelLower.replace(/[^a-z0-9]/g, '');
+            const modelWithDashes = modelLower.replace(/\s+/g, '-').replace(/\./g, '-');
+
+            matchesModelName =
+              artifactLower === modelLower ||
+              artifactLower === modelWithDashes ||
+              artifactAlphaNum === modelAlphaNum ||
+              artifactLower.replace(/\./g, '-') === modelWithDashes;
           }
-        } else {
-          baseName = name.charAt(0).toUpperCase() + name.slice(1);
-        }
-        
-        const displayName = model ? `${baseName} (${model})` : baseName;
-        
-        return {
-          id: cf.artifact_id,
-          name: name,
-          baseName: baseName,
-          model: model,
-          displayName: displayName,
-          artifact_name: cf.artifact_name,
-          files: cf.files,
-          expired: cf.expired,
-          sortOrder: baseName === 'NOP' ? 0 : baseName === 'Oracle' ? 1 : baseName === 'Terminus' ? 2 : 999
-        };
-      })
-      .sort((a: AgentData, b: AgentData) => {
-        // Sort by defined order: NOP first, Oracle second, then Terminus, then others
-        if (a.sortOrder !== b.sortOrder) {
-          return a.sortOrder - b.sortOrder;
-        }
-        // Within same agent type (like multiple Terminus), sort alphabetically by model
-        return a.displayName.localeCompare(b.displayName);
-      });
 
-    return agents;
-  }, [taskFilteredCastFiles]);
+          // Must match either agent name or model name
+          if (!matchesAgentName && !matchesModelName) return false;
+
+          // If this agent has multiple models, verify artifact matches this specific model
+          if (results.length > 1 && result.model) {
+            const modelNormalized = result.model.toLowerCase().replace(/[^a-z0-9]/g, '');
+            const artifactSearch = artifactLower.replace(/[^a-z0-9]/g, '');
+            return artifactSearch.includes(modelNormalized);
+          }
+
+          return true;
+        });
+
+        const displayName = result.model ? `${agentName} (${result.model})` : agentName;
+
+        agents.push({
+          id: matchingCastFile?.artifact_id || 0,
+          name: agentName.toLowerCase().replace(/\s+/g, '-'),
+          baseName: agentName,
+          model: result.model || '',
+          displayName: displayName,
+          artifact_name: matchingCastFile?.artifact_name || `recordings-${agentName.toLowerCase().replace(/\s+/g, '-')}`,
+          files: matchingCastFile?.files || [],
+          expired: matchingCastFile?.expired || false,
+          sortOrder: agentName === 'NOP' ? 0 : agentName === 'Oracle' ? 1 : agentName.startsWith('Terminus') ? 2 : 999
+        });
+      }
+    }
+
+    // Sort agents
+    return agents.sort((a: AgentData, b: AgentData) => {
+      if (a.sortOrder !== b.sortOrder) {
+        return a.sortOrder - b.sortOrder;
+      }
+      return a.displayName.localeCompare(b.displayName);
+    });
+  }, [agentTestResultsData, taskFilteredCastFiles]);
 
 
   // Auto-select first agent
@@ -478,19 +496,20 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
   }, [availableAgents, selectedAgent]);
 
   const selectedCastFile = useMemo(() => {
-    // Only look for agent.cast file (no more tests)
-    return selectedAgentData?.files.find((f) => f.name === 'agent.cast');
-  }, [selectedAgentData]);
+    if (!selectedAgentData) return undefined;
+    // Toggle between agent.cast and tests.cast based on fileSource
+    const targetFileName = fileSource === 'agent' ? 'agent.cast' : 'tests.cast';
+    return selectedAgentData.files.find((f) => f.name === targetFileName);
+  }, [selectedAgentData, fileSource]);
 
-  // Use React Query for cast file caching with custom queryFn - PRELOAD first agent
-  const castFileQuery = useQuery<{ content: string }>({
+  // Use React Query for cast file caching with custom queryFn
+  const castFileQuery = useQuery<{ content: string; metadata?: any }>({
     queryKey: selectedAgentData && selectedCastFile ? [
       "cast-file",
       selectedRunId,
       selectedAgentData.id,
       selectedCastFile.path,
-      selectedCommitSha,
-      selectedPR?.prNumber
+      fileSource
     ] : [],
     queryFn: async () => {
       if (!selectedAgentData || !selectedCastFile) {
@@ -499,7 +518,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
 
       const params = createAPIParams({ owner: organization, repo: repoName, workflow }, { path: selectedCastFile.path });
 
-      const response = await fetch(`/api/github/cast-file-by-path/${selectedAgentData.id}?${params}`);
+      const response = await fetch(`/api/github/artifact/${selectedAgentData.id}/content?${params}`);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: response.statusText }));
@@ -531,40 +550,48 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
     return availableAgents.find((a) => a.artifact_name === selectedAgentForLogs);
   }, [availableAgents, selectedAgentForLogs]);
 
-  // Get log files for the selected agent (look for agent.log in the recordings artifact)
-  const { data: logFilesDataForAgent } = useQuery<{ logFiles: Array<{ name: string; path: string }> }>({
-    queryKey: selectedAgentDataForLogs ? ["/api/github/artifact-logs", selectedAgentDataForLogs.id] : [],
+  // Get log files for the selected agent
+  const { data: logFilesDataForAgent } = useQuery<{ files: Array<{ name: string; path: string; size: number }> }>({
+    queryKey: selectedAgentDataForLogs ? [
+      "/artifact/files/log",
+      selectedAgentDataForLogs.id,
+      selectedAgentDataForLogs.artifact_name // Add agent name to force refetch when agent changes
+    ] : [],
     queryFn: async () => {
       if (!selectedAgentDataForLogs) throw new Error('No agent selected for logs');
 
-      const params = createAPIParams({ owner: organization, repo: repoName, workflow });
-      return fetchAPI(`/api/github/artifact-logs/${selectedAgentDataForLogs.id}?${params}`);
+      const params = createAPIParams({ owner: organization, repo: repoName, workflow }, { type: 'log' });
+
+      return fetchAPI(`/api/github/artifact/${selectedAgentDataForLogs.id}/files?${params}`);
     },
     enabled: !!selectedAgentDataForLogs,
-    staleTime: CACHE_TIME.STALE_LONG,
+    staleTime: 0, // Don't cache - always refetch when agent changes
     gcTime: CACHE_TIME.GC_MEDIUM,
   });
 
-  // Auto-select agent.log file when log files are loaded
+  // Auto-select log file when log files are loaded, agent changes, or fileSource changes
   useEffect(() => {
-    if (logFilesDataForAgent?.logFiles && logFilesDataForAgent.logFiles.length > 0 && !selectedLogFile) {
-      // Look for agent.log file first
-      const agentLog = logFilesDataForAgent.logFiles.find(f => f.name === 'agent.log');
-      if (agentLog) {
-        setSelectedLogFile(agentLog.path);
+    if (logFilesDataForAgent?.files && logFilesDataForAgent.files.length > 0) {
+      // Look for agent.log or tests.log based on fileSourceForLogs toggle
+      const targetFileName = fileSourceForLogs === 'agent' ? 'agent.log' : 'tests.log';
+      const targetLog = logFilesDataForAgent.files.find(f => f.name === targetFileName);
+
+      if (targetLog) {
+        setSelectedLogFile(targetLog.path);
       } else {
         // Fallback to first log file
-        setSelectedLogFile(logFilesDataForAgent.logFiles[0].path);
+        setSelectedLogFile(logFilesDataForAgent.files[0].path);
       }
     }
-  }, [logFilesDataForAgent, selectedLogFile]);
+  }, [logFilesDataForAgent, fileSourceForLogs, selectedAgentDataForLogs]);
 
   // Use React Query for log content fetching
-  const logContentQuery = useQuery<{ content: string }>({
+  const logContentQuery = useQuery<{ content: string; metadata?: any }>({
     queryKey: selectedAgentDataForLogs && selectedLogFile ? [
       "log-content",
       selectedAgentDataForLogs.id,
-      selectedLogFile
+      selectedLogFile,
+      fileSourceForLogs
     ] : [],
     queryFn: async () => {
       if (!selectedAgentDataForLogs || !selectedLogFile) {
@@ -573,7 +600,7 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
 
       const params = createAPIParams({ owner: organization, repo: repoName, workflow }, { path: selectedLogFile });
 
-      const response = await fetch(`/api/github/artifact-log-content/${selectedAgentDataForLogs.id}?${params}`);
+      const response = await fetch(`/api/github/artifact/${selectedAgentDataForLogs.id}/content?${params}`);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: response.statusText }));
@@ -1149,6 +1176,27 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                         ))}
                       </SelectContent>
                     </Select>
+
+                    {/* Agent / Tests Toggle */}
+                    <div className="flex items-center gap-1 border border-border rounded-lg p-1">
+                      <Button
+                        variant={fileSource === 'agent' ? 'default' : 'ghost'}
+                        size="sm"
+                        onClick={() => setFileSource('agent')}
+                        className="h-7 px-3"
+                      >
+                        Agent
+                      </Button>
+                      <Button
+                        variant={fileSource === 'tests' ? 'default' : 'ghost'}
+                        size="sm"
+                        onClick={() => setFileSource('tests')}
+                        className="h-7 px-3"
+                      >
+                        Tests
+                      </Button>
+                    </div>
+
                     {selectedAgentData && (
                       <Button
                         variant="secondary"
@@ -1300,8 +1348,6 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                       value={selectedAgentForLogs || ""}
                       onValueChange={(value) => {
                         setSelectedAgentForLogs(value);
-                        // Reset log file selection when agent changes
-                        setSelectedLogFile(null);
                       }}
                     >
                       <SelectTrigger className="w-64">
@@ -1315,6 +1361,27 @@ export default function GitHubWorkflowContent({ selectedPR, organization, repoNa
                         ))}
                       </SelectContent>
                     </Select>
+
+                    {/* Agent / Tests Toggle */}
+                    <div className="flex items-center gap-1 border border-border rounded-lg p-1">
+                      <Button
+                        variant={fileSourceForLogs === 'agent' ? 'default' : 'ghost'}
+                        size="sm"
+                        onClick={() => setFileSourceForLogs('agent')}
+                        className="h-7 px-3"
+                      >
+                        Agent
+                      </Button>
+                      <Button
+                        variant={fileSourceForLogs === 'tests' ? 'default' : 'ghost'}
+                        size="sm"
+                        onClick={() => setFileSourceForLogs('tests')}
+                        className="h-7 px-3"
+                      >
+                        Tests
+                      </Button>
+                    </div>
+
                     {selectedAgentDataForLogs && (
                       <Button
                         variant="secondary"

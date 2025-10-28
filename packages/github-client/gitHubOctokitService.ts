@@ -418,120 +418,6 @@ export class GitHubOctokitService {
   }
 
   /**
-   * Lists all cast files within an artifact
-   * Handles nested directory structures like:
-   * github-action-{date}-{task}/task-name/task-name.1-of-1.{timestamp}/sessions/agent.cast
-   */
-  async getCastFilesList(artifactId: number): Promise<Array<{ name: string; path: string; size: number }>> {
-    try {
-      this.logger.debug({ artifactId }, 'Listing cast files in artifact');
-
-      const response = await this.octokit.actions.downloadArtifact({
-        owner: this.repositoryOwner,
-        repo: this.repositoryName,
-        artifact_id: artifactId,
-        archive_format: 'zip',
-      });
-
-      const zipResponse = await fetch(response.url);
-      const zipBuffer = Buffer.from(await zipResponse.arrayBuffer());
-
-      const zip = new AdmZip(zipBuffer);
-      const zipEntries = zip.getEntries();
-
-      const castFiles: Array<{ name: string; path: string; size: number }> = [];
-      zipEntries.forEach((entry) => {
-        // Search recursively for all .cast files in nested directories
-        if (!entry.isDirectory && entry.entryName.endsWith('.cast')) {
-          // Extract just the filename (e.g., "agent.cast" or "tests.cast")
-          const fileName = entry.entryName.split('/').pop() || entry.entryName;
-
-          castFiles.push({
-            name: fileName,
-            path: entry.entryName, // Keep full path for extraction
-            size: entry.header.size
-          });
-        }
-      });
-
-      this.logger.debug({
-        artifactId,
-        castFileCount: castFiles.length,
-        castFiles: castFiles.map(f => ({ name: f.name, path: f.path }))
-      }, 'Found cast files in artifact');
-      return castFiles;
-    } catch (error: any) {
-      if (error.status === 410 || error.message?.includes('Artifact has expired')) {
-        this.logger.warn({ artifactId }, 'Artifact expired, cast files unavailable');
-        return [];
-      }
-      this.logger.error({ artifactId, error }, 'Failed to list cast files from artifact');
-      return [];
-    }
-  }
-
-  /**
-   * Retrieves cast file content by path with security validation
-   */
-  async getCastFileByPath(artifactId: number, filePath: string): Promise<string | null> {
-    try {
-      this.logger.debug({ artifactId, filePath }, 'Retrieving cast file content');
-      
-      let decodedPath = filePath;
-      try {
-        let previousPath = '';
-        while (previousPath !== decodedPath) {
-          previousPath = decodedPath;
-          decodedPath = decodeURIComponent(decodedPath);
-        }
-      } catch (decodeError) {
-        this.logger.warn({ filePath, error: decodeError }, 'Path decode failed, using original');
-        decodedPath = filePath;
-      }
-
-      const normalizedPath = decodedPath.replace(/\\/g, '/').replace(/\/+/g, '/');
-      if (normalizedPath.includes('../') || normalizedPath.includes('..\\') || normalizedPath.startsWith('/')) {
-        this.logger.error({ filePath, normalizedPath }, 'Invalid file path (directory traversal detected)');
-        return null;
-      }
-
-      const response = await this.octokit.actions.downloadArtifact({
-        owner: this.repositoryOwner,
-        repo: this.repositoryName,
-        artifact_id: artifactId,
-        archive_format: 'zip',
-      });
-
-      const zipResponse = await fetch(response.url);
-      const zipBuffer = Buffer.from(await zipResponse.arrayBuffer());
-      
-      const zip = new AdmZip(zipBuffer);
-      const entry = zip.getEntry(normalizedPath);
-      
-      if (!entry) {
-        this.logger.error({ artifactId, normalizedPath, originalPath: filePath }, 'Cast file not found in artifact');
-        return null;
-      }
-      
-      // Read as text and validate size
-      const content = zip.readAsText(entry);
-      if (content.length > 10 * 1024 * 1024) {
-        this.logger.error({ artifactId, normalizedPath, size: content.length }, 'Cast file exceeds 10MB size limit');
-        return null;
-      }
-      
-      return content;
-    } catch (error: any) {
-      if (error.status === 410 || error.message?.includes('Artifact has expired')) {
-        this.logger.warn({ artifactId, filePath }, 'Artifact expired, cast file unavailable');
-        return null;
-      }
-      this.logger.error({ artifactId, filePath, error }, 'Failed to read cast file from artifact');
-      return null;
-    }
-  }
-
-  /**
    * Fetches detailed information for a specific workflow run
    */
   async getWorkflowRun(runId: number): Promise<GitHubWorkflowRun | null> {
@@ -1519,13 +1405,20 @@ export class GitHubOctokitService {
   }
 
   /**
-   * Extracts log file listings from artifact archive
-   * Handles nested directory structures like:
-   * github-action-{date}-{task}/task-name/task-name.1-of-1.{timestamp}/sessions/agent.log
+   * Unified method to get all files from an artifact, optionally filtered by type
+   * @param artifactId - The artifact ID
+   * @param fileType - Optional filter: 'cast', 'log', 'txt', or undefined for all files
    */
-  async getArtifactLogFiles(artifactId: number): Promise<Array<{ name: string; path: string }>> {
+  async getArtifactAllFiles(
+    artifactId: number,
+    fileType?: 'cast' | 'log' | 'txt'
+  ): Promise<Array<{ name: string; path: string; size: number }>> {
     try {
-      this.logger.debug({ artifactId }, 'Extracting log files from artifact');
+      this.logger.info({
+        artifactId,
+        fileType,
+        requestedArtifactId: artifactId
+      }, '🔍 Requesting files from artifact');
 
       const response = await this.octokit.actions.downloadArtifact({
         owner: this.repositoryOwner,
@@ -1534,49 +1427,95 @@ export class GitHubOctokitService {
         archive_format: 'zip',
       });
 
+      this.logger.info({
+        artifactId,
+        responseUrl: response.url,
+        urlContainsArtifactId: response.url.includes(artifactId.toString())
+      }, '📥 Download artifact response received');
+
       const zipResponse = await fetch(response.url);
       const zipBuffer = Buffer.from(await zipResponse.arrayBuffer());
 
       const zip = new AdmZip(zipBuffer);
       const zipEntries = zip.getEntries();
 
-      const logFiles: Array<{ name: string; path: string }> = [];
-      zipEntries.forEach((entry) => {
-        // Search recursively for all .log files in nested directories
-        if (!entry.isDirectory && entry.entryName.endsWith('.log')) {
-          // Extract just the filename (e.g., "agent.log" or "tests.log")
-          const fileName = entry.entryName.split('/').pop() || entry.entryName;
+      // Log first entry to see the timestamp in paths
+      const firstEntry = zipEntries.find(e => !e.isDirectory);
+      if (firstEntry) {
+        // Extract timestamp from path (e.g., "04-57-10" from "github-action-2025-10-26__04-57-10-...")
+        const timestampMatch = firstEntry.entryName.match(/__(\d{2}-\d{2}-\d{2})/);
+        this.logger.info({
+          artifactId,
+          firstFilePath: firstEntry.entryName.substring(0, 100),
+          extractedTimestamp: timestampMatch ? timestampMatch[1] : 'unknown'
+        }, '⏱️  Artifact path timestamp detected');
+      }
 
-          logFiles.push({
+      const files: Array<{ name: string; path: string; size: number }> = [];
+
+      zipEntries.forEach((entry) => {
+        if (entry.isDirectory) return;
+
+        // Filter by file type if specified
+        let include = false;
+        if (!fileType) {
+          include = true; // Include all files
+        } else if (fileType === 'cast') {
+          include = entry.entryName.endsWith('.cast');
+        } else if (fileType === 'log') {
+          include = entry.entryName.endsWith('.log');
+        } else if (fileType === 'txt') {
+          include = entry.entryName.endsWith('.txt');
+        }
+
+        if (include) {
+          const fileName = entry.entryName.split('/').pop() || entry.entryName;
+          files.push({
             name: fileName,
-            path: entry.entryName // Keep full path for extraction
+            path: entry.entryName,
+            size: entry.header.size
           });
         }
       });
 
-      this.logger.debug({
+      // Extract timestamp from paths for validation
+      const pathTimestamps = files.map(f => {
+        const match = f.path.match(/__(\d{2}-\d{2}-\d{2})/);
+        return match ? match[1] : null;
+      }).filter((t): t is string => t !== null);
+
+      const uniqueTimestamps = Array.from(new Set(pathTimestamps));
+
+      this.logger.info({
         artifactId,
-        logFileCount: logFiles.length,
-        logFiles: logFiles.map(f => ({ name: f.name, path: f.path }))
-      }, 'Log files extracted from artifact');
-      return logFiles;
+        fileType,
+        fileCount: files.length,
+        files: files.map(f => ({ name: f.name, pathPreview: f.path.substring(0, 60) + '...' })),
+        pathTimestamps: uniqueTimestamps,
+        WARNING: uniqueTimestamps.length > 1 ? '⚠️ MULTIPLE TIMESTAMPS IN ONE ARTIFACT - BUG!' : null
+      }, '✅ Files extracted from artifact');
+
+      return files;
     } catch (error: any) {
       if (error.status === 410 || error.message?.includes('Artifact has expired')) {
-        this.logger.warn({ artifactId }, 'Artifact expired, log files unavailable');
+        this.logger.warn({ artifactId, fileType }, 'Artifact expired, files unavailable');
         return [];
       }
-      this.logger.error({ artifactId, error }, 'Failed to extract log files from artifact');
+      this.logger.error({ artifactId, fileType, error }, 'Failed to extract files from artifact');
       return [];
     }
   }
 
   /**
-   * Retrieves specific log file content with path security validation
+   * Unified method to read any file from an artifact by path
+   * @param artifactId - The artifact ID
+   * @param filePath - The full path to the file within the artifact
    */
-  async getArtifactLogContent(artifactId: number, filePath: string): Promise<string | null> {
+  async readArtifactFile(artifactId: number, filePath: string): Promise<string | null> {
     try {
-      this.logger.debug({ artifactId, filePath }, 'Retrieving log file content');
-      
+      this.logger.debug({ artifactId, filePath }, 'Reading file from artifact');
+
+      // Decode path (handle URL encoding)
       let decodedPath = filePath;
       try {
         let previousPath = '';
@@ -1589,13 +1528,16 @@ export class GitHubOctokitService {
         decodedPath = filePath;
       }
 
+      // Normalize path (convert backslashes, remove duplicate slashes)
       const normalizedPath = decodedPath.replace(/\\/g, '/').replace(/\/+/g, '/');
+
+      // Security: prevent directory traversal
       if (normalizedPath.includes('../') || normalizedPath.includes('..\\') || normalizedPath.startsWith('/')) {
         this.logger.error({ filePath, normalizedPath }, 'Invalid file path (directory traversal detected)');
         return null;
       }
 
-      // Download artifact zip
+      // Download artifact
       const response = await this.octokit.actions.downloadArtifact({
         owner: this.repositoryOwner,
         repo: this.repositoryName,
@@ -1605,22 +1547,46 @@ export class GitHubOctokitService {
 
       const zipResponse = await fetch(response.url);
       const zipBuffer = Buffer.from(await zipResponse.arrayBuffer());
-      
+
       const zip = new AdmZip(zipBuffer);
       const entry = zip.getEntry(normalizedPath);
-      
+
       if (!entry) {
-        this.logger.error({ artifactId, normalizedPath, originalPath: filePath }, 'File not found in artifact');
+        // Log all available files to help diagnose path issues
+        const availableFiles = zip.getEntries()
+          .filter(e => !e.isDirectory)
+          .map(e => e.entryName);
+
+        this.logger.error({
+          artifactId,
+          requestedPath: normalizedPath,
+          originalPath: filePath,
+          availableFiles: availableFiles.slice(0, 10) // Log first 10 files
+        }, 'File not found in artifact');
         return null;
       }
-      
-      return zip.readAsText(entry);
+
+      const content = zip.readAsText(entry);
+
+      // Detect content type for logging
+      const contentType = content.trim().startsWith('{') ? 'JSON' :
+                         content.trim().startsWith('[') ? 'Array/ANSI' : 'Text';
+
+      this.logger.debug({
+        artifactId,
+        filePath: normalizedPath,
+        contentLength: content.length,
+        contentType,
+        firstChars: content.substring(0, 50)
+      }, 'File read successfully');
+
+      return content;
     } catch (error: any) {
       if (error.status === 410 || error.message?.includes('Artifact has expired')) {
-        this.logger.warn({ artifactId, filePath }, 'Artifact expired, log file unavailable');
+        this.logger.warn({ artifactId, filePath }, 'Artifact expired, file unavailable');
         return null;
       }
-      this.logger.error({ artifactId, filePath, error }, 'Failed to read log file from artifact');
+      this.logger.error({ artifactId, filePath, error }, 'Failed to read file from artifact');
       return null;
     }
   }

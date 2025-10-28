@@ -89,10 +89,7 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, or
       );
 
       const url = `/api/github/pull-requests?${params}`;
-      logger.debug('Fetching PRs for repo', { repoName, url });
-
       const result = await fetchAPI<{ pullRequests: GitHubPullRequest[]; total_count: number }>(url);
-      logger.info('Received PRs for repo', { repoName, count: result.pullRequests?.length || 0 });
 
       return result;
     },
@@ -119,11 +116,6 @@ export default function NavigationSidebar({ onSelectPR, selectedPR, repoName, or
       }
     });
     const uniquePRs = Array.from(uniquePRMap.values()) as GitHubPullRequest[];
-
-    logger.debug('PR deduplication complete', {
-      returned: prData.pullRequests.length,
-      unique: uniquePRs.length
-    });
     
     return uniquePRs
       .filter(pr => {

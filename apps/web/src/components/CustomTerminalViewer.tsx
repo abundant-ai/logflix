@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { cleanAnsiCodes } from "@/lib/ansi";
+import AnsiToHtml from "ansi-to-html";
 
 interface CastEvent {
   timestamp: number;
@@ -70,23 +71,41 @@ export default function CustomTerminalViewer({ castContent, showAgentThinking = 
           
           // Parse agent thinking from 'm' events
           if (type === 'm') {
-            try {
-              let thinking;
-              if (typeof content === 'string') {
-                thinking = JSON.parse(content);
+            // New format: "Episode N: X commands" (string)
+            // Old format: JSON object with thinking data
+            if (typeof content === 'string') {
+              // Check if it's an episode marker
+              const episodeMatch = content.match(/^Episode (\d+): (\d+) commands?$/);
+              if (episodeMatch) {
+                const [, episodeNum, commandCount] = episodeMatch;
+                agentThoughts.push({
+                  timestamp: timestamp - startTime,
+                  type: 'episode',
+                  episodeNumber: parseInt(episodeNum),
+                  commandCount: parseInt(commandCount),
+                  raw_content: content
+                });
               } else {
-                thinking = content;
+                // Try to parse as JSON
+                try {
+                  const thinking = JSON.parse(content);
+                  agentThoughts.push({
+                    timestamp: timestamp - startTime,
+                    ...thinking
+                  });
+                } catch {
+                  // Plain text metadata
+                  agentThoughts.push({
+                    timestamp: timestamp - startTime,
+                    raw_content: content
+                  });
+                }
               }
-              
+            } else {
+              // Object format
               agentThoughts.push({
                 timestamp: timestamp - startTime,
-                ...thinking
-              });
-            } catch (error) {
-              console.log('Could not parse agent thinking:', content, error);
-              agentThoughts.push({
-                timestamp: timestamp - startTime,
-                raw_content: content
+                ...content
               });
             }
           }
@@ -141,21 +160,56 @@ export default function CustomTerminalViewer({ castContent, showAgentThinking = 
     return [];
   }, [events, maxTime]);
 
-  // Terminal content with progressive display and better ANSI handling
+  // Terminal content with progressive display - preserve ANSI codes and newlines
   const terminalContent = useMemo(() => {
     const outputEvents = visibleEvents.filter(event => event.type === 'o');
-    
+
     let content = '';
     for (const event of outputEvents) {
-      content += cleanAnsiCodes(event.content);
+      // Keep ANSI codes for color, convert \r\n to \n for proper display
+      content += event.content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     }
-    
+
+    // Remove cursor control sequences and bracketed paste mode that ansi-to-html doesn't handle
     content = content
-      .replace(/\n{4,}/g, '\n\n\n')
-      .replace(/[ \t]+$/gm, '')
-      .trimEnd();
-    
-    return content;
+      .replace(/\x1b\[\?2004[hl]/g, '')  // Remove bracketed paste mode
+      .replace(/\x1b\[([0-9;]*)[HfABCDKJsuhl]/g, '')  // Remove cursor movement and clear sequences
+      .replace(/\x1b\[\?[0-9;]*[hl]/g, '')  // Remove mode changes
+      .replace(/\x1b\][0-9];[^\x07]*\x07/g, '')  // Remove OSC sequences
+      .replace(/\x1b\[[0-9;]*[mGK]/g, (match) => {
+        // Keep only SGR (color) sequences, remove others
+        if (match.endsWith('m')) return match;
+        return '';
+      });
+
+    // Convert ANSI color codes to HTML using ansi-to-html library
+    const converter = new AnsiToHtml({
+      fg: '#d0d0d0',
+      bg: '#282c34',
+      newline: true,
+      escapeXML: true,
+      stream: false,
+      colors: {
+        0: '#2e3436',   // Black
+        1: '#ff6b6b',   // Red
+        2: '#5af78e',   // Green
+        3: '#f3f99d',   // Yellow
+        4: '#57c7ff',   // Blue
+        5: '#ff79c6',   // Magenta
+        6: '#9aedfe',   // Cyan
+        7: '#d0d0d0',   // White
+        8: '#808080',   // Bright Black (Gray)
+        9: '#ff8787',   // Bright Red
+        10: '#90ee90',  // Bright Green
+        11: '#ffff87',  // Bright Yellow
+        12: '#87ceeb',  // Bright Blue
+        13: '#ffb3ff',  // Bright Magenta
+        14: '#b0e0e6',  // Bright Cyan
+        15: '#ffffff'   // Bright White
+      }
+    });
+
+    return converter.toHtml(content);
   }, [visibleEvents]);
 
 
@@ -317,15 +371,23 @@ export default function CustomTerminalViewer({ castContent, showAgentThinking = 
           </CardHeader>
           
           <CardContent className="p-0">
-            <div className="h-[700px] bg-black text-green-400 font-mono text-sm overflow-hidden">
+            <div className="h-[700px] bg-[#282c34] text-gray-100 font-mono text-sm overflow-hidden">
               <div 
                 ref={terminalRef}
                 className="h-full p-4 overflow-y-auto scrollbar-thin scrollbar-track-gray-800 scrollbar-thumb-gray-600"
               >
                 {terminalContent ? (
-                  <pre className="whitespace-pre-wrap break-words font-mono leading-relaxed">
-                    {terminalContent}
-                  </pre>
+                  <pre
+                    className="whitespace-pre font-mono leading-relaxed"
+                    style={{
+                      fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
+                      fontSize: '13px',
+                      lineHeight: '1.4'
+                    }}
+                    dangerouslySetInnerHTML={{
+                      __html: terminalContent
+                    }}
+                  />
                 ) : (
                   <div className="text-gray-500">No terminal session yet... Press play to start</div>
                 )}
@@ -350,6 +412,18 @@ export default function CustomTerminalViewer({ castContent, showAgentThinking = 
               <ScrollArea className="h-[700px]">
                 {currentThinking ? (
                   <div className="space-y-4">
+                    {/* Episode Information (New Format) */}
+                    {currentThinking.type === 'episode' && (
+                      <div>
+                        <Badge variant="outline" className="mb-2">
+                          Episode {currentThinking.episodeNumber}
+                        </Badge>
+                        <p className="text-xs text-muted-foreground">
+                          {currentThinking.commandCount} command{currentThinking.commandCount !== 1 ? 's' : ''} executed
+                        </p>
+                      </div>
+                    )}
+
                     {/* Task Completion Status */}
                     {currentThinking.is_task_complete !== undefined && (
                       <div>
