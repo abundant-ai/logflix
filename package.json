@@ -7,7 +7,7 @@
     "node": ">=18.0.0"
   },
   "scripts": {
-    "dev": "NODE_ENV=development tsx apps/api/index.ts",
+    "dev": "NODE_ENV=development tsx watch apps/api/index.ts",
     "dev:web": "pnpm --filter @logflix/web dev",
     "dev:api": "pnpm --filter @logflix/api dev",
     "build": "pnpm build:packages && pnpm build:web",

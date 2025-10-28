@@ -716,25 +716,6 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
     }
   });
 
-  // Get cast file content from artifact (DEPRECATED - use cast-file-by-path instead)
-  app.get("/api/github/cast-file/:artifactId", requireAuth, requireRepositoryAccess, async (req, res) => {
-    const requestLogger = res.locals.logger || logger;
-    requestLogger.warn({ artifactId: req.params.artifactId }, 'Deprecated endpoint accessed: /api/github/cast-file/:artifactId');
-    
-    res.setHeader('X-Deprecation-Warning', 'This endpoint is deprecated. Use /api/github/cast-file-by-path/:artifactId with ?path= query parameter.');
-    res.setHeader('Sunset', new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString()); // 90 days from now
-    
-    res.status(410).json({ 
-      error: "This endpoint has been deprecated",
-      deprecatedEndpoint: "/api/github/cast-file/:artifactId",
-      replacementEndpoint: "/api/github/cast-file-by-path/:artifactId",
-      replacementParams: "Add ?path= query parameter to specify the cast file path",
-      sunsetDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString()
-    });
-  });
-
-  
-
   // List all cast files in artifacts for a workflow run
   app.get("/api/github/cast-list/:runId", requireAuth, requireRepositoryAccess, async (req, res) => {
     try {
@@ -777,7 +758,8 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
 
       // Get cast files from each artifact
       const castFilesPromises = castArtifacts.map(async (artifact) => {
-        const files = await githubService.getCastFilesList(artifact.id);
+        // Use new unified method to get cast files
+        const files = await githubService.getArtifactAllFiles(artifact.id, 'cast');
         return {
           artifact_id: artifact.id,
           artifact_name: artifact.name,
@@ -800,38 +782,6 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
       const requestLogger = res.locals.logger || logger;
       requestLogger.error({ runId: req.params.runId, error }, "Error listing cast files");
       res.status(500).json({ error: "Failed to list cast files" });
-    }
-  });
-
-  // Get specific cast file by path from artifact
-  app.get("/api/github/cast-file-by-path/:artifactId", requireAuth, requireRepositoryAccess, async (req, res) => {
-    try {
-      const { artifactId } = req.params;
-      const { path } = req.query;
-      const requestLogger = res.locals.logger || logger;
-      const githubToken = res.locals.githubToken;
-      const githubService = getGitHubService(req.query, requestLogger, githubToken);
-
-      if (!artifactId || isNaN(parseInt(artifactId, 10))) {
-        return res.status(400).json({ error: "Invalid artifact ID parameter" });
-      }
-
-      if (!path || typeof path !== 'string') {
-        return res.status(400).json({ error: "File path is required" });
-      }
-
-      const artifactIdNumber = parseInt(artifactId, 10);
-      const content = await githubService.getCastFileByPath(artifactIdNumber, path);
-
-      if (!content) {
-        return res.status(404).json({ error: "Cast file not found" });
-      }
-
-      res.json({ content });
-    } catch (error) {
-      const requestLogger = res.locals.logger || logger;
-      requestLogger.error({ artifactId: req.params.artifactId, path: req.query.path, error }, "Error fetching cast file by path");
-      res.status(500).json({ error: "Failed to fetch cast file" });
     }
   });
 
@@ -1019,10 +969,11 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
     }
   });
 
-  // Get log files from artifact
-  app.get("/api/github/artifact-logs/:artifactId", requireAuth, requireRepositoryAccess, async (req, res) => {
+  // List files in an artifact (with optional type filtering)
+  app.get("/api/github/artifact/:artifactId/files", requireAuth, requireRepositoryAccess, async (req, res) => {
     try {
       const { artifactId } = req.params;
+      const { type } = req.query;
       const requestLogger = res.locals.logger || logger;
       const githubToken = res.locals.githubToken;
       const githubService = getGitHubService(req.query, requestLogger, githubToken);
@@ -1031,19 +982,40 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
         return res.status(400).json({ error: "Invalid artifact ID parameter" });
       }
 
-      const artifactIdNumber = parseInt(artifactId, 10);
-      const logFiles = await githubService.getArtifactLogFiles(artifactIdNumber);
+      // Validate type parameter
+      const validTypes = ['cast', 'log', 'txt'];
+      if (type && typeof type === 'string' && !validTypes.includes(type)) {
+        return res.status(400).json({ error: `Invalid type parameter. Must be one of: ${validTypes.join(', ')}` });
+      }
 
-      res.json({ logFiles });
+      const artifactIdNumber = parseInt(artifactId, 10);
+      const fileType = type as 'cast' | 'log' | 'txt' | undefined;
+
+      requestLogger.info({ artifactId: artifactIdNumber, type: fileType }, 'Listing files in artifact');
+
+      const files = await githubService.getArtifactAllFiles(artifactIdNumber, fileType);
+
+      requestLogger.info({
+        artifactId: artifactIdNumber,
+        type: fileType,
+        fileCount: files.length,
+        files: files.map(f => ({ name: f.name, type: f.name.split('.').pop() }))
+      }, 'Artifact files listed');
+
+      res.json({ files });
     } catch (error) {
       const requestLogger = res.locals.logger || logger;
-      requestLogger.error({ artifactId: req.params.artifactId, error }, "Error extracting log files");
-      res.status(500).json({ error: "Failed to extract log files" });
+      requestLogger.error({
+        artifactId: req.params.artifactId,
+        type: req.query.type,
+        error
+      }, "Error listing artifact files");
+      res.status(500).json({ error: "Failed to list artifact files" });
     }
   });
 
-  // Get specific log file content from artifact
-  app.get("/api/github/artifact-log-content/:artifactId", requireAuth, requireRepositoryAccess, async (req, res) => {
+  // Read file content from artifact (with metadata)
+  app.get("/api/github/artifact/:artifactId/content", requireAuth, requireRepositoryAccess, async (req, res) => {
     try {
       const { artifactId } = req.params;
       const { path } = req.query;
@@ -1060,17 +1032,52 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
       }
 
       const artifactIdNumber = parseInt(artifactId, 10);
-      const content = await githubService.getArtifactLogContent(artifactIdNumber, path);
+
+      requestLogger.info({
+        artifactId: artifactIdNumber,
+        path,
+        endpoint: '/artifact/:id/content'
+      }, 'Reading file content from artifact');
+
+      const content = await githubService.readArtifactFile(artifactIdNumber, path);
 
       if (!content) {
-        return res.status(404).json({ error: "Log file not found" });
+        return res.status(404).json({ error: "File not found in artifact" });
       }
 
-      res.json({ content });
+      // Extract metadata from path
+      const fileName = path.split('/').pop() || path;
+      const fileExtension = fileName.split('.').pop() || '';
+      const fileType = fileExtension as 'cast' | 'log' | 'txt';
+
+      const response = {
+        content,
+        metadata: {
+          fileName,
+          filePath: path,
+          fileSize: content.length,
+          fileType,
+          artifactId: artifactIdNumber
+        }
+      };
+
+      requestLogger.info({
+        artifactId: artifactIdNumber,
+        fileName,
+        fileType,
+        contentLength: content.length,
+        contentType: content.trim().startsWith('{') ? 'JSON' : 'Text'
+      }, 'File content retrieved with metadata');
+
+      res.json(response);
     } catch (error) {
       const requestLogger = res.locals.logger || logger;
-      requestLogger.error({ artifactId: req.params.artifactId, path: req.query.path, error }, "Error reading log file");
-      res.status(500).json({ error: "Failed to read log file" });
+      requestLogger.error({
+        artifactId: req.params.artifactId,
+        path: req.query.path,
+        error
+      }, "Error reading file from artifact");
+      res.status(500).json({ error: "Failed to read file from artifact" });
     }
   });
 
