@@ -1047,8 +1047,8 @@ export async function registerRoutes(app: Express, logger: Logger): Promise<Serv
 
       // Extract metadata from path
       const fileName = path.split('/').pop() || path;
-      const fileExtension = fileName.split('.').pop() || '';
-      const fileType = fileExtension as 'cast' | 'log' | 'txt';
+      const fileExtension = (fileName.split('.').pop() || '').toLowerCase();
+      const fileType: 'cast' | 'log' | 'txt' | 'unknown' = ['cast', 'log', 'txt'].includes(fileExtension) ? fileExtension as 'cast' | 'log' | 'txt' : 'unknown';
 
       const response = {
         content,
